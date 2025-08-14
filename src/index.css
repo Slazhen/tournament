@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+:root {
+  --bg: 12 12 16;
+  --fg: 240 240 245;
+  --glass: 255 255 255;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 10% -10%, rgb(56 189 248 / 0.15), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, rgb(139 92 246 / 0.15), transparent 60%),
+    rgb(var(--bg));
+  color: rgb(var(--fg));
+}
+
+.glass {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background-color: rgb(var(--glass) / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.12);
+}
+
+.container-max {
+  max-width: 1100px;
+}
+
+/* Global typography adjustments for more readable spacing */
+p {
+  line-height: 1.85;
+  word-spacing: 0.06em;
+}
+
+/* Optional: slightly increase word spacing across headings as well */
+h1, h2, h3, h4, h5, h6 {
+  word-spacing: 0.04em;
+}
