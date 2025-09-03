@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  football-tournaments-dev:
+    image: football-tournaments-dev:latest
+    container_name: football-tournaments-dev
+    ports:
+      - "8080:80"
+    environment:
+      - REACT_APP_AWS_REGION=us-east-1
+      - REACT_APP_TOURNAMENTS_TABLE=football-tournaments-dev
+      - REACT_APP_TEAMS_TABLE=football-teams-dev
+      - REACT_APP_PLAYERS_TABLE=football-players-dev
+      - REACT_APP_MATCHES_TABLE=football-matches-dev
+      - REACT_APP_ORGANIZERS_TABLE=football-organizers-dev
+      - REACT_APP_S3_BUCKET=football-tournaments-dev-1756901839
+      - REACT_APP_ENVIRONMENT=dev
+      - REACT_APP_DOMAIN=dev.myfootballtournament.com
+      - NODE_ENV=production
+    restart: unless-stopped
+    volumes:
+      - /home/ec2-user/.aws:/root/.aws:ro
