@@ -8,10 +8,10 @@ import InstagramIcon from '../components/InstagramIcon'
 
 export default function PublicTournamentPage() {
   const { id } = useParams()
-  const { getAllTournaments, teams: allTeams } = useAppStore()
+  const { getAllTournaments, getAllTeams } = useAppStore()
   
   const tournaments = getAllTournaments()
-  const teams = allTeams
+  const teams = getAllTeams()
   
   // Find the specific tournament by ID
   const tournament = tournaments.find(t => t.id === id)

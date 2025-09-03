@@ -3,10 +3,10 @@ import { useAppStore } from '../store'
 
 export default function PublicMatchPage() {
   const { tournamentId, matchId } = useParams()
-  const { getAllTournaments, teams: allTeams } = useAppStore()
+  const { getAllTournaments, getAllTeams } = useAppStore()
   
   const tournaments = getAllTournaments()
-  const teams = allTeams
+  const teams = getAllTeams()
 
   const tournament = tournaments.find(t => t.id === tournamentId)
   const match = tournament?.matches.find(m => m.id === matchId)
