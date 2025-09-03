@@ -1,6 +1,5 @@
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { useAppStore } from "../store"
-import { uid } from "../utils/uid"
 import { Link } from "react-router-dom"
 import LogoUploader from "../components/LogoUploader"
 
@@ -60,15 +59,6 @@ export default function TeamsPage() {
     setBulkTeams("")
   }
   
-  const handleLogoUpload = (teamId: string, file: File) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target?.result as string
-      updateTeam(teamId, { logo: result })
-    }
-    reader.readAsDataURL(file)
-  }
-  
   const handlePhotoUpload = (teamId: string, file: File) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -82,45 +72,7 @@ export default function TeamsPage() {
     updateTeam(teamId, { colors: [color] })
   }
   
-  const handleSocialMediaUpdate = (teamId: string, platform: 'facebook' | 'instagram', value: string) => {
-    const team = teams.find(t => t.id === teamId)
-    if (team) {
-      updateTeam(teamId, {
-        socialMedia: {
-          ...team.socialMedia,
-          [platform]: value
-        }
-      })
-    }
-  }
-  
-  const addPlayer = (teamId: string, firstName: string, lastName: string) => {
-    const team = teams.find(t => t.id === teamId)
-    if (team) {
-      const newPlayer = {
-        id: uid(),
-        firstName,
-        lastName,
-        isPublic: true,
-        createdAtISO: new Date().toISOString()
-      }
-      updateTeam(teamId, {
-        players: [...team.players, newPlayer]
-      })
-    }
-  }
-  
-  const removePlayer = (teamId: string, playerId: string) => {
-    const team = teams.find(t => t.id === teamId)
-    if (team) {
-      updateTeam(teamId, {
-        players: team.players.filter(p => p.id !== playerId)
-      })
-    }
-  }
-  
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const photoInputRef = useRef<HTMLInputElement>(null)
+  // Removed unused functions and refs to fix TypeScript errors
 
   return (
     <div className="min-h-[80vh] flex flex-col items-center gap-8">
@@ -176,14 +128,7 @@ export default function TeamsPage() {
           <div>
             <label className="block text-sm font-medium mb-2">Team Logo</label>
             <LogoUploader
-              onUpload={(file) => {
-                const reader = new FileReader()
-                reader.onload = (e) => {
-                  const result = e.target?.result as string
-                  setTeamLogo(result)
-                }
-                reader.readAsDataURL(file)
-              }}
+              onLogoChange={setTeamLogo}
               currentLogo={teamLogo}
             />
           </div>
@@ -256,7 +201,7 @@ export default function TeamsPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Logo</label>
                   <LogoUploader
-                    onUpload={(file) => handleLogoUpload(team.id, file)}
+                    onLogoChange={(logoDataUrl) => updateTeam(team.id, { logo: logoDataUrl })}
                     currentLogo={team.logo}
                   />
                 </div>
