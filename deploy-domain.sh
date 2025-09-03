@@ -81,7 +81,7 @@ deploy_environment() {
         --key-schema \
             AttributeName=id,KeyType=HASH \
         --global-secondary-indexes \
-            IndexName=organizerId-index,KeySchema=[{AttributeName=organizerId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5} \
+            'IndexName=organizerId-index,KeySchema=[{AttributeName=organizerId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}' \
         --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
         --region $AWS_REGION || print_warning "Tournaments table might already exist"
     
@@ -94,7 +94,7 @@ deploy_environment() {
         --key-schema \
             AttributeName=id,KeyType=HASH \
         --global-secondary-indexes \
-            IndexName=organizerId-index,KeySchema=[{AttributeName=organizerId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5} \
+            'IndexName=organizerId-index,KeySchema=[{AttributeName=organizerId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}' \
         --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
         --region $AWS_REGION || print_warning "Teams table might already exist"
     
@@ -107,7 +107,7 @@ deploy_environment() {
         --key-schema \
             AttributeName=id,KeyType=HASH \
         --global-secondary-indexes \
-            IndexName=teamId-index,KeySchema=[{AttributeName=teamId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5} \
+            'IndexName=teamId-index,KeySchema=[{AttributeName=teamId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}' \
         --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
         --region $AWS_REGION || print_warning "Players table might already exist"
     
@@ -120,7 +120,7 @@ deploy_environment() {
         --key-schema \
             AttributeName=id,KeyType=HASH \
         --global-secondary-indexes \
-            IndexName=tournamentId-index,KeySchema=[{AttributeName=tournamentId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5} \
+            'IndexName=tournamentId-index,KeySchema=[{AttributeName=tournamentId,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}' \
         --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
         --region $AWS_REGION || print_warning "Matches table might already exist"
     
