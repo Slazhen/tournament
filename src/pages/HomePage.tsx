@@ -114,20 +114,21 @@ export default function HomePage() {
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{
           backgroundImage: `url('https://images.unsplash.com/photo-1629217855633-79a6925d6c47?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OHx8Zm9vdGJhbGwlMjBzdGFkaXVtfGVufDB8fDB8fHww')`,
-          filter: 'brightness(0.6)'
+          filter: 'brightness(0.6)',
+          backgroundAttachment: 'fixed'
         }}
       />
       
       {/* Glass Overlay */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       
       {/* Content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className="glass rounded-2xl p-12 max-w-4xl w-full text-center">
+        <div className="glass rounded-2xl p-12 max-w-4xl w-full text-center shadow-2xl border border-white/20 hover-lift">
           {/* Logo/Title */}
           <div className="mb-8">
             <div className="text-6xl mb-4">🏆</div>
-            <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
+            <h1 className="text-5xl font-bold mb-4 text-gradient">
               MFTournament
             </h1>
             <p className="text-xl opacity-90 mb-6">
@@ -148,22 +149,22 @@ export default function HomePage() {
           
           {/* Features Grid */}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="glass rounded-xl p-6 border border-white/20">
+            <div className="glass rounded-xl p-6 border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-105 hover-lift">
               <div className="text-3xl mb-3">🏈</div>
               <h3 className="text-lg font-semibold mb-2 text-green-400">Tournament Management</h3>
               <p className="text-sm opacity-80">Create and manage tournaments with ease</p>
             </div>
-            <div className="glass rounded-xl p-6 border border-white/20">
+            <div className="glass rounded-xl p-6 border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-105 hover-lift">
               <div className="text-3xl mb-3">👥</div>
               <h3 className="text-lg font-semibold mb-2 text-blue-400">Team Management</h3>
               <p className="text-sm opacity-80">Organize teams and track performance</p>
             </div>
-            <div className="glass rounded-xl p-6 border border-white/20">
+            <div className="glass rounded-xl p-6 border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-105 hover-lift">
               <div className="text-3xl mb-3">⚽</div>
               <h3 className="text-lg font-semibold mb-2 text-purple-400">Match Tracking</h3>
               <p className="text-sm opacity-80">Real-time match updates and statistics</p>
             </div>
-            <div className="glass rounded-xl p-6 border border-white/20">
+            <div className="glass rounded-xl p-6 border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-105 hover-lift">
               <div className="text-3xl mb-3">📊</div>
               <h3 className="text-lg font-semibold mb-2 text-yellow-400">Player Statistics</h3>
               <p className="text-sm opacity-80">Detailed player performance analytics</p>
@@ -174,19 +175,19 @@ export default function HomePage() {
           <div className="mb-8">
             <h3 className="text-2xl font-semibold mb-6 text-yellow-400">🚀 Launch Countdown</h3>
             <div className="flex justify-center gap-4 flex-wrap">
-              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20">
+              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20 hover:border-white/30 transition-all duration-300">
                 <div className="text-2xl font-bold text-green-400" id="days">00</div>
                 <div className="text-xs uppercase opacity-70">Days</div>
               </div>
-              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20">
+              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20 hover:border-white/30 transition-all duration-300">
                 <div className="text-2xl font-bold text-green-400" id="hours">00</div>
                 <div className="text-xs uppercase opacity-70">Hours</div>
               </div>
-              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20">
+              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20 hover:border-white/30 transition-all duration-300">
                 <div className="text-2xl font-bold text-green-400" id="minutes">00</div>
                 <div className="text-xs uppercase opacity-70">Minutes</div>
               </div>
-              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20">
+              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20 hover:border-white/30 transition-all duration-300">
                 <div className="text-2xl font-bold text-green-400" id="seconds">00</div>
                 <div className="text-xs uppercase opacity-70">Seconds</div>
               </div>
