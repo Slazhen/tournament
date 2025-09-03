@@ -1,90 +1,270 @@
-import { useMemo, useState } from 'react'
-import { useAppStore } from '../store'
-import type { Tournament } from '../types'
-import { generateRoundRobinSchedule } from '../utils/schedule'
-
-function uid() {
-  return Math.random().toString(36).slice(2)
-}
+import { useState } from "react"
+import { useAppStore } from "../store"
+import { Link } from "react-router-dom"
+import LogoUploader from "../components/LogoUploader"
 
 export default function TournamentsPage() {
-  const tournaments = useAppStore((s) => s.tournaments)
-  const addTournament = useAppStore((s) => s.addTournament)
-  const removeTournament = useAppStore((s) => s.removeTournament)
-  const teams = useAppStore((s) => s.teams)
-
-  const [name, setName] = useState('New League')
-  const [teamCount, setTeamCount] = useState(6)
-
-  const teamOptions = useMemo(() => Object.values(teams), [teams])
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-
-  function createTournament() {
-    const selected = selectedIds.length > 1 ? selectedIds : teamOptions.slice(0, teamCount).map((t) => t.id)
-    if (selected.length < 2) return
-    const id = uid()
-    const matches = generateRoundRobinSchedule(selected)
-    const t: Tournament = {
-      id,
-      name,
-      createdAtISO: new Date().toISOString(),
-      teamIds: selected,
-      matches,
-    }
-    addTournament(t)
-    setName('New League')
+  const [tournamentName, setTournamentName] = useState("")
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [rounds, setRounds] = useState(1)
+  const [mode, setMode] = useState<'league' | 'league_playoff' | 'swiss_elimination'>('league')
+  const [qualifiers, setQualifiers] = useState(4)
+  const [logo, setLogo] = useState<string>("")
+  
+  const { 
+    getCurrentOrganizer, 
+    getOrganizerTeams, 
+    getOrganizerTournaments, 
+    createTournament,
+    deleteTournament
+  } = useAppStore()
+  
+  const currentOrganizer = getCurrentOrganizer()
+  const teams = getOrganizerTeams()
+  const tournaments = getOrganizerTournaments()
+  
+  // Redirect if no organizer is selected
+  if (!currentOrganizer) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <h1 className="text-xl font-semibold mb-4">No Organizer Selected</h1>
+          <p className="opacity-80 mb-6">Please select an organizer first</p>
+          <Link to="/" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all">
+            Go to Home
+          </Link>
+        </div>
+      </div>
+    )
   }
+  
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (tournamentName.trim() && selectedTeamIds.length >= 2) {
+      const format = {
+        rounds,
+        mode,
+        playoffQualifiers: mode === 'league_playoff' ? qualifiers : undefined
+      }
+      
+      createTournament(tournamentName.trim(), selectedTeamIds, format)
+      setTournamentName("")
+      setSelectedTeamIds([])
+      setShowAdvanced(false)
+      setRounds(1)
+      setMode('league')
+      setQualifiers(4)
+      setLogo("")
+    }
+  }
+  
+  const handleTeamToggle = (teamId: string) => {
+    setSelectedTeamIds(prev => 
+      prev.includes(teamId) 
+        ? prev.filter(id => id !== teamId)
+        : [...prev, teamId]
+    )
+  }
+  
 
+  
   return (
-    <div className="grid gap-6 place-items-center">
-      <section className="glass rounded-xl p-6 w-full max-w-2xl text-center">
-        <h2 className="text-xl font-semibold mb-3 tracking-wide">Create Tournament</h2>
-        <div className="grid gap-3 md:grid-cols-3 text-left">
-          <label className="grid gap-1 md:col-span-2">
-            <span className="text-sm opacity-80">Name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="px-3 py-2 rounded-md bg-transparent border border-white/20" />
-          </label>
-          <label className="grid gap-1">
-            <span className="text-sm opacity-80">Team count (fallback)</span>
-            <input type="number" min={2} value={teamCount} onChange={(e) => setTeamCount(Number(e.target.value))} className="px-3 py-2 rounded-md bg-transparent border border-white/20" />
-          </label>
-          <div className="grid gap-1 md:col-span-3">
-            <span className="text-sm opacity-80">Select teams</span>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {teamOptions.map((t) => (
-                <button key={t.id} onClick={() => setSelectedIds((prev) => prev.includes(t.id) ? prev.filter((x) => x !== t.id) : [...prev, t.id])} className={`px-3 py-1 rounded-full border border-white/20 ${selectedIds.includes(t.id) ? 'bg-white/10' : 'bg-transparent'}`}>
-                  {t.name}
-                </button>
+    <div className="min-h-[80vh] flex flex-col items-center gap-8">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold mb-2">Manage Tournaments</h1>
+        <p className="opacity-80">Organizer: {currentOrganizer.name}</p>
+      </div>
+      
+      {/* Create Tournament Form */}
+      <section className="glass rounded-xl p-6 w-full max-w-2xl">
+        <h2 className="text-lg font-semibold mb-4 text-center">Create New Tournament</h2>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Tournament Name</label>
+            <input
+              type="text"
+              value={tournamentName}
+              onChange={(e) => setTournamentName(e.target.value)}
+              className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+              placeholder="Enter tournament name"
+              required
+            />
+          </div>
+          
+                 <div>
+                   <label className="block text-sm font-medium mb-2">Tournament Logo (Optional)</label>
+                   <LogoUploader 
+                     onLogoChange={setLogo}
+                     currentLogo={logo}
+                     size={80}
+                   />
+                 </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-2">Select Teams ({selectedTeamIds.length} selected)</label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-2 border border-white/20 rounded">
+              {teams.map((team) => (
+                <label key={team.id} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedTeamIds.includes(team.id)}
+                    onChange={() => handleTeamToggle(team.id)}
+                    className="rounded"
+                  />
+                  <span className="text-sm">{team.name}</span>
+                </label>
               ))}
             </div>
+            {teams.length === 0 && (
+              <p className="text-sm opacity-70 text-center py-4">No teams available. Create teams first!</p>
+            )}
           </div>
-        </div>
-        <div className="mt-4">
-          <button onClick={createTournament} className="px-5 py-2.5 rounded-md glass">Create</button>
-        </div>
-      </section>
-
-      <section className="grid gap-3 w-full max-w-4xl">
-        <h2 className="text-xl font-semibold text-center tracking-wide">Your Tournaments</h2>
-        <div className="grid md:grid-cols-2 gap-4">
-          {Object.values(tournaments).length === 0 && (
-            <div className="opacity-70">No tournaments yet.</div>
+          
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="px-4 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
+            >
+              {showAdvanced ? 'Hide' : 'Show'} Advanced Options
+            </button>
+          </div>
+          
+          {showAdvanced && (
+            <div className="space-y-4 p-4 glass rounded-lg">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Number of Rounds</label>
+                  <select
+                    value={rounds}
+                    onChange={(e) => setRounds(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                  >
+                    <option value={1}>1 Round</option>
+                    <option value={2}>2 Rounds</option>
+                    <option value={3}>3 Rounds</option>
+                    <option value={4}>4 Rounds</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tournament Mode</label>
+                  <select
+                    value={mode}
+                    onChange={(e) => setMode(e.target.value as 'league' | 'league_playoff' | 'swiss_elimination')}
+                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                  >
+                    <option value="league">League Only</option>
+                    <option value="league_playoff">League + Playoffs</option>
+                    <option value="swiss_elimination">Swiss + Elimination</option>
+                  </select>
+                </div>
+              </div>
+              
+              {mode === 'league_playoff' && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Playoff Qualifiers</label>
+                  <select
+                    value={qualifiers}
+                    onChange={(e) => setQualifiers(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                  >
+                    <option value={2}>2 Teams</option>
+                    <option value={4}>4 Teams</option>
+                    <option value={8}>8 Teams</option>
+                  </select>
+                </div>
+              )}
+            </div>
           )}
-          {Object.values(tournaments).map((t) => (
-            <article key={t.id} className="glass rounded-xl p-4 grid gap-2">
-              <div className="flex items-center gap-2">
-                <a className="font-medium" href={`/tournaments/${t.id}`}>{t.name}</a>
-                <span className="text-xs opacity-60 ml-auto">{new Date(t.createdAtISO).toLocaleString()}</span>
+          
+          <button
+            type="submit"
+            disabled={!tournamentName.trim() || selectedTeamIds.length < 2}
+            className="w-full px-4 py-2 rounded-md glass hover:bg-white/10 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Create Tournament
+          </button>
+        </form>
+      </section>
+      
+      {/* Tournaments List */}
+      <section className="glass rounded-xl p-6 w-full max-w-4xl">
+        <h2 className="text-lg font-semibold mb-4 text-center">Your Tournaments ({tournaments.length})</h2>
+        
+        {tournaments.length === 0 ? (
+          <p className="text-center opacity-70">No tournaments yet. Create your first tournament above!</p>
+        ) : (
+          <div className="grid gap-4">
+            {tournaments.map((tournament) => (
+              <div key={tournament.id} className="glass rounded-lg p-4">
+                <div className="flex items-center gap-4">
+                  {/* Tournament Logo */}
+                  <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10 flex-shrink-0">
+                    {tournament.logo ? (
+                      <img 
+                        src={tournament.logo} 
+                        alt={`${tournament.name} logo`} 
+                        className="w-full h-full object-cover" 
+                      />
+                    ) : (
+                      <div className="text-2xl opacity-50">🏆</div>
+                    )}
+                  </div>
+                  
+                  {/* Tournament Info */}
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold mb-1">{tournament.name}</h3>
+                    <div className="text-sm opacity-70 space-y-1">
+                      <div>Teams: {tournament.teamIds.length}</div>
+                      <div>Format: {
+                        tournament.format?.mode === 'league_playoff' ? 'League + Playoffs' :
+                        tournament.format?.mode === 'swiss_elimination' ? 'Swiss + Elimination' :
+                        'League Only'
+                      }</div>
+                      {tournament.format?.mode === 'league_playoff' && (
+                        <div>Playoff Qualifiers: {tournament.format.playoffQualifiers}</div>
+                      )}
+                      <div>Created: {new Date(tournament.createdAtISO).toLocaleDateString()}</div>
+                    </div>
+                  </div>
+                  
+                  {/* Actions */}
+                  <div className="flex flex-col gap-2">
+                    <Link
+                      to={`/tournaments/${tournament.id}`}
+                      className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center"
+                    >
+                      🏆 View
+                    </Link>
+                    <Link
+                      to={`/public/tournaments/${tournament.id}`}
+                      target="_blank"
+                      className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
+                    >
+                      🌐 Public
+                    </Link>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Are you sure you want to delete the tournament "${tournament.name}"?\n\nThis will permanently remove:\n• All match results\n• Tournament standings\n• Playoff brackets\n• Tournament data\n\nThis action cannot be undone.`)) {
+                          deleteTournament(tournament.id)
+                          // Refresh the page to show updated list
+                          window.location.reload()
+                        }
+                      }}
+                      className="px-4 py-2 rounded glass hover:bg-red-500/20 hover:text-red-300 transition-all text-center text-sm text-red-400"
+                      title="Delete tournament"
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="text-sm opacity-80">{t.teamIds.length} teams • {t.matches.length} matches</div>
-              <div className="text-xs opacity-70">Rounds: {Math.max(0, ...t.matches.map((m) => m.round ?? 0)) + 1}</div>
-              <div className="flex gap-2 mt-1">
-                <a href={`/tournaments/${t.id}`} className="px-3 py-1 rounded-md glass text-sm">Open</a>
-                <button onClick={() => removeTournament(t.id)} className="px-3 py-1 rounded-md glass text-sm">Delete</button>
-              </div>
-            </article>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   )

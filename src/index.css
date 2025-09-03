@@ -6,8 +6,10 @@
   --glass: 255 255 255;
 }
 
-html, body, #root {
-  height: 100%;
+:root[data-theme="bright"] {
+  --bg: 248 250 252;
+  --fg: 15 23 42;
+  --glass: 0 0 0;
 }
 
 body {
@@ -29,13 +31,14 @@ body {
   max-width: 1100px;
 }
 
-/* Global typography adjustments for more readable spacing */
-p {
-  line-height: 1.85;
-  word-spacing: 0.06em;
-}
-
-/* Optional: slightly increase word spacing across headings as well */
-h1, h2, h3, h4, h5, h6 {
-  word-spacing: 0.04em;
+/* Tournament Background */
+.tournament-background {
+  background-image: linear-gradient(
+    rgba(0, 0, 0, 0.4),
+    rgba(0, 0, 0, 0.4)
+  ), var(--background-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
 }
