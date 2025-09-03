@@ -118,7 +118,29 @@ create_security_groups() {
 create_key_pair() {
     print_info "Creating EC2 key pair..."
     
-    if [ ! -f "football-tournaments-key.pem" ]; then
+    # Check if key pair exists in AWS
+    if aws ec2 describe-key-pairs --key-names football-tournaments-key &> /dev/null; then
+        print_warning "Key pair 'football-tournaments-key' already exists in AWS"
+        
+        # Check if we have the local .pem file
+        if [ ! -f "football-tournaments-key.pem" ]; then
+            print_error "Key pair exists in AWS but local .pem file is missing!"
+            print_info "You need to either:"
+            print_info "1. Find your existing .pem file, or"
+            print_info "2. Delete the key pair from AWS and recreate it"
+            print_info ""
+            print_info "To delete existing key pair:"
+            print_info "aws ec2 delete-key-pair --key-name football-tournaments-key"
+            print_info ""
+            print_info "To list existing key pairs:"
+            print_info "aws ec2 describe-key-pairs"
+            return 1
+        else
+            print_status "Using existing key pair: football-tournaments-key.pem"
+        fi
+    else
+        # Create new key pair
+        print_info "Creating new key pair: football-tournaments-key"
         aws ec2 create-key-pair \
             --key-name football-tournaments-key \
             --query 'KeyMaterial' \
@@ -126,8 +148,6 @@ create_key_pair() {
         
         chmod 400 football-tournaments-key.pem
         print_status "Key pair created: football-tournaments-key.pem"
-    else
-        print_warning "Key pair already exists: football-tournaments-key.pem"
     fi
 }
 
