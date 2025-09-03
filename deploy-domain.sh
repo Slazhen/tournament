@@ -50,6 +50,9 @@ deploy_environment() {
     print_info "Creating S3 bucket: $S3_BUCKET"
     aws s3 mb s3://$S3_BUCKET --region $AWS_REGION || print_warning "S3 bucket might already exist"
     
+    # Disable block public access
+    aws s3api delete-public-access-block --bucket $S3_BUCKET || print_warning "Could not disable block public access"
+    
     # Set bucket policy for public read access to images
     aws s3api put-bucket-policy --bucket $S3_BUCKET --policy "{
       \"Version\": \"2012-10-17\",
