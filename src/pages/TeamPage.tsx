@@ -90,6 +90,34 @@ export default function TeamPage() {
     return '0'
   }
   
+  // Environment debugging
+  const getEnvironmentInfo = () => {
+    return {
+      isLocalhost: window.location.hostname === 'localhost',
+      isDev: import.meta.env.DEV,
+      isProd: import.meta.env.PROD,
+      hostname: window.location.hostname,
+      protocol: window.location.protocol,
+      userAgent: navigator.userAgent,
+      localStorageAvailable: typeof Storage !== 'undefined'
+    }
+  }
+  
+  // Test localStorage functionality
+  const testLocalStorage = () => {
+    try {
+      const testKey = 'test-photo-upload'
+      const testData = 'test-data-' + Date.now()
+      localStorage.setItem(testKey, testData)
+      const retrieved = localStorage.getItem(testKey)
+      localStorage.removeItem(testKey)
+      return retrieved === testData ? 'Working' : 'Failed'
+    } catch (error) {
+      console.error('LocalStorage test failed:', error)
+      return 'Error: ' + (error instanceof Error ? error.message : String(error))
+    }
+  }
+  
   // Wrapper function to track changes
   const updateTeamWithTracking = (teamId: string, updates: any) => {
     console.log('updateTeamWithTracking called:', { teamId, updates })
@@ -386,6 +414,17 @@ export default function TeamPage() {
           >
             💾 Confirm Changes
           </button>
+          <button
+            onClick={() => {
+              console.log('Testing photo persistence...')
+              const testPhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+              updateTeamWithTracking(team.id, { photo: testPhoto })
+              console.log('Test photo set, check if it persists after refresh')
+            }}
+            className="px-4 py-2 rounded-lg font-semibold transition-all bg-yellow-600 hover:bg-yellow-700 text-white text-sm"
+          >
+            🧪 Test Photo
+          </button>
           {saveMessage && (
             <span className="text-green-400 text-sm">{saveMessage}</span>
           )}
@@ -407,6 +446,10 @@ export default function TeamPage() {
           <p><strong>Organizer ID:</strong> {team.organizerId || 'None'}</p>
           <p><strong>Created:</strong> {new Date(team.createdAtISO).toLocaleString()}</p>
           <p><strong>LocalStorage Size:</strong> {checkLocalStorageUsage()} KB</p>
+          <p><strong>Environment:</strong> {getEnvironmentInfo().isLocalhost ? 'Localhost' : 'Deployed'}</p>
+          <p><strong>Hostname:</strong> {getEnvironmentInfo().hostname}</p>
+          <p><strong>Protocol:</strong> {getEnvironmentInfo().protocol}</p>
+          <p><strong>LocalStorage Test:</strong> {testLocalStorage()}</p>
         </div>
       </div>
 
