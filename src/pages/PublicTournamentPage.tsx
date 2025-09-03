@@ -18,9 +18,20 @@ export default function PublicTournamentPage() {
     tournamentId: id,
     totalTournaments: tournaments.length,
     totalTeams: teams.length,
-    tournaments: tournaments.map(t => ({ id: t.id, name: t.name, organizerId: t.organizerId })),
+    tournaments: tournaments.map(t => ({ 
+      id: t.id, 
+      name: t.name, 
+      organizerId: t.organizerId,
+      teamIds: t.teamIds?.length || 0,
+      matches: t.matches?.length || 0
+    })),
     teams: teams.map(t => ({ id: t.id, name: t.name, organizerId: t.organizerId }))
   })
+  
+  // Check if tournament exists
+  if (tournaments.length > 0) {
+    console.log('Found tournament:', tournaments.find(t => t.id === id))
+  }
   
   // Find the specific tournament by ID
   const tournament = tournaments.find(t => t.id === id)
