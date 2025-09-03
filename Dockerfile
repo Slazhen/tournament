@@ -1,14 +1,13 @@
-# Use Node.js 18 Alpine as base image
-FROM node:18-alpine
+# Stage 1: Build the React application
+FROM node:18-alpine as builder
 
-# Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -16,11 +15,17 @@ COPY . .
 # Build the app
 RUN npm run build
 
-# Install serve to run the production build
-RUN npm install -g serve
+# Stage 2: Serve the application with Nginx
+FROM nginx:alpine
 
-# Expose port 3000
-EXPOSE 3000
+# Copy build output from the builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Start the app
-CMD ["serve", "-s", "dist", "-l", "3000"]
+# Copy custom nginx configuration (optional)
+# COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose port 80
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]

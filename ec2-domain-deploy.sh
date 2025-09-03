@@ -157,7 +157,7 @@ services:
     image: ${APP_NAME}-${ENV}:latest
     container_name: ${APP_NAME}-${ENV}
     ports:
-      - "${PORT}:3000"
+      - "${PORT}:80"
     environment:
       - REACT_APP_AWS_REGION=$AWS_REGION
       - REACT_APP_TOURNAMENTS_TABLE=football-tournaments${ENV == "prod" ? "" : "-dev"}
@@ -173,7 +173,7 @@ services:
     volumes:
       - /home/ec2-user/.aws:/root/.aws:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
       interval: 30s
       timeout: 10s
       retries: 3
