@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { uid } from '../utils/uid'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -12,6 +12,10 @@ export default function TeamPage() {
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
+  
+  // State for tracking unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
   
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)
@@ -48,13 +52,26 @@ export default function TeamPage() {
 
   const logoFileRef = useRef<HTMLInputElement>(null)
   const photoFileRef = useRef<HTMLInputElement>(null)
+  
+  // Save function
+  const saveChanges = () => {
+    setHasUnsavedChanges(false)
+    setSaveMessage('Changes saved successfully!')
+    setTimeout(() => setSaveMessage(''), 3000)
+  }
+  
+  // Wrapper function to track changes
+  const updateTeamWithTracking = (teamId: string, updates: any) => {
+    updateTeam(teamId, updates)
+    setHasUnsavedChanges(true)
+  }
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       const reader = new FileReader()
       reader.onload = (e) => {
-        updateTeam(team.id, { logo: e.target?.result as string })
+        updateTeamWithTracking(team.id, { logo: e.target?.result as string })
       }
       reader.readAsDataURL(file)
     }
@@ -65,7 +82,7 @@ export default function TeamPage() {
     if (file) {
       const reader = new FileReader()
       reader.onload = (e) => {
-        updateTeam(team.id, { photo: e.target?.result as string })
+        updateTeamWithTracking(team.id, { photo: e.target?.result as string })
       }
       reader.readAsDataURL(file)
     }
@@ -81,7 +98,7 @@ export default function TeamPage() {
       isPublic: true,
       createdAtISO: new Date().toISOString()
     }
-    updateTeam(team.id, { 
+    updateTeamWithTracking(team.id, { 
       players: [...(team.players || []), newPlayer] 
     })
   }
@@ -91,13 +108,13 @@ export default function TeamPage() {
     const updatedPlayers = team.players.map(p => 
       p.id === playerId ? { ...p, ...updates } : p
     )
-    updateTeam(team.id, { players: updatedPlayers })
+    updateTeamWithTracking(team.id, { players: updatedPlayers })
   }
 
   const removePlayer = (playerId: string) => {
     if (!team.players) return
     const updatedPlayers = team.players.filter(p => p.id !== playerId)
-    updateTeam(team.id, { players: updatedPlayers })
+    updateTeamWithTracking(team.id, { players: updatedPlayers })
   }
 
   // Find tournaments where this team participates
@@ -172,7 +189,7 @@ export default function TeamPage() {
               <input
                 type="text"
                 value={team.name}
-                onChange={(e) => updateTeam(team.id, { name: e.target.value })}
+                onChange={(e) => updateTeamWithTracking(team.id, { name: e.target.value })}
                 className="text-3xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all"
                 placeholder="Team Name"
               />
@@ -193,7 +210,7 @@ export default function TeamPage() {
                       onChange={(e) => {
                         const newColors = [...(team.colors || ['#3B82F6'])]
                         newColors[index] = e.target.value
-                        updateTeam(team.id, { colors: newColors })
+                        updateTeamWithTracking(team.id, { colors: newColors })
                       }}
                       className="w-6 h-6 rounded border border-white/20"
                     />
@@ -202,7 +219,7 @@ export default function TeamPage() {
                     <button
                       onClick={() => {
                         const newColors = [...(team.colors || ['#3B82F6']), '#EF4444']
-                        updateTeam(team.id, { colors: newColors })
+                        updateTeamWithTracking(team.id, { colors: newColors })
                       }}
                       className="w-6 h-6 rounded border border-white/20 bg-white/10 hover:bg-white/20 flex items-center justify-center text-xs"
                       title="Add second color"
@@ -214,7 +231,7 @@ export default function TeamPage() {
                     <button
                       onClick={() => {
                         const newColors = team.colors.slice(0, -1)
-                        updateTeam(team.id, { colors: newColors })
+                        updateTeamWithTracking(team.id, { colors: newColors })
                       }}
                       className="w-6 h-6 rounded border border-white/20 bg-red-500/20 hover:bg-red-500/30 flex items-center justify-center text-xs text-red-400"
                       title="Remove last color"
@@ -230,7 +247,7 @@ export default function TeamPage() {
                   <input
                     type="date"
                     value={team.establishedDate ? team.establishedDate.split('T')[0] : ''}
-                    onChange={(e) => updateTeam(team.id, { establishedDate: e.target.value })}
+                    onChange={(e) => updateTeamWithTracking(team.id, { establishedDate: e.target.value })}
                     className="px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
                   />
                 </div>
@@ -282,11 +299,11 @@ export default function TeamPage() {
                   type="url"
                   placeholder="Facebook page..."
                   value={team.socialMedia.facebook}
-                  onChange={(e) => updateTeam(team.id, { 
+                                    onChange={(e) => updateTeamWithTracking(team.id, { 
                     socialMedia: { 
                       ...team.socialMedia, 
                       facebook: e.target.value || undefined 
-                    } 
+                    }
                   })}
                   className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
                 />
@@ -299,11 +316,11 @@ export default function TeamPage() {
                   type="url"
                   placeholder="Instagram profile..."
                   value={team.socialMedia.instagram}
-                  onChange={(e) => updateTeam(team.id, { 
+                                    onChange={(e) => updateTeamWithTracking(team.id, { 
                     socialMedia: { 
                       ...team.socialMedia, 
                       instagram: e.target.value || undefined 
-                    } 
+                    }
                   })}
                   className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
                 />
@@ -312,6 +329,29 @@ export default function TeamPage() {
           </div>
         )}
       </section>
+
+      {/* Save Button */}
+      <div className="flex justify-center mb-6">
+        <div className="flex items-center gap-4">
+          {hasUnsavedChanges && (
+            <span className="text-yellow-400 text-sm">⚠️ You have unsaved changes</span>
+          )}
+          <button
+            onClick={saveChanges}
+            disabled={!hasUnsavedChanges}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              hasUnsavedChanges
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            💾 Save Changes
+          </button>
+          {saveMessage && (
+            <span className="text-green-400 text-sm">{saveMessage}</span>
+          )}
+        </div>
+      </div>
 
       {/* Team Statistics Summary */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">

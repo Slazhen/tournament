@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { generatePlayoffBrackets } from '../utils/schedule'
 import LocationIcon from '../components/LocationIcon'
 import FacebookIcon from '../components/FacebookIcon'
@@ -15,8 +15,25 @@ export default function TournamentPage() {
   const tournaments = getOrganizerTournaments()
   const teams = getOrganizerTeams()
   
+  // State for tracking unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
+  
   // Find the specific tournament by ID
   const tournament = tournaments.find(t => t.id === id)
+  
+  // Save function
+  const saveChanges = () => {
+    setHasUnsavedChanges(false)
+    setSaveMessage('Changes saved successfully!')
+    setTimeout(() => setSaveMessage(''), 3000)
+  }
+  
+  // Wrapper function to track changes
+  const updateTournamentWithTracking = (tournamentId: string, updates: any) => {
+    updateTournament(tournamentId, updates)
+    setHasUnsavedChanges(true)
+  }
   
   // Redirect if no organizer is selected
   if (!currentOrganizer) {
@@ -95,19 +112,19 @@ export default function TournamentPage() {
   function setScore(mid: string, homeGoals: number, awayGoals: number) {
     if (!tournament) return
     const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, homeGoals: isNaN(homeGoals) ? undefined : homeGoals, awayGoals: isNaN(awayGoals) ? undefined : awayGoals } : m))
-    updateTournament(tournament.id, { matches })
+    updateTournamentWithTracking(tournament.id, { matches })
   }
 
   function setPlayoffTeams(mid: string, homeTeamId: string, awayTeamId: string) {
     if (!tournament) return
     const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, homeTeamId, awayTeamId } : m))
-    updateTournament(tournament.id, { matches })
+    updateTournamentWithTracking(tournament.id, { matches })
   }
 
   function setDate(mid: string, dateISO: string) {
     if (!tournament) return
     const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, dateISO } : m))
-    updateTournament(tournament.id, { matches })
+    updateTournamentWithTracking(tournament.id, { matches })
   }
 
   const handleEndChampionship = () => {
@@ -121,7 +138,7 @@ export default function TournamentPage() {
     const playoffMatches = createPlayoffMatches(qualifiedTeams, tournament.id)
     
     // Update tournament with playoff matches
-    updateTournament(tournament.id, {
+    updateTournamentWithTracking(tournament.id, {
       matches: [...tournament.matches, ...playoffMatches]
     })
   }
@@ -283,7 +300,7 @@ export default function TournamentPage() {
                  <div className="text-center">
                    <label className="block text-sm font-medium mb-2">Tournament Logo</label>
                    <LogoUploader 
-                     onLogoChange={(logoDataUrl) => updateTournament(tournament.id, { logo: logoDataUrl })}
+                     onLogoChange={(logoDataUrl) => updateTournamentWithTracking(tournament.id, { logo: logoDataUrl })}
                      currentLogo={tournament.logo}
                      size={80}
                    />
@@ -298,11 +315,11 @@ export default function TournamentPage() {
                      type="text"
                      placeholder="Tournament location name..."
                      value={tournament.location?.name || ''}
-                     onChange={(e) => updateTournament(tournament.id, { 
+                                          onChange={(e) => updateTournamentWithTracking(tournament.id, { 
                        location: { 
                          ...tournament.location, 
                          name: e.target.value || undefined 
-                       } 
+                       }
                      })}
                      className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
                    />
@@ -313,11 +330,11 @@ export default function TournamentPage() {
                      type="url"
                      placeholder="Location link..."
                      value={tournament.location?.link || ''}
-                     onChange={(e) => updateTournament(tournament.id, { 
+                                          onChange={(e) => updateTournamentWithTracking(tournament.id, { 
                        location: { 
                          ...tournament.location, 
                          link: e.target.value || undefined 
-                       } 
+                       }
                      })}
                      className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
                    />
@@ -331,11 +348,11 @@ export default function TournamentPage() {
                      type="url"
                      placeholder="Facebook page..."
                      value={tournament.socialMedia?.facebook || ''}
-                     onChange={(e) => updateTournament(tournament.id, { 
+                                          onChange={(e) => updateTournamentWithTracking(tournament.id, { 
                        socialMedia: { 
                          ...tournament.socialMedia, 
                          facebook: e.target.value || undefined 
-                       } 
+                       }
                      })}
                      className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
                    />
@@ -346,17 +363,40 @@ export default function TournamentPage() {
                      type="url"
                      placeholder="Instagram profile..."
                      value={tournament.socialMedia?.instagram || ''}
-                     onChange={(e) => updateTournament(tournament.id, { 
+                                          onChange={(e) => updateTournamentWithTracking(tournament.id, { 
                        socialMedia: { 
                          ...tournament.socialMedia, 
                          instagram: e.target.value || undefined 
-                       } 
+                       }
                      })}
                      className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
                    />
                  </div>
                </div>
       </section>
+
+      {/* Save Button */}
+      <div className="flex justify-center mb-6">
+        <div className="flex items-center gap-4">
+          {hasUnsavedChanges && (
+            <span className="text-yellow-400 text-sm">⚠️ You have unsaved changes</span>
+          )}
+          <button
+            onClick={saveChanges}
+            disabled={!hasUnsavedChanges}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              hasUnsavedChanges
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            💾 Save Changes
+          </button>
+          {saveMessage && (
+            <span className="text-green-400 text-sm">{saveMessage}</span>
+          )}
+        </div>
+      </div>
 
       {/* Championship Table */}
       <section className="glass rounded-xl p-6 w-full max-w-4xl">

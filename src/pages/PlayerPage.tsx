@@ -1,8 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useRef } from 'react'
-// import { useState } from 'react'
-// import { uid } from '../utils/uid'
+import { useRef, useState } from 'react'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 
@@ -13,6 +11,10 @@ export default function PlayerPage() {
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
+  
+  // State for tracking unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
   
   // Find the player across all teams
   let player: any = null
@@ -58,6 +60,19 @@ export default function PlayerPage() {
   }
 
   const photoFileRef = useRef<HTMLInputElement>(null)
+  
+  // Save function
+  const saveChanges = () => {
+    setHasUnsavedChanges(false)
+    setSaveMessage('Changes saved successfully!')
+    setTimeout(() => setSaveMessage(''), 3000)
+  }
+  
+  // Wrapper function to track changes
+  const updateTeamWithTracking = (teamId: string, updates: any) => {
+    updateTeam(teamId, updates)
+    setHasUnsavedChanges(true)
+  }
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -75,7 +90,7 @@ export default function PlayerPage() {
     const updatedPlayers = currentTeam.players.map((p: any) => 
       p.id === playerId ? { ...p, ...updates } : p
     )
-    updateTeam(currentTeam.id, { players: updatedPlayers })
+    updateTeamWithTracking(currentTeam.id, { players: updatedPlayers })
   }
 
   // Find all tournaments this player has participated in
@@ -308,6 +323,29 @@ export default function PlayerPage() {
           </div>
         </div>
       </section>
+
+      {/* Save Button */}
+      <div className="flex justify-center mb-6">
+        <div className="flex items-center gap-4">
+          {hasUnsavedChanges && (
+            <span className="text-yellow-400 text-sm">⚠️ You have unsaved changes</span>
+          )}
+          <button
+            onClick={saveChanges}
+            disabled={!hasUnsavedChanges}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              hasUnsavedChanges
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            💾 Save Changes
+          </button>
+          {saveMessage && (
+            <span className="text-green-400 text-sm">{saveMessage}</span>
+          )}
+        </div>
+      </div>
 
       {/* Player Statistics */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">

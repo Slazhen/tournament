@@ -25,7 +25,9 @@ export default function PublicTournamentPage() {
       teamIds: t.teamIds?.length || 0,
       matches: t.matches?.length || 0
     })),
-    teams: teams.map(t => ({ id: t.id, name: t.name, organizerId: t.organizerId }))
+    teams: teams.map(t => ({ id: t.id, name: t.name, organizerId: t.organizerId })),
+    rawTournaments: tournaments,
+    rawTeams: teams
   })
   
   // Check if tournament exists
