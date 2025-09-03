@@ -59,6 +59,10 @@ install_docker_macos() {
     print_status "Docker Desktop installed!"
     print_warning "Please start Docker Desktop from Applications folder"
     print_info "After starting Docker Desktop, run this script again to verify installation"
+    
+    # Try to start Docker Desktop automatically
+    print_info "Attempting to start Docker Desktop..."
+    open -a Docker 2>/dev/null || print_warning "Could not start Docker Desktop automatically"
 }
 
 # Function to install Docker on Linux

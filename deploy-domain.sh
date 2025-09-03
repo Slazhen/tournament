@@ -149,7 +149,7 @@ REACT_APP_DOMAIN=$DOMAIN_NAME
 NODE_ENV=production
 EOF
     
-    # Check if Docker is installed
+    # Check if Docker is installed and running
     if ! command -v docker &> /dev/null; then
         print_warning "Docker is not installed locally. Skipping Docker image build."
         print_info "Docker images will be built on EC2 instances during deployment."
@@ -157,10 +157,23 @@ EOF
         print_info "  macOS: brew install docker"
         print_info "  Linux: sudo apt-get install docker.io"
         print_info "  Windows: Download from https://www.docker.com/products/docker-desktop"
+    elif ! docker info &> /dev/null; then
+        print_warning "Docker is installed but daemon is not running. Skipping Docker image build."
+        print_info "Docker images will be built on EC2 instances during deployment."
+        print_info "To start Docker:"
+        print_info "  macOS: Start Docker Desktop from Applications"
+        print_info "  Linux: sudo systemctl start docker"
+        print_info "  Windows: Start Docker Desktop"
     else
-        # Build Docker image with environment tag
+        # Build Docker image with environment tag using buildx
         print_info "Building Docker image for $ENV environment..."
-        docker build -t "${APP_NAME}-${ENV}" .
+        if docker buildx version &> /dev/null; then
+            # Use buildx for modern builds
+            docker buildx build -t "${APP_NAME}-${ENV}" --load .
+        else
+            # Fallback to legacy build
+            docker build -t "${APP_NAME}-${ENV}" .
+        fi
         print_status "Docker image built: ${APP_NAME}-${ENV}"
     fi
     
