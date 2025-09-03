@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { uid } from '../utils/uid'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -19,6 +19,20 @@ export default function TeamPage() {
   
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)
+  
+  // Monitor team data changes
+  useEffect(() => {
+    if (team) {
+      console.log('Team data updated:', {
+        id: team.id,
+        name: team.name,
+        hasLogo: !!team.logo,
+        logoLength: team.logo?.length || 0,
+        hasPhoto: !!team.photo,
+        photoLength: team.photo?.length || 0
+      })
+    }
+  }, [team])
   
   // Redirect if no organizer is selected
   if (!currentOrganizer) {
@@ -60,8 +74,25 @@ export default function TeamPage() {
     setTimeout(() => setSaveMessage(''), 3000)
   }
   
+  // Check localStorage usage
+  const checkLocalStorageUsage = () => {
+    try {
+      const data = localStorage.getItem('football-tournaments-storage')
+      if (data) {
+        const sizeInBytes = new Blob([data]).size
+        const sizeInKB = (sizeInBytes / 1024).toFixed(2)
+        console.log('LocalStorage usage:', sizeInKB + ' KB')
+        return sizeInKB
+      }
+    } catch (error) {
+      console.error('Error checking localStorage:', error)
+    }
+    return '0'
+  }
+  
   // Wrapper function to track changes
   const updateTeamWithTracking = (teamId: string, updates: any) => {
+    console.log('updateTeamWithTracking called:', { teamId, updates })
     updateTeam(teamId, updates)
     setHasUnsavedChanges(true)
     // Auto-save feedback
@@ -74,9 +105,13 @@ export default function TeamPage() {
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      console.log('Logo upload started:', { fileName: file.name, fileSize: file.size })
       const reader = new FileReader()
       reader.onload = (e) => {
-        updateTeamWithTracking(team.id, { logo: e.target?.result as string })
+        const base64Data = e.target?.result as string
+        console.log('Logo base64 data length:', base64Data?.length)
+        updateTeamWithTracking(team.id, { logo: base64Data })
+        console.log('Logo update called for team:', team.id)
       }
       reader.readAsDataURL(file)
     }
@@ -85,9 +120,13 @@ export default function TeamPage() {
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
+      console.log('Photo upload started:', { fileName: file.name, fileSize: file.size })
       const reader = new FileReader()
       reader.onload = (e) => {
-        updateTeamWithTracking(team.id, { photo: e.target?.result as string })
+        const base64Data = e.target?.result as string
+        console.log('Photo base64 data length:', base64Data?.length)
+        updateTeamWithTracking(team.id, { photo: base64Data })
+        console.log('Photo update called for team:', team.id)
       }
       reader.readAsDataURL(file)
     }
@@ -361,10 +400,13 @@ export default function TeamPage() {
           <p><strong>Team Name:</strong> {team.name}</p>
           <p><strong>Players Count:</strong> {team.players?.length || 0}</p>
           <p><strong>Has Logo:</strong> {team.logo ? 'Yes' : 'No'}</p>
+          <p><strong>Logo Length:</strong> {team.logo ? team.logo.length : 0} characters</p>
           <p><strong>Has Photo:</strong> {team.photo ? 'Yes' : 'No'}</p>
+          <p><strong>Photo Length:</strong> {team.photo ? team.photo.length : 0} characters</p>
           <p><strong>Colors:</strong> {team.colors?.join(', ') || 'None'}</p>
           <p><strong>Organizer ID:</strong> {team.organizerId || 'None'}</p>
           <p><strong>Created:</strong> {new Date(team.createdAtISO).toLocaleString()}</p>
+          <p><strong>LocalStorage Size:</strong> {checkLocalStorageUsage()} KB</p>
         </div>
       </div>
 
