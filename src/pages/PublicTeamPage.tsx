@@ -6,10 +6,10 @@ import { useState } from 'react'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
-  const { getAllTournaments, teams: allTeams } = useAppStore()
+  const { getAllTournaments, getAllTeams } = useAppStore()
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   
-  const teams = allTeams
+  const teams = getAllTeams()
   const tournaments = getAllTournaments()
   
   // Find the specific team by ID

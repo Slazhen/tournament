@@ -39,6 +39,7 @@ type AppStore = {
   getOrganizerTeams: () => Team[]
   getOrganizerTournaments: () => Tournament[]
   getAllTournaments: () => Tournament[]
+  getAllTeams: () => Team[]
   
   // Migration helpers
   migrateDataToCurrentOrganizer: () => void
@@ -235,7 +236,15 @@ export const useAppStore = create<AppStore>()(
       
       getAllTournaments: () => {
         const { tournaments } = get()
+        console.log('getAllTournaments called, returning:', tournaments.length, 'tournaments')
         return tournaments
+      },
+      
+      getAllTeams: () => {
+        const { teams } = get()
+        console.log('getAllTeams called, returning:', teams.length, 'teams')
+        // Return all teams from all organizers for public pages
+        return teams
       },
       
       // Migration helper to fix old data without organizerId

@@ -8,10 +8,30 @@ import InstagramIcon from '../components/InstagramIcon'
 
 export default function PublicTournamentPage() {
   const { id } = useParams()
-  const { getAllTournaments, teams: allTeams } = useAppStore()
+  const { getAllTournaments, getAllTeams } = useAppStore()
   
   const tournaments = getAllTournaments()
-  const teams = allTeams
+  const teams = getAllTeams()
+  
+  // Debug logging
+  console.log('PublicTournamentPage Debug:', {
+    tournamentId: id,
+    totalTournaments: tournaments.length,
+    totalTeams: teams.length,
+    tournaments: tournaments.map(t => ({ 
+      id: t.id, 
+      name: t.name, 
+      organizerId: t.organizerId,
+      teamIds: t.teamIds?.length || 0,
+      matches: t.matches?.length || 0
+    })),
+    teams: teams.map(t => ({ id: t.id, name: t.name, organizerId: t.organizerId }))
+  })
+  
+  // Check if tournament exists
+  if (tournaments.length > 0) {
+    console.log('Found tournament:', tournaments.find(t => t.id === id))
+  }
   
   // Find the specific tournament by ID
   const tournament = tournaments.find(t => t.id === id)
@@ -23,6 +43,11 @@ export default function PublicTournamentPage() {
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
           <h1 className="text-xl font-semibold mb-4">Tournament Not Found</h1>
           <p className="opacity-80 mb-6">The tournament you're looking for doesn't exist.</p>
+          <div className="text-sm opacity-60 mb-4">
+            <p>Looking for ID: {id}</p>
+            <p>Available tournaments: {tournaments.length}</p>
+            <p>Available teams: {teams.length}</p>
+          </div>
           <Link to="/" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all">
             Go to Home
           </Link>

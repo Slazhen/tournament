@@ -5,9 +5,9 @@ import InstagramIcon from '../components/InstagramIcon'
 
 export default function PublicPlayerPage() {
   const { playerId } = useParams()
-  const { getAllTournaments, teams: allTeams } = useAppStore()
+  const { getAllTournaments, getAllTeams } = useAppStore()
   
-  const teams = allTeams
+  const teams = getAllTeams()
   const tournaments = getAllTournaments()
   
   // Find the player across all teams
