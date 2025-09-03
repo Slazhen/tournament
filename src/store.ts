@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { uid } from './utils/uid'
-import type { Team, Tournament, Match, PlayoffBracket, Organizer } from './types'
+import type { Team, Tournament, Match, PlayoffBracket, Organizer, AppSettings } from './types'
 import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule } from './utils/tournament'
 
 type AppStore = {

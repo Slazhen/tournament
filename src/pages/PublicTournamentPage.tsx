@@ -63,7 +63,7 @@ export default function PublicTournamentPage() {
 
   // Get playoff structure based on tournament format
   const playoffStructure = useMemo(() => {
-            if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination')) return null
+    if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination')) return null
     
     const qualifiers = tournament.format.playoffQualifiers || 4
     const rounds = Math.ceil(Math.log2(qualifiers))

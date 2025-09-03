@@ -2,7 +2,7 @@ import { useState, useRef } from "react"
 import { useAppStore } from "../store"
 import { uid } from "../utils/uid"
 import { Link } from "react-router-dom"
-import InstagramIcon from "../components/InstagramIcon"
+// import InstagramIcon from "../components/InstagramIcon"
 import LogoUploader from "../components/LogoUploader"
 
 export default function TeamsPage() {
@@ -120,16 +120,16 @@ export default function TeamsPage() {
     }
   }
   
-  const updatePlayer = (teamId: string, playerId: string, updates: any) => {
-    const team = teams.find(t => t.id === teamId)
-    if (team) {
-      updateTeam(teamId, {
-        players: team.players.map(p => 
-          p.id === playerId ? { ...p, ...updates } : p
-        )
-      })
-    }
-  }
+  // const updatePlayer = (teamId: string, playerId: string, updates: any) => {
+  //   const team = teams.find(t => t.id === teamId)
+  //   if (team) {
+  //     updateTeam(teamId, {
+  //       players: team.players.map(p => 
+  //         p.id === playerId ? { ...p, ...updates } : p
+  //       )
+  //     })
+  //   }
+  // }
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
