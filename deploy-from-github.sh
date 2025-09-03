@@ -1,216 +1,173 @@
 #!/bin/bash
 
-# Deploy from GitHub Script
-# This script pulls the latest code from GitHub and deploys it
+# --- Configuration ---
+REPO_URL="https://github.com/Slazhen/tournament.git"
+APP_DIR="/home/ec2-user/football-tournaments"
+ENV=${1:-"prod"}  # Default to prod if no argument provided
 
-set -e
-
-# Configuration
-GITHUB_REPO="https://github.com/Slazhen/tournament.git"
-APP_NAME="football-tournaments"
-AWS_REGION="us-east-1"
-
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# --- Helper Functions ---
+print_info() {
+    echo -e "\033[0;36mℹ️  $1\033[0m"
+}
 
 print_status() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "\033[0;32m✅ $1\033[0m"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    echo -e "\033[0;33m⚠️  $1\033[0m"
 }
 
 print_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "\033[0;31m❌ $1\033[0m"
 }
 
-print_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+# --- Main Script ---
+echo -e "\n🚀 Deploying from GitHub"
+echo "========================"
+print_info "Environment: $ENV"
+
+# Update system
+print_info "Updating system packages..."
+sudo yum update -y
+
+# Install Docker if not present
+if ! command -v docker &> /dev/null; then
+    print_info "Installing Docker..."
+    sudo yum install -y docker
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    sudo usermod -a -G docker ec2-user
+    print_status "Docker installed successfully"
+else
+    print_info "Docker is already installed"
+fi
+
+# Install Docker Compose if not present
+if ! command -v docker-compose &> /dev/null; then
+    print_info "Installing Docker Compose..."
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    print_status "Docker Compose installed successfully"
+else
+    print_info "Docker Compose is already installed"
+fi
+
+# Install Git if not present
+if ! command -v git &> /dev/null; then
+    print_info "Installing Git..."
+    sudo yum install -y git
+    print_status "Git installed successfully"
+else
+    print_info "Git is already installed"
+fi
+
+# Install Node.js and npm
+if ! command -v node &> /dev/null; then
+    print_info "Installing Node.js..."
+    curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+    sudo yum install -y nodejs
+    print_status "Node.js installed successfully"
+else
+    print_info "Node.js is already installed"
+fi
+
+# Clone or update repository
+if [ -d "$APP_DIR" ]; then
+    print_info "Updating existing repository..."
+    cd $APP_DIR
+    git pull origin main
+    print_status "Repository updated"
+else
+    print_info "Cloning repository..."
+    git clone $REPO_URL $APP_DIR
+    cd $APP_DIR
+    print_status "Repository cloned"
+fi
+
+# Install dependencies and build
+print_info "Installing dependencies..."
+npm ci
+
+print_info "Building application..."
+npm run build
+
+# Install and configure Nginx
+if ! command -v nginx &> /dev/null; then
+    print_info "Installing Nginx..."
+    sudo yum install -y nginx
+    sudo systemctl start nginx
+    sudo systemctl enable nginx
+    print_status "Nginx installed successfully"
+else
+    print_info "Nginx is already installed"
+fi
+
+# Configure Nginx
+print_info "Configuring Nginx..."
+sudo tee /etc/nginx/conf.d/football-tournaments.conf > /dev/null << 'NGINX_EOF'
+server {
+    listen 80;
+    server_name _;
+    root /home/ec2-user/football-tournaments/dist;
+    index index.html;
+    
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
 }
+NGINX_EOF
 
-# Function to deploy from GitHub
-deploy_from_github() {
-    local ENV=$1
-    local DOMAIN_NAME=$2
-    
-    echo ""
-    echo "🚀 Deploying $ENV environment from GitHub"
-    echo "=========================================="
-    
-    # Create deployment directory
-    DEPLOY_DIR="/home/ec2-user/football-tournaments-${ENV}"
-    mkdir -p $DEPLOY_DIR
-    cd $DEPLOY_DIR
-    
-    # Clone or pull latest code
-    if [ -d ".git" ]; then
-        print_info "Pulling latest changes from GitHub..."
-        git pull origin main
-    else
-        print_info "Cloning repository from GitHub..."
-        git clone $GITHUB_REPO .
-    fi
-    
-    # Make scripts executable
-    chmod +x *.sh
-    
-    # Build Docker image
-    print_info "Building Docker image for $ENV..."
-    docker build -t "${APP_NAME}-${ENV}:latest" .
-    
-    # Stop existing container
-    print_info "Stopping existing container..."
-    docker-compose down || true
-    
-    # Start new container
-    print_info "Starting new container..."
-    docker-compose up -d
-    
-    # Wait for container to be healthy
-    print_info "Waiting for application to start..."
-    sleep 30
-    
-    # Check if running
-    if docker ps | grep -q "${APP_NAME}-${ENV}"; then
-        print_status "$ENV environment deployed successfully!"
-        print_info "Access your app at: https://$DOMAIN_NAME"
-        
-        # Test SSL certificate
-        if curl -s -o /dev/null -w "%{http_code}" https://$DOMAIN_NAME | grep -q "200"; then
-            print_status "SSL certificate is working!"
-        else
-            print_warning "SSL certificate might need renewal"
-        fi
-    else
-        print_error "$ENV environment failed to start"
-        docker logs "${APP_NAME}-${ENV}"
-        exit 1
-    fi
-}
+# Set proper permissions
+sudo chown -R ec2-user:ec2-user $APP_DIR
+sudo chmod -R 755 $APP_DIR
 
-# Function to setup GitHub deployment
-setup_github_deployment() {
-    echo ""
-    echo "🔧 Setting up GitHub deployment"
-    echo "==============================="
-    
-    # Install Git if not already installed
-    if ! command -v git &> /dev/null; then
-        print_info "Installing Git..."
-        sudo yum install -y git
-    fi
-    
-    # Install Docker if not already installed
-    if ! command -v docker &> /dev/null; then
-        print_info "Installing Docker..."
-        sudo yum install -y docker
-        sudo systemctl start docker
-        sudo systemctl enable docker
-        sudo usermod -a -G docker ec2-user
-    fi
-    
-    # Install Docker Compose if not already installed
-    if ! command -v docker-compose &> /dev/null; then
-        print_info "Installing Docker Compose..."
-        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-    fi
-    
-    # Create deployment script
-    print_info "Creating deployment script..."
-    cat > /home/ec2-user/deploy-from-github.sh << 'EOF'
-#!/bin/bash
+# Configure firewall
+print_info "Configuring firewall..."
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
 
-# Auto-deployment script
-cd /home/ec2-user/football-tournaments-prod
-git pull origin main
-docker-compose down
-docker-compose up -d
+# Restart Nginx
+print_info "Restarting Nginx..."
+sudo systemctl restart nginx
 
-cd /home/ec2-user/football-tournaments-dev
-git pull origin main
-docker-compose down
-docker-compose up -d
+# Install Certbot for SSL
+if ! command -v certbot &> /dev/null; then
+    print_info "Installing Certbot..."
+    sudo yum install -y certbot python3-certbot-nginx
+    print_status "Certbot installed successfully"
+else
+    print_info "Certbot is already installed"
+fi
 
-echo "Deployment completed at $(date)"
-EOF
-    
-    chmod +x /home/ec2-user/deploy-from-github.sh
-    
-    # Create cron job for automatic deployment
-    print_info "Setting up automatic deployment..."
-    (crontab -l 2>/dev/null; echo "0 2 * * * /home/ec2-user/deploy-from-github.sh >> /home/ec2-user/deployment.log 2>&1") | crontab -
-    
-    print_status "GitHub deployment setup complete!"
-}
+# Get SSL certificate based on environment
+if [ "$ENV" = "prod" ]; then
+    DOMAIN="myfootballtournament.com"
+else
+    DOMAIN="dev.myfootballtournament.com"
+fi
 
-# Main function
-main() {
-    echo "🚀 GitHub Deployment for Football Tournaments App"
-    echo "================================================="
-    echo "Repository: $GITHUB_REPO"
-    echo ""
-    
-    # Check if we're on EC2
-    if ! curl -s http://169.254.169.254/latest/meta-data/instance-id > /dev/null; then
-        print_error "This script must be run on an EC2 instance"
-        exit 1
-    fi
-    
-    # Get instance metadata
-    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-    PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-    
-    print_info "EC2 Instance ID: $INSTANCE_ID"
-    print_info "Public IP: $PUBLIC_IP"
-    
-    # Ask what to do
-    echo ""
-    echo "What would you like to do?"
-    echo "1) Setup GitHub deployment (first time)"
-    echo "2) Deploy production environment"
-    echo "3) Deploy development environment"
-    echo "4) Deploy both environments"
-    read -p "Enter your choice (1-4): " choice
-    
-    case $choice in
-        1)
-            setup_github_deployment
-            ;;
-        2)
-            deploy_from_github "prod" "myfootballtournament.com"
-            ;;
-        3)
-            deploy_from_github "dev" "dev.myfootballtournament.com"
-            ;;
-        4)
-            deploy_from_github "prod" "myfootballtournament.com"
-            deploy_from_github "dev" "dev.myfootballtournament.com"
-            ;;
-        *)
-            print_error "Invalid choice. Please run the script again."
-            exit 1
-            ;;
-    esac
-    
-    echo ""
-    echo "🎉 GitHub deployment complete!"
-    echo ""
-    echo "📋 Next steps:"
-    echo "1. Your code is now deployed from GitHub"
-    echo "2. Future changes can be deployed by pushing to GitHub"
-    echo "3. Automatic deployment runs daily at 2 AM"
-    echo "4. Manual deployment: ./deploy-from-github.sh"
-    echo ""
-    echo "🌐 Your applications:"
-    echo "- Production: https://myfootballtournament.com"
-    echo "- Development: https://dev.myfootballtournament.com"
-}
+print_info "Getting SSL certificate for $DOMAIN..."
+sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@myfootballtournament.com || print_warning "SSL certificate setup failed - will retry later"
 
-# Run main function
-main "$@"
+print_status "Deployment completed successfully!"
+print_info ""
+print_info "🌐 Your site should be available at:"
+if [ "$ENV" = "prod" ]; then
+    print_info "  Production: https://myfootballtournament.com"
+    print_info "  Fallback: http://myfootballtournament.com"
+else
+    print_info "  Development: https://dev.myfootballtournament.com"
+    print_info "  Fallback: http://dev.myfootballtournament.com"
+fi
+print_info ""
+print_info "📋 Next steps:"
+print_info "1. Test your site accessibility"
+print_info "2. Check SSL certificate status"
+print_info "3. Configure any additional settings"

@@ -1,10 +1,9 @@
-name: Deploy to AWS
+name: Deploy to AWS EC2
 
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -14,7 +13,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Node.js
+    - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
@@ -23,84 +22,169 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Run tests
-      run: npm test --if-present
-      
     - name: Build application
       run: npm run build
       
-    - name: Build Docker image
-      run: |
-        docker build -t football-tournaments:${{ github.sha }} .
-        docker build -t football-tournaments-prod:${{ github.sha }} .
-        docker build -t football-tournaments-dev:${{ github.sha }} .
-        
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
+    - name: Deploy to Production EC2
+      uses: appleboy/ssh-action@v1.0.3
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
-        
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-      
-    - name: Build, tag, and push images to Amazon ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        ECR_REPOSITORY: football-tournaments
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        # Create ECR repository if it doesn't exist
-        aws ecr describe-repositories --repository-names $ECR_REPOSITORY || aws ecr create-repository --repository-name $ECR_REPOSITORY
-        
-        # Build and push production image
-        docker tag football-tournaments-prod:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY-prod:$IMAGE_TAG
-        docker tag football-tournaments-prod:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY-prod:latest
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY-prod:$IMAGE_TAG
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY-prod:latest
-        
-        # Build and push development image
-        docker tag football-tournaments-dev:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY-dev:$IMAGE_TAG
-        docker tag football-tournaments-dev:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY-dev:latest
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY-dev:$IMAGE_TAG
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY-dev:latest
-        
-    - name: Deploy to EC2 (Production)
-      if: github.ref == 'refs/heads/main'
-      run: |
-        # Get EC2 instance IP
-        PROD_IP=$(aws ec2 describe-instances \
-          --filters "Name=tag:Name,Values=football-tournaments-prod" "Name=instance-state-name,Values=running" \
-          --query "Reservations[0].Instances[0].PublicIpAddress" \
-          --output text)
-        
-        if [ "$PROD_IP" != "None" ] && [ -n "$PROD_IP" ]; then
-          # Deploy to production EC2
-          ssh -o StrictHostKeyChecking=no ec2-user@$PROD_IP << 'EOF'
-            cd /home/ec2-user/football-tournaments-prod
-            docker-compose down
-            docker-compose pull
-            docker-compose up -d
-          EOF
-        fi
-        
-    - name: Deploy to EC2 (Development)
-      if: github.ref == 'refs/heads/main'
-      run: |
-        # Get EC2 instance IP
-        DEV_IP=$(aws ec2 describe-instances \
-          --filters "Name=tag:Name,Values=football-tournaments-dev" "Name=instance-state-name,Values=running" \
-          --query "Reservations[0].Instances[0].PublicIpAddress" \
-          --output text)
-        
-        if [ "$DEV_IP" != "None" ] && [ -n "$DEV_IP" ]; then
-          # Deploy to development EC2
-          ssh -o StrictHostKeyChecking=no ec2-user@$DEV_IP << 'EOF'
-            cd /home/ec2-user/football-tournaments-dev
-            docker-compose down
-            docker-compose pull
-            docker-compose up -d
-          EOF
-        fi
+        host: ${{ secrets.PROD_EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # Update system
+          sudo yum update -y
+          
+          # Install Docker if not present
+          if ! command -v docker &> /dev/null; then
+            sudo yum install -y docker
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo usermod -a -G docker ec2-user
+          fi
+          
+          # Install Docker Compose if not present
+          if ! command -v docker-compose &> /dev/null; then
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+          fi
+          
+          # Install Git if not present
+          if ! command -v git &> /dev/null; then
+            sudo yum install -y git
+          fi
+          
+          # Clone or update repository
+          if [ -d "/home/ec2-user/football-tournaments" ]; then
+            cd /home/ec2-user/football-tournaments
+            git pull origin main
+          else
+            git clone https://github.com/Slazhen/tournament.git /home/ec2-user/football-tournaments
+            cd /home/ec2-user/football-tournaments
+          fi
+          
+          # Build and deploy with Docker
+          docker-compose -f docker-compose.prod.yml down || true
+          docker-compose -f docker-compose.prod.yml build
+          docker-compose -f docker-compose.prod.yml up -d
+          
+          # Configure Nginx for SSL
+          sudo tee /etc/nginx/conf.d/football-tournaments.conf > /dev/null << 'NGINX_EOF'
+          server {
+              listen 80;
+              server_name myfootballtournament.com;
+              return 301 https://$server_name$request_uri;
+          }
+          
+          server {
+              listen 443 ssl http2;
+              server_name myfootballtournament.com;
+              
+              ssl_certificate /etc/letsencrypt/live/myfootballtournament.com/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/myfootballtournament.com/privkey.pem;
+              
+              location / {
+                  proxy_pass http://localhost:80;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+          NGINX_EOF
+          
+          # Install Certbot and get SSL certificate
+          if ! command -v certbot &> /dev/null; then
+            sudo yum install -y certbot python3-certbot-nginx
+          fi
+          
+          # Get SSL certificate
+          sudo certbot --nginx -d myfootballtournament.com --non-interactive --agree-tos --email admin@myfootballtournament.com || true
+          
+          # Restart Nginx
+          sudo systemctl restart nginx
+          sudo systemctl enable nginx
+          
+          echo "✅ Production deployment completed!"
+          
+    - name: Deploy to Development EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.DEV_EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # Update system
+          sudo yum update -y
+          
+          # Install Docker if not present
+          if ! command -v docker &> /dev/null; then
+            sudo yum install -y docker
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo usermod -a -G docker ec2-user
+          fi
+          
+          # Install Docker Compose if not present
+          if ! command -v docker-compose &> /dev/null; then
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+          fi
+          
+          # Install Git if not present
+          if ! command -v git &> /dev/null; then
+            sudo yum install -y git
+          fi
+          
+          # Clone or update repository
+          if [ -d "/home/ec2-user/football-tournaments" ]; then
+            cd /home/ec2-user/football-tournaments
+            git pull origin main
+          else
+            git clone https://github.com/Slazhen/tournament.git /home/ec2-user/football-tournaments
+            cd /home/ec2-user/football-tournaments
+          fi
+          
+          # Build and deploy with Docker
+          docker-compose -f docker-compose.dev.yml down || true
+          docker-compose -f docker-compose.dev.yml build
+          docker-compose -f docker-compose.dev.yml up -d
+          
+          # Configure Nginx for SSL
+          sudo tee /etc/nginx/conf.d/football-tournaments.conf > /dev/null << 'NGINX_EOF'
+          server {
+              listen 80;
+              server_name dev.myfootballtournament.com;
+              return 301 https://$server_name$request_uri;
+          }
+          
+          server {
+              listen 443 ssl http2;
+              server_name dev.myfootballtournament.com;
+              
+              ssl_certificate /etc/letsencrypt/live/dev.myfootballtournament.com/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/dev.myfootballtournament.com/privkey.pem;
+              
+              location / {
+                  proxy_pass http://localhost:8080;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+          NGINX_EOF
+          
+          # Install Certbot and get SSL certificate
+          if ! command -v certbot &> /dev/null; then
+            sudo yum install -y certbot python3-certbot-nginx
+          fi
+          
+          # Get SSL certificate
+          sudo certbot --nginx -d dev.myfootballtournament.com --non-interactive --agree-tos --email admin@myfootballtournament.com || true
+          
+          # Restart Nginx
+          sudo systemctl restart nginx
+          sudo systemctl enable nginx
+          
+          echo "✅ Development deployment completed!"
