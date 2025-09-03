@@ -179,6 +179,14 @@ EOF
     
     # Create environment-specific Docker Compose file
     print_info "Creating Docker Compose configuration for $ENV..."
+    
+    # Set port based on environment
+    if [ "$ENV" = "prod" ]; then
+        HOST_PORT="80"
+    else
+        HOST_PORT="8080"
+    fi
+    
     cat > "docker-compose.${ENV}.yml" << EOF
 version: '3.8'
 
@@ -187,7 +195,7 @@ services:
     image: ${APP_NAME}-${ENV}:latest
     container_name: ${APP_NAME}-${ENV}
     ports:
-      - "${ENV == "prod" && "80" || "8080"}:3000"
+      - "${HOST_PORT}:80"
     environment:
       - REACT_APP_AWS_REGION=$AWS_REGION
       - REACT_APP_TOURNAMENTS_TABLE=football-tournaments${TABLE_SUFFIX}
