@@ -1,7 +1,8 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useRef, useState } from 'react'
-import { uid } from '../utils/uid'
+import { useRef } from 'react'
+// import { useState } from 'react'
+// import { uid } from '../utils/uid'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 
@@ -104,9 +105,11 @@ export default function PlayerPage() {
           playerStats.goalsFor += teamGoals
           playerStats.goalsAgainst += opponentGoals
           
-          if (teamGoals > opponentGoals) playerStats.wins++
-          else if (teamGoals < opponentGoals) playerStats.losses++
-          else playerStats.draws++
+          if (teamGoals && opponentGoals) {
+            if (teamGoals > opponentGoals) playerStats.wins++
+            else if (teamGoals < opponentGoals) playerStats.losses++
+            else playerStats.draws++
+          }
         }
       }
     })
@@ -388,8 +391,10 @@ export default function PlayerPage() {
                                 const isHome = match.homeTeamId === currentTeam.id
                                 const teamGoals = isHome ? match.homeGoals : match.awayGoals
                                 const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals > opponentGoals) points += 3
-                                else if (teamGoals === opponentGoals) points += 1
+                                if (teamGoals && opponentGoals) {
+                                  if (teamGoals > opponentGoals) points += 3
+                                  else if (teamGoals === opponentGoals) points += 1
+                                }
                               })
                               
                               return `${points} pts`

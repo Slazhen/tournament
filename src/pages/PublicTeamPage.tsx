@@ -250,9 +250,11 @@ export default function PublicTeamPage() {
                 goalsFor += teamGoals
                 goalsAgainst += opponentGoals
                 
-                if (teamGoals > opponentGoals) wins++
-                else if (teamGoals < opponentGoals) losses++
-                else draws++
+                if (teamGoals && opponentGoals) {
+                  if (teamGoals > opponentGoals) wins++
+                  else if (teamGoals < opponentGoals) losses++
+                  else draws++
+                }
               }
             })
           })
@@ -328,9 +330,12 @@ export default function PublicTeamPage() {
                                 const isHome = match.homeTeamId === team.id
                                 const teamGoals = isHome ? match.homeGoals : match.awayGoals
                                 const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals > opponentGoals) return 'border-l-4 border-l-green-500'
-                                if (teamGoals < opponentGoals) return 'border-l-4 border-l-red-500'
-                                return 'border-l-4 border-l-yellow-500'
+                                if (teamGoals && opponentGoals) {
+                                  if (teamGoals > opponentGoals) return 'border-l-4 border-l-green-500'
+                                  if (teamGoals < opponentGoals) return 'border-l-4 border-l-red-500'
+                                  return 'border-l-4 border-l-yellow-500'
+                                }
+                                return 'border-l-4 border-l-gray-500'
                               })()
                             : ''
                         }`}>
@@ -424,8 +429,10 @@ export default function PublicTeamPage() {
                                 const isHome = match.homeTeamId === team.id
                                 const teamGoals = isHome ? match.homeGoals : match.awayGoals
                                 const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals > opponentGoals) points += 3
-                                else if (teamGoals === opponentGoals) points += 1
+                                if (teamGoals && opponentGoals) {
+                                  if (teamGoals > opponentGoals) points += 3
+                                  else if (teamGoals === opponentGoals) points += 1
+                                }
                               })
                               
                               return `${points} pts`
@@ -462,8 +469,10 @@ export default function PublicTeamPage() {
                           const isHome = match.homeTeamId === team.id
                           const teamGoals = isHome ? match.homeGoals : match.awayGoals
                           const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                          if (teamGoals > opponentGoals) points += 3
-                          else if (teamGoals === opponentGoals) points += 1
+                          if (teamGoals && opponentGoals) {
+                            if (teamGoals > opponentGoals) points += 3
+                            else if (teamGoals === opponentGoals) points += 1
+                          }
                         })
                         
                         return <span className="font-semibold text-green-400">{points} pts</span>

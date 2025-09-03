@@ -10,7 +10,7 @@ export default function HomePage() {
   
   const { 
     organizers, 
-    currentOrganizerId, 
+    // currentOrganizerId, 
     createOrganizer, 
     setCurrentOrganizer,
     getCurrentOrganizer,

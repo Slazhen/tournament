@@ -55,11 +55,11 @@ export default function PublicTournamentPage() {
   }, [tournament])
 
   // Check if championship is finished (all league matches have scores)
-  const isChampionshipFinished = useMemo(() => {
-    if (!tournament) return false
-    const leagueMatches = tournament.matches.filter(m => !m.isPlayoff)
-    return leagueMatches.length > 0 && leagueMatches.every(m => m.homeGoals != null && m.awayGoals != null)
-  }, [tournament])
+  // const isChampionshipFinished = useMemo(() => {
+  //   if (!tournament) return false
+  //   const leagueMatches = tournament.matches.filter(m => !m.isPlayoff)
+  //   return leagueMatches.length > 0 && leagueMatches.every(m => m.homeGoals != null && m.awayGoals != null)
+  // }, [tournament])
 
   // Get playoff structure based on tournament format
   const playoffStructure = useMemo(() => {

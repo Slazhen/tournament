@@ -369,8 +369,8 @@ export default function MatchPage() {
                             } else {
                               updateMatch({
                                 statistics: {
-                                  ...match.statistics,
-                                  home: { ...match.statistics?.home, [stat.home]: value }
+                                  home: { ...match.statistics?.home, [stat.home]: value },
+                                  away: { ...match.statistics?.away }
                                 }
                               })
                             }
@@ -394,7 +394,7 @@ export default function MatchPage() {
                             } else {
                               updateMatch({
                                 statistics: {
-                                  ...match.statistics,
+                                  home: { ...match.statistics?.home },
                                   away: { ...match.statistics?.away, [stat.away]: value }
                                 }
                               })
@@ -441,11 +441,13 @@ export default function MatchPage() {
                                   }
                                   updateMatch({
                                     lineups: {
-                                      ...match.lineups,
                                       home: { 
-                                        ...match.lineups?.home, 
                                         starting: newStarting,
-                                        substitutes: match.lineups?.home.substitutes || []
+                                        substitutes: match.lineups?.home?.substitutes || []
+                                      },
+                                      away: {
+                                        starting: match.lineups?.away?.starting || [],
+                                        substitutes: match.lineups?.away?.substitutes || []
                                       }
                                     }
                                   })
@@ -503,11 +505,13 @@ export default function MatchPage() {
                                   }
                                   updateMatch({
                                     lineups: {
-                                      ...match.lineups,
+                                      home: {
+                                        starting: match.lineups?.home?.starting || [],
+                                        substitutes: match.lineups?.home?.substitutes || []
+                                      },
                                       away: { 
-                                        ...match.lineups?.away, 
                                         starting: newStarting,
-                                        substitutes: match.lineups?.away.substitutes || []
+                                        substitutes: match.lineups?.away?.substitutes || []
                                       }
                                     }
                                   })

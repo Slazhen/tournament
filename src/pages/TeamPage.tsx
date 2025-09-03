@@ -372,7 +372,7 @@ export default function TeamPage() {
                 </tr>
               </thead>
               <tbody>
-                {team.players.map((player, index) => (
+                                        {team.players.map((player) => (
                   <tr key={player.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">

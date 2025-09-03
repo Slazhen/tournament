@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 function App() {
   const settings = useAppStore((s) => s.settings)
   const updateSettings = useAppStore((s) => s.updateSettings)
-  const currentOrganizerId = useAppStore((s) => s.currentOrganizerId)
+  // const currentOrganizerId = useAppStore((s) => s.currentOrganizerId)
   const getCurrentOrganizer = useAppStore((s) => s.getCurrentOrganizer)
   const setCurrentOrganizer = useAppStore((s) => s.setCurrentOrganizer)
 

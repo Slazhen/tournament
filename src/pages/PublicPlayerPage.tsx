@@ -264,8 +264,10 @@ export default function PublicPlayerPage() {
                                 const isHome = match.homeTeamId === currentTeam.id
                                 const teamGoals = isHome ? match.homeGoals : match.awayGoals
                                 const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals > opponentGoals) points += 3
-                                else if (teamGoals === opponentGoals) points += 1
+                                if (teamGoals && opponentGoals) {
+                                  if (teamGoals > opponentGoals) points += 3
+                                  else if (teamGoals === opponentGoals) points += 1
+                                }
                               })
                               
                               return `${points} pts`
