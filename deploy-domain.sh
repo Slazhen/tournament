@@ -149,9 +149,20 @@ REACT_APP_DOMAIN=$DOMAIN_NAME
 NODE_ENV=production
 EOF
     
-    # Build Docker image with environment tag
-    print_info "Building Docker image for $ENV environment..."
-    docker build -t "${APP_NAME}-${ENV}" .
+    # Check if Docker is installed
+    if ! command -v docker &> /dev/null; then
+        print_warning "Docker is not installed locally. Skipping Docker image build."
+        print_info "Docker images will be built on EC2 instances during deployment."
+        print_info "To install Docker locally:"
+        print_info "  macOS: brew install docker"
+        print_info "  Linux: sudo apt-get install docker.io"
+        print_info "  Windows: Download from https://www.docker.com/products/docker-desktop"
+    else
+        # Build Docker image with environment tag
+        print_info "Building Docker image for $ENV environment..."
+        docker build -t "${APP_NAME}-${ENV}" .
+        print_status "Docker image built: ${APP_NAME}-${ENV}"
+    fi
     
     # Create environment-specific Docker Compose file
     print_info "Creating Docker Compose configuration for $ENV..."
