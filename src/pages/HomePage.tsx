@@ -108,35 +108,55 @@ export default function HomePage() {
   }
   
   return (
-    <div className="min-h-screen relative">
+    <div className="min-h-screen relative overflow-hidden">
       {/* Football Stadium Background */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{
           backgroundImage: `url('https://images.unsplash.com/photo-1629217855633-79a6925d6c47?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OHx8Zm9vdGJhbGwlMjBzdGFkaXVtfGVufDB8fDB8fHww')`,
-          filter: 'brightness(0.6)',
-          backgroundAttachment: 'fixed'
+          filter: 'brightness(0.4) saturate(1.2)',
+          backgroundAttachment: 'fixed',
+          backgroundSize: 'cover'
         }}
       />
       
-      {/* Glass Overlay */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      {/* Animated Gradient Overlay */}
+      <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60" />
+      
+      {/* Floating Particles Effect */}
+      <div className="absolute inset-0 overflow-hidden">
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute w-1 h-1 bg-white/20 rounded-full animate-pulse"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 3}s`,
+              animationDuration: `${2 + Math.random() * 3}s`
+            }}
+          />
+        ))}
+      </div>
+      
+      {/* Glass Overlay with Enhanced Blur */}
+      <div className="absolute inset-0 backdrop-blur-md bg-black/30" />
       
       {/* Content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className="glass rounded-2xl p-12 max-w-4xl w-full text-center shadow-2xl border border-white/20 hover-lift">
+        <div className="glass rounded-3xl p-12 max-w-5xl w-full text-center shadow-2xl border border-white/30 hover-lift backdrop-blur-xl bg-white/5">
           {/* Logo/Title */}
           <div className="mb-8">
-            <div className="text-6xl mb-4">🏆</div>
-            <h1 className="text-5xl font-bold mb-4 text-gradient">
+            <div className="text-8xl mb-6 animate-float">🏆</div>
+            <h1 className="text-6xl font-bold mb-6 text-gradient animate-pulse">
               MFTournament
             </h1>
-            <p className="text-xl opacity-90 mb-6">
+            <p className="text-2xl opacity-90 mb-8 font-light">
               Football Tournament Management Platform
             </p>
             
             {/* Construction Badge */}
-            <div className="inline-block bg-gradient-to-r from-orange-500 to-red-500 text-white px-8 py-3 rounded-full text-lg font-bold mb-8 animate-pulse">
+            <div className="inline-block bg-gradient-to-r from-orange-500 via-red-500 to-orange-500 text-white px-10 py-4 rounded-full text-xl font-bold mb-8 animate-pulse shadow-lg border border-orange-300/30">
               🚧 Under Construction 🚧
             </div>
           </div>
@@ -148,63 +168,63 @@ export default function HomePage() {
           </p>
           
           {/* Features Grid */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="glass rounded-xl p-6 border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-105 hover-lift">
-              <div className="text-3xl mb-3">🏈</div>
-              <h3 className="text-lg font-semibold mb-2 text-green-400">Tournament Management</h3>
-              <p className="text-sm opacity-80">Create and manage tournaments with ease</p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+            <div className="glass rounded-2xl p-8 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-green-500/10 to-transparent">
+              <div className="text-5xl mb-4 animate-pulse">🏈</div>
+              <h3 className="text-xl font-bold mb-3 text-green-300">Tournament Management</h3>
+              <p className="text-sm opacity-80 leading-relaxed">Create and manage tournaments with ease</p>
             </div>
-            <div className="glass rounded-xl p-6 border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-105 hover-lift">
-              <div className="text-3xl mb-3">👥</div>
-              <h3 className="text-lg font-semibold mb-2 text-blue-400">Team Management</h3>
-              <p className="text-sm opacity-80">Organize teams and track performance</p>
+            <div className="glass rounded-2xl p-8 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-blue-500/10 to-transparent">
+              <div className="text-5xl mb-4 animate-pulse">👥</div>
+              <h3 className="text-xl font-bold mb-3 text-blue-300">Team Management</h3>
+              <p className="text-sm opacity-80 leading-relaxed">Organize teams and track performance</p>
             </div>
-            <div className="glass rounded-xl p-6 border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-105 hover-lift">
-              <div className="text-3xl mb-3">⚽</div>
-              <h3 className="text-lg font-semibold mb-2 text-purple-400">Match Tracking</h3>
-              <p className="text-sm opacity-80">Real-time match updates and statistics</p>
+            <div className="glass rounded-2xl p-8 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-purple-500/10 to-transparent">
+              <div className="text-5xl mb-4 animate-pulse">⚽</div>
+              <h3 className="text-xl font-bold mb-3 text-purple-300">Match Tracking</h3>
+              <p className="text-sm opacity-80 leading-relaxed">Real-time match updates and statistics</p>
             </div>
-            <div className="glass rounded-xl p-6 border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-105 hover-lift">
-              <div className="text-3xl mb-3">📊</div>
-              <h3 className="text-lg font-semibold mb-2 text-yellow-400">Player Statistics</h3>
-              <p className="text-sm opacity-80">Detailed player performance analytics</p>
+            <div className="glass rounded-2xl p-8 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-yellow-500/10 to-transparent">
+              <div className="text-5xl mb-4 animate-pulse">📊</div>
+              <h3 className="text-xl font-bold mb-3 text-yellow-300">Player Statistics</h3>
+              <p className="text-sm opacity-80 leading-relaxed">Detailed player performance analytics</p>
             </div>
           </div>
           
           {/* Countdown Timer */}
-          <div className="mb-8">
-            <h3 className="text-2xl font-semibold mb-6 text-yellow-400">🚀 Launch Countdown</h3>
-            <div className="flex justify-center gap-4 flex-wrap">
-              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20 hover:border-white/30 transition-all duration-300">
-                <div className="text-2xl font-bold text-green-400" id="days">00</div>
-                <div className="text-xs uppercase opacity-70">Days</div>
+          <div className="mb-12">
+            <h3 className="text-3xl font-bold mb-8 text-yellow-300 animate-pulse">🚀 Launch Countdown</h3>
+            <div className="flex justify-center gap-6 flex-wrap">
+              <div className="glass rounded-2xl p-6 min-w-[100px] border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 bg-gradient-to-br from-green-500/20 to-transparent">
+                <div className="text-4xl font-bold text-green-300 animate-pulse" id="days">00</div>
+                <div className="text-sm uppercase opacity-80 font-semibold">Days</div>
               </div>
-              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20 hover:border-white/30 transition-all duration-300">
-                <div className="text-2xl font-bold text-green-400" id="hours">00</div>
-                <div className="text-xs uppercase opacity-70">Hours</div>
+              <div className="glass rounded-2xl p-6 min-w-[100px] border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 bg-gradient-to-br from-blue-500/20 to-transparent">
+                <div className="text-4xl font-bold text-blue-300 animate-pulse" id="hours">00</div>
+                <div className="text-sm uppercase opacity-80 font-semibold">Hours</div>
               </div>
-              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20 hover:border-white/30 transition-all duration-300">
-                <div className="text-2xl font-bold text-green-400" id="minutes">00</div>
-                <div className="text-xs uppercase opacity-70">Minutes</div>
+              <div className="glass rounded-2xl p-6 min-w-[100px] border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 bg-gradient-to-br from-purple-500/20 to-transparent">
+                <div className="text-4xl font-bold text-purple-300 animate-pulse" id="minutes">00</div>
+                <div className="text-sm uppercase opacity-80 font-semibold">Minutes</div>
               </div>
-              <div className="glass rounded-lg p-4 min-w-[80px] border border-white/20 hover:border-white/30 transition-all duration-300">
-                <div className="text-2xl font-bold text-green-400" id="seconds">00</div>
-                <div className="text-xs uppercase opacity-70">Seconds</div>
+              <div className="glass rounded-2xl p-6 min-w-[100px] border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 bg-gradient-to-br from-yellow-500/20 to-transparent">
+                <div className="text-4xl font-bold text-yellow-300 animate-pulse" id="seconds">00</div>
+                <div className="text-sm uppercase opacity-80 font-semibold">Seconds</div>
               </div>
             </div>
           </div>
           
           {/* Contact Info */}
-          <div className="border-t border-white/20 pt-8">
-            <h3 className="text-xl font-semibold mb-4 text-blue-400">📧 Stay Updated</h3>
-            <p className="opacity-80 mb-2">Get notified when we launch!</p>
-            <p className="opacity-80 mb-4">Email: info@myfootballtournament.com</p>
+          <div className="border-t border-white/30 pt-10">
+            <h3 className="text-2xl font-bold mb-6 text-blue-300 animate-pulse">📧 Stay Updated</h3>
+            <p className="text-lg opacity-90 mb-3 font-light">Get notified when we launch!</p>
+            <p className="text-lg opacity-90 mb-8 font-medium text-blue-200">Email: info@myfootballtournament.com</p>
             
-            <div className="flex justify-center gap-4 text-2xl">
-              <a href="#" className="text-blue-400 hover:scale-110 transition-transform" title="Facebook">📘</a>
-              <a href="#" className="text-blue-400 hover:scale-110 transition-transform" title="Twitter">🐦</a>
-              <a href="#" className="text-pink-400 hover:scale-110 transition-transform" title="Instagram">📷</a>
-              <a href="#" className="text-blue-600 hover:scale-110 transition-transform" title="LinkedIn">💼</a>
+            <div className="flex justify-center gap-8 text-3xl">
+              <a href="#" className="text-blue-400 hover:scale-125 transition-all duration-300 hover:text-blue-300" title="Facebook">📘</a>
+              <a href="#" className="text-blue-400 hover:scale-125 transition-all duration-300 hover:text-blue-300" title="Twitter">🐦</a>
+              <a href="#" className="text-pink-400 hover:scale-125 transition-all duration-300 hover:text-pink-300" title="Instagram">📷</a>
+              <a href="#" className="text-blue-600 hover:scale-125 transition-all duration-300 hover:text-blue-500" title="LinkedIn">💼</a>
             </div>
           </div>
         </div>
