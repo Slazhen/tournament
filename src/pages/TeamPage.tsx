@@ -53,10 +53,10 @@ export default function TeamPage() {
   const logoFileRef = useRef<HTMLInputElement>(null)
   const photoFileRef = useRef<HTMLInputElement>(null)
   
-  // Save function
+  // Save function - since Zustand auto-saves, this is just for user feedback
   const saveChanges = () => {
     setHasUnsavedChanges(false)
-    setSaveMessage('Changes saved successfully!')
+    setSaveMessage('All changes are automatically saved!')
     setTimeout(() => setSaveMessage(''), 3000)
   }
   
@@ -64,6 +64,11 @@ export default function TeamPage() {
   const updateTeamWithTracking = (teamId: string, updates: any) => {
     updateTeam(teamId, updates)
     setHasUnsavedChanges(true)
+    // Auto-save feedback
+    setTimeout(() => {
+      setSaveMessage('Changes saved automatically!')
+      setTimeout(() => setSaveMessage(''), 2000)
+    }, 100)
   }
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -338,18 +343,28 @@ export default function TeamPage() {
           )}
           <button
             onClick={saveChanges}
-            disabled={!hasUnsavedChanges}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-              hasUnsavedChanges
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-            }`}
+            className="px-6 py-3 rounded-lg font-semibold transition-all bg-blue-600 hover:bg-blue-700 text-white"
           >
-            💾 Save Changes
+            💾 Confirm Changes
           </button>
           {saveMessage && (
             <span className="text-green-400 text-sm">{saveMessage}</span>
           )}
+        </div>
+      </div>
+
+      {/* Debug Info */}
+      <div className="glass rounded-xl p-4 mb-6 max-w-4xl mx-auto">
+        <h3 className="text-lg font-semibold mb-2 text-yellow-400">🔧 Debug Info</h3>
+        <div className="text-sm space-y-1">
+          <p><strong>Team ID:</strong> {team.id}</p>
+          <p><strong>Team Name:</strong> {team.name}</p>
+          <p><strong>Players Count:</strong> {team.players?.length || 0}</p>
+          <p><strong>Has Logo:</strong> {team.logo ? 'Yes' : 'No'}</p>
+          <p><strong>Has Photo:</strong> {team.photo ? 'Yes' : 'No'}</p>
+          <p><strong>Colors:</strong> {team.colors?.join(', ') || 'None'}</p>
+          <p><strong>Organizer ID:</strong> {team.organizerId || 'None'}</p>
+          <p><strong>Created:</strong> {new Date(team.createdAtISO).toLocaleString()}</p>
         </div>
       </div>
 

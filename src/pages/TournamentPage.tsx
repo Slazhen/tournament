@@ -22,10 +22,10 @@ export default function TournamentPage() {
   // Find the specific tournament by ID
   const tournament = tournaments.find(t => t.id === id)
   
-  // Save function
+  // Save function - since Zustand auto-saves, this is just for user feedback
   const saveChanges = () => {
     setHasUnsavedChanges(false)
-    setSaveMessage('Changes saved successfully!')
+    setSaveMessage('All changes are automatically saved!')
     setTimeout(() => setSaveMessage(''), 3000)
   }
   
@@ -33,6 +33,11 @@ export default function TournamentPage() {
   const updateTournamentWithTracking = (tournamentId: string, updates: any) => {
     updateTournament(tournamentId, updates)
     setHasUnsavedChanges(true)
+    // Auto-save feedback
+    setTimeout(() => {
+      setSaveMessage('Changes saved automatically!')
+      setTimeout(() => setSaveMessage(''), 2000)
+    }, 100)
   }
   
   // Redirect if no organizer is selected
@@ -383,14 +388,9 @@ export default function TournamentPage() {
           )}
           <button
             onClick={saveChanges}
-            disabled={!hasUnsavedChanges}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-              hasUnsavedChanges
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-            }`}
+            className="px-6 py-3 rounded-lg font-semibold transition-all bg-blue-600 hover:bg-blue-700 text-white"
           >
-            💾 Save Changes
+            💾 Confirm Changes
           </button>
           {saveMessage && (
             <span className="text-green-400 text-sm">{saveMessage}</span>

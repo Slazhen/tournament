@@ -61,10 +61,10 @@ export default function PlayerPage() {
 
   const photoFileRef = useRef<HTMLInputElement>(null)
   
-  // Save function
+  // Save function - since Zustand auto-saves, this is just for user feedback
   const saveChanges = () => {
     setHasUnsavedChanges(false)
-    setSaveMessage('Changes saved successfully!')
+    setSaveMessage('All changes are automatically saved!')
     setTimeout(() => setSaveMessage(''), 3000)
   }
   
@@ -72,6 +72,11 @@ export default function PlayerPage() {
   const updateTeamWithTracking = (teamId: string, updates: any) => {
     updateTeam(teamId, updates)
     setHasUnsavedChanges(true)
+    // Auto-save feedback
+    setTimeout(() => {
+      setSaveMessage('Changes saved automatically!')
+      setTimeout(() => setSaveMessage(''), 2000)
+    }, 100)
   }
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -332,14 +337,9 @@ export default function PlayerPage() {
           )}
           <button
             onClick={saveChanges}
-            disabled={!hasUnsavedChanges}
-            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-              hasUnsavedChanges
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-            }`}
+            className="px-6 py-3 rounded-lg font-semibold transition-all bg-blue-600 hover:bg-blue-700 text-white"
           >
-            💾 Save Changes
+            💾 Confirm Changes
           </button>
           {saveMessage && (
             <span className="text-green-400 text-sm">{saveMessage}</span>
