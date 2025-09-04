@@ -1,27 +1,35 @@
 import React, { useState, useRef, useCallback } from 'react'
 
 interface LogoUploaderProps {
-  onLogoChange: (logoDataUrl: string) => void
+  onLogoUpload: (file: File) => Promise<void>
   currentLogo?: string
   size?: number
 }
 
-export default function LogoUploader({ onLogoChange, currentLogo, size = 80 }: LogoUploaderProps) {
+export default function LogoUploader({ onLogoUpload, currentLogo, size = 80 }: LogoUploaderProps) {
   const [isDragging, setIsDragging] = useState(false)
-  const [previewLogo, setPreviewLogo] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadMessage, setUploadMessage] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileSelect = useCallback((file: File) => {
+  const handleFileSelect = useCallback(async (file: File) => {
     if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result as string
-        setPreviewLogo(result)
-        onLogoChange(result)
+      setIsUploading(true)
+      setUploadMessage('Uploading...')
+      
+      try {
+        await onLogoUpload(file)
+        setUploadMessage('Upload successful!')
+        setTimeout(() => setUploadMessage(''), 3000)
+      } catch (error) {
+        console.error('Error uploading logo:', error)
+        setUploadMessage('Upload failed')
+        setTimeout(() => setUploadMessage(''), 3000)
+      } finally {
+        setIsUploading(false)
       }
-      reader.readAsDataURL(file)
     }
-  }, [onLogoChange])
+  }, [onLogoUpload])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -54,20 +62,21 @@ export default function LogoUploader({ onLogoChange, currentLogo, size = 80 }: L
     fileInputRef.current?.click()
   }, [])
 
-  const displayLogo = previewLogo || currentLogo
+  const displayLogo = currentLogo
 
   return (
     <div className="space-y-3">
-             <div
-         className={`
-           relative rounded-full overflow-hidden cursor-pointer transition-all
-           ${isDragging 
-             ? 'border-blue-400 bg-blue-50/20' 
-             : 'border-white/30 hover:border-white/50'
-           }
-           ${displayLogo ? 'border-solid border-white/20' : 'border-2 border-dashed'}
-         `}
-         style={{ width: size, height: size }}
+      <div
+        className={`
+          relative rounded-full overflow-hidden cursor-pointer transition-all
+          ${isDragging 
+            ? 'border-blue-400 bg-blue-50/20' 
+            : 'border-white/30 hover:border-white/50'
+          }
+          ${displayLogo ? 'border-solid border-white/20' : 'border-2 border-dashed'}
+          ${isUploading ? 'opacity-50 pointer-events-none' : ''}
+        `}
+        style={{ width: size, height: size }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -76,7 +85,7 @@ export default function LogoUploader({ onLogoChange, currentLogo, size = 80 }: L
         {displayLogo ? (
           <img 
             src={displayLogo} 
-            alt="Tournament logo" 
+            alt="Logo" 
             className="w-full h-full object-cover"
           />
         ) : (
@@ -98,6 +107,15 @@ export default function LogoUploader({ onLogoChange, currentLogo, size = 80 }: L
             </div>
           </div>
         )}
+        
+        {/* Uploading overlay */}
+        {isUploading && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <div className="text-white text-center">
+              <div className="text-lg">Uploading...</div>
+            </div>
+          </div>
+        )}
       </div>
       
       <input
@@ -108,17 +126,11 @@ export default function LogoUploader({ onLogoChange, currentLogo, size = 80 }: L
         className="hidden"
       />
       
-      {displayLogo && (
+      {uploadMessage && (
         <div className="text-center">
-          <button
-            onClick={() => {
-              setPreviewLogo(null)
-              onLogoChange('')
-            }}
-            className="text-xs text-red-400 hover:text-red-300 transition-colors"
-          >
-            Remove logo
-          </button>
+          <p className={`text-xs ${uploadMessage.includes('successful') ? 'text-green-400' : 'text-red-400'}`}>
+            {uploadMessage}
+          </p>
         </div>
       )}
       

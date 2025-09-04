@@ -10,14 +10,16 @@ export default function TournamentsPage() {
   const [rounds, setRounds] = useState(1)
   const [mode, setMode] = useState<'league' | 'league_playoff' | 'swiss_elimination'>('league')
   const [qualifiers, setQualifiers] = useState(4)
-  const [logo, setLogo] = useState<string>("")
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string>("")
   
   const { 
     getCurrentOrganizer, 
     getOrganizerTeams, 
     getOrganizerTournaments, 
     createTournament,
-    deleteTournament
+    deleteTournament,
+    uploadTournamentLogo
   } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
@@ -39,7 +41,7 @@ export default function TournamentsPage() {
     )
   }
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (tournamentName.trim() && selectedTeamIds.length >= 2) {
       const format = {
@@ -48,14 +50,25 @@ export default function TournamentsPage() {
         playoffQualifiers: mode === 'league_playoff' ? qualifiers : undefined
       }
       
-      createTournament(tournamentName.trim(), selectedTeamIds, format)
+      // Create tournament first
+      await createTournament(tournamentName.trim(), selectedTeamIds, format)
+      
+      // Upload logo if provided
+      if (logoFile) {
+        const newTournament = tournaments.find(t => t.name === tournamentName.trim())
+        if (newTournament) {
+          await uploadTournamentLogo(newTournament.id, logoFile)
+        }
+      }
+      
       setTournamentName("")
       setSelectedTeamIds([])
       setShowAdvanced(false)
       setRounds(1)
       setMode('league')
       setQualifiers(4)
-      setLogo("")
+      setLogoFile(null)
+      setLogoPreview("")
     }
   }
   
@@ -96,8 +109,11 @@ export default function TournamentsPage() {
                  <div>
                    <label className="block text-sm font-medium mb-2">Tournament Logo (Optional)</label>
                    <LogoUploader 
-                     onLogoChange={setLogo}
-                     currentLogo={logo}
+                     onLogoUpload={async (file) => {
+                       setLogoFile(file)
+                       setLogoPreview(URL.createObjectURL(file))
+                     }}
+                     currentLogo={logoPreview}
                      size={80}
                    />
                  </div>

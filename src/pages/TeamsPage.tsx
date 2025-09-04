@@ -6,7 +6,8 @@ import LogoUploader from "../components/LogoUploader"
 export default function TeamsPage() {
   const [teamName, setTeamName] = useState("")
   const [teamColors, setTeamColors] = useState<string[]>(["#3B82F6"])
-  const [teamLogo, setTeamLogo] = useState("")
+  const [teamLogoFile, setTeamLogoFile] = useState<File | null>(null)
+  const [teamLogoPreview, setTeamLogoPreview] = useState("")
   const [bulkTeams, setBulkTeams] = useState("")
   
   const { 
@@ -14,7 +15,9 @@ export default function TeamsPage() {
     getOrganizerTeams, 
     createTeam, 
     updateTeam, 
-    deleteTeam 
+    deleteTeam,
+    uploadTeamLogo,
+    uploadTeamPhoto
   } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
@@ -35,13 +38,24 @@ export default function TeamsPage() {
     )
   }
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (teamName.trim()) {
-      createTeam(teamName.trim(), teamColors, teamLogo)
+      // Create team first
+      await createTeam(teamName.trim(), teamColors)
+      
+      // Upload logo if provided
+      if (teamLogoFile) {
+        const newTeam = teams.find(t => t.name === teamName.trim())
+        if (newTeam) {
+          await uploadTeamLogo(newTeam.id, teamLogoFile)
+        }
+      }
+      
       setTeamName("")
       setTeamColors(["#3B82F6"])
-      setTeamLogo("")
+      setTeamLogoFile(null)
+      setTeamLogoPreview("")
     }
   }
   
@@ -59,13 +73,12 @@ export default function TeamsPage() {
     setBulkTeams("")
   }
   
-  const handlePhotoUpload = (teamId: string, file: File) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target?.result as string
-      updateTeam(teamId, { photo: result })
+  const handlePhotoUpload = async (teamId: string, file: File) => {
+    try {
+      await uploadTeamPhoto(teamId, file)
+    } catch (error) {
+      console.error('Error uploading team photo:', error)
     }
-    reader.readAsDataURL(file)
   }
   
   const handleColorChange = (teamId: string, color: string) => {
@@ -128,8 +141,11 @@ export default function TeamsPage() {
           <div>
             <label className="block text-sm font-medium mb-2">Team Logo</label>
             <LogoUploader
-              onLogoChange={setTeamLogo}
-              currentLogo={teamLogo}
+              onLogoUpload={async (file) => {
+                setTeamLogoFile(file)
+                setTeamLogoPreview(URL.createObjectURL(file))
+              }}
+              currentLogo={teamLogoPreview}
             />
           </div>
           
@@ -201,7 +217,7 @@ export default function TeamsPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Logo</label>
                   <LogoUploader
-                    onLogoChange={(logoDataUrl) => updateTeam(team.id, { logo: logoDataUrl })}
+                    onLogoUpload={(file) => uploadTeamLogo(team.id, file)}
                     currentLogo={team.logo}
                   />
                 </div>

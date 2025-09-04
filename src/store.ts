@@ -53,6 +53,8 @@ type AppStore = {
   loadTournaments: () => Promise<void>
   uploadTeamLogo: (teamId: string, file: File) => Promise<void>
   uploadTeamPhoto: (teamId: string, file: File) => Promise<void>
+  uploadPlayerPhoto: (teamId: string, playerId: string, file: File) => Promise<void>
+  uploadTournamentLogo: (tournamentId: string, file: File) => Promise<void>
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
@@ -415,6 +417,35 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await get().updateTeam(teamId, { photo: url })
     } catch (error) {
       console.error('Error uploading team photo:', error)
+    }
+  },
+
+  uploadPlayerPhoto: async (teamId: string, playerId: string, file: File) => {
+    try {
+      const key = `teams/${teamId}/players/${playerId}/photo-${Date.now()}.${file.name.split('.').pop()}`
+      const url = await uploadImageToS3(file, key)
+      
+      // Update the specific player's photo in the team
+      const team = get().teams.find(t => t.id === teamId)
+      if (team && team.players) {
+        const updatedPlayers = team.players.map(p => 
+          p.id === playerId ? { ...p, photo: url } : p
+        )
+        await get().updateTeam(teamId, { players: updatedPlayers })
+      }
+    } catch (error) {
+      console.error('Error uploading player photo:', error)
+    }
+  },
+
+  uploadTournamentLogo: async (tournamentId: string, file: File) => {
+    try {
+      const key = `tournaments/${tournamentId}/logo-${Date.now()}.${file.name.split('.').pop()}`
+      const url = await uploadImageToS3(file, key)
+      
+      await get().updateTournament(tournamentId, { logo: url })
+    } catch (error) {
+      console.error('Error uploading tournament logo:', error)
     }
   },
 }))

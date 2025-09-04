@@ -9,7 +9,7 @@ import LogoUploader from '../components/LogoUploader'
 
 export default function TournamentPage() {
   const { id } = useParams()
-  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, deleteTournament } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, deleteTournament, uploadTournamentLogo } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
@@ -283,7 +283,7 @@ export default function TournamentPage() {
                  <div className="text-center">
                    <label className="block text-sm font-medium mb-2">Tournament Logo</label>
                    <LogoUploader 
-                     onLogoChange={(logoDataUrl) => updateTournament(tournament.id, { logo: logoDataUrl })}
+                     onLogoUpload={(file) => uploadTournamentLogo(tournament.id, file)}
                      currentLogo={tournament.logo}
                      size={80}
                    />

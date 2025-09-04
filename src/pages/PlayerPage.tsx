@@ -6,7 +6,7 @@ import InstagramIcon from '../components/InstagramIcon'
 
 export default function PlayerPage() {
   const { playerId } = useParams()
-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam, uploadPlayerPhoto } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -57,14 +57,14 @@ export default function PlayerPage() {
 
   const photoFileRef = useRef<HTMLInputElement>(null)
 
-  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        updatePlayer(player.id, { photo: e.target?.result as string })
+    if (file && currentTeam) {
+      try {
+        await uploadPlayerPhoto(currentTeam.id, player.id, file)
+      } catch (error) {
+        console.error('Error uploading player photo:', error)
       }
-      reader.readAsDataURL(file)
     }
   }
 
