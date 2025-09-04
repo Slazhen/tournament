@@ -26,17 +26,28 @@ export default function AdminPage() {
   // Redirect to last created tournament when organizer is logged in
   useEffect(() => {
     if (currentOrganizer) {
+      console.log('AdminPage: Organizer logged in, checking tournaments...')
       const tournaments = getOrganizerTournaments()
+      console.log('AdminPage: Found tournaments:', tournaments.length)
+      
       if (tournaments.length > 0) {
         // Sort tournaments by creation date (most recent first)
         const sortedTournaments = [...tournaments].sort((a, b) => 
           new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime()
         )
         const lastTournament = sortedTournaments[0]
-        navigate(`/tournaments/${lastTournament.id}`)
+        console.log('AdminPage: Redirecting to tournament:', lastTournament.id)
+        
+        // Add a small delay to make the loading state visible
+        setTimeout(() => {
+          navigate(`/tournaments/${lastTournament.id}`)
+        }, 1000)
       } else {
+        console.log('AdminPage: No tournaments, redirecting to tournaments page')
         // If no tournaments exist, go to tournaments page to create one
-        navigate('/tournaments')
+        setTimeout(() => {
+          navigate('/tournaments')
+        }, 1000)
       }
     }
   }, [currentOrganizer, getOrganizerTournaments, navigate])
