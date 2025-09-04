@@ -16,7 +16,11 @@ const dynamoDBClient = new DynamoDBClient({
   } : undefined, // Use IAM roles if credentials not provided
 })
 
-export const dynamoDB = DynamoDBDocumentClient.from(dynamoDBClient)
+export const dynamoDB = DynamoDBDocumentClient.from(dynamoDBClient, {
+  marshallOptions: {
+    removeUndefinedValues: true,
+  },
+})
 
 // S3 Configuration
 export const s3Client = new S3Client({

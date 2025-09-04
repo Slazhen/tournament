@@ -123,7 +123,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const team = await teamService.create({
         name,
         colors,
-        logo,
+        logo: logo || '',
         organizerId: currentOrganizerId,
         players: [],
         socialMedia: {},
@@ -183,7 +183,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         teamIds,
         organizerId: currentOrganizerId,
         matches: [],
-        playoffBrackets: undefined,
       })
       
       if (tournament) {
