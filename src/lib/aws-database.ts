@@ -13,7 +13,7 @@ export const uploadImageToS3 = async (file: File, key: string): Promise<string> 
     Key: key,
     Body: uint8Array,
     ContentType: file.type,
-    ACL: 'public-read', // Make images publicly accessible
+    // ACL removed - bucket should be configured with public read policy
   }))
   
   return getS3Url(key)

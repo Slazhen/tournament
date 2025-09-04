@@ -98,6 +98,24 @@ aws s3api put-bucket-cors --bucket $BUCKET_NAME --cors-configuration '{
   ]
 }' --region $REGION
 
+# Disable ACLs on the bucket (required for newer S3 buckets)
+echo "Disabling ACLs on S3 bucket..."
+aws s3api put-bucket-ownership-controls --bucket $BUCKET_NAME --ownership-controls '{
+  "Rules": [
+    {
+      "ObjectOwnership": "BucketOwnerPreferred"
+    }
+  ]
+}' --region $REGION
+
+# Block public ACLs
+aws s3api put-public-access-block --bucket $BUCKET_NAME --public-access-block-configuration '{
+  "BlockPublicAcls": true,
+  "IgnorePublicAcls": true,
+  "BlockPublicPolicy": false,
+  "RestrictPublicBuckets": false
+}' --region $REGION
+
 # Set S3 bucket policy for public read access
 echo "Setting S3 bucket policy..."
 aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy "{
