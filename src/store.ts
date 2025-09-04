@@ -93,10 +93,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   setCurrentOrganizer: (organizerId: string) => {
-    set({ currentOrganizerId: organizerId })
-    // Load data for the selected organizer
-    get().loadTeams()
-    get().loadTournaments()
+    set({ currentOrganizerId: organizerId || null })
+    // Persist to localStorage (or remove if empty)
+    if (organizerId) {
+      localStorage.setItem('currentOrganizerId', organizerId)
+      // Load data for the selected organizer
+      get().loadTeams()
+      get().loadTournaments()
+    } else {
+      localStorage.removeItem('currentOrganizerId')
+    }
   },
 
   updateOrganizer: async (organizerId: string, updates: Partial<Organizer>) => {
@@ -356,6 +362,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
         organizers,
         loading: { ...get().loading, organizers: false }
       })
+      
+      // Restore current organizer from localStorage
+      const savedOrganizerId = localStorage.getItem('currentOrganizerId')
+      if (savedOrganizerId && organizers.find(org => org.id === savedOrganizerId)) {
+        console.log('Store: Restoring current organizer from localStorage:', savedOrganizerId)
+        set({ currentOrganizerId: savedOrganizerId })
+        // Load data for the restored organizer
+        get().loadTeams()
+        get().loadTournaments()
+      }
     } catch (error) {
       console.error('Error loading organizers:', error)
       set(state => ({ loading: { ...state.loading, organizers: false } }))

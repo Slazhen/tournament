@@ -26,6 +26,8 @@ function App() {
   }
 
 
+  const currentOrganizerId = useAppStore((s) => s.currentOrganizerId)
+  console.log('App: currentOrganizerId:', currentOrganizerId)
   console.log('App: currentOrganizer:', currentOrganizer?.name || 'none')
   
   return (
