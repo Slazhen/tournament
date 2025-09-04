@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
 import DebugInfo from '../components/DebugInfo'
@@ -32,36 +32,6 @@ export default function HomePage() {
     setCurrentOrganizer(organizerId)
   }
 
-  // Countdown timer effect
-  useEffect(() => {
-    const updateCountdown = () => {
-      const launchDate = new Date('2024-12-31T00:00:00').getTime()
-      const now = new Date().getTime()
-      const distance = launchDate - now
-
-      if (distance > 0) {
-        const days = Math.floor(distance / (1000 * 60 * 60 * 24))
-        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60))
-        const seconds = Math.floor((distance % (1000 * 60)) / 1000)
-
-        const daysEl = document.getElementById('days')
-        const hoursEl = document.getElementById('hours')
-        const minutesEl = document.getElementById('minutes')
-        const secondsEl = document.getElementById('seconds')
-
-        if (daysEl) daysEl.textContent = days.toString().padStart(2, '0')
-        if (hoursEl) hoursEl.textContent = hours.toString().padStart(2, '0')
-        if (minutesEl) minutesEl.textContent = minutes.toString().padStart(2, '0')
-        if (secondsEl) secondsEl.textContent = seconds.toString().padStart(2, '0')
-      }
-    }
-
-    updateCountdown()
-    const interval = setInterval(updateCountdown, 1000)
-
-    return () => clearInterval(interval)
-  }, [])
   
   if (currentOrganizer) {
     return (
@@ -123,28 +93,12 @@ export default function HomePage() {
       {/* Animated Gradient Overlay */}
       <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60" />
       
-      {/* Floating Particles Effect */}
-      <div className="absolute inset-0 overflow-hidden">
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-white/20 rounded-full animate-pulse"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              animationDuration: `${2 + Math.random() * 3}s`
-            }}
-          />
-        ))}
-      </div>
-      
       {/* Glass Overlay with Enhanced Blur */}
       <div className="absolute inset-0 backdrop-blur-md bg-black/30" />
       
       {/* Content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className="glass rounded-3xl p-12 max-w-5xl w-full text-center shadow-2xl border border-white/30 hover-lift backdrop-blur-xl bg-white/5">
+        <div className="glass rounded-3xl p-12 max-w-4xl w-full text-center shadow-2xl border border-white/30 hover-lift backdrop-blur-xl bg-white/5">
           {/* Logo/Title */}
           <div className="mb-8">
             <div className="text-8xl mb-6 animate-float">🏆</div>
@@ -154,78 +108,52 @@ export default function HomePage() {
             <p className="text-2xl opacity-90 mb-8 font-light">
               Football Tournament Management Platform
             </p>
-            
-            {/* Construction Badge */}
-            <div className="inline-block bg-gradient-to-r from-orange-500 via-red-500 to-orange-500 text-white px-10 py-4 rounded-full text-xl font-bold mb-8 animate-pulse shadow-lg border border-orange-300/30">
-              🚧 Under Construction 🚧
-            </div>
           </div>
           
           {/* Description */}
           <p className="text-lg opacity-80 mb-8 max-w-2xl mx-auto">
-            We're building something amazing! MFTournament will be the ultimate platform for managing football tournaments, 
-            teams, players, and matches. Get ready for a revolutionary tournament experience.
+            Welcome to MFTournament! Create and manage football tournaments, teams, players, and matches with ease. 
+            Get started by selecting or creating an organizer account.
           </p>
           
+          {/* Admin Access Button */}
+          <div className="mb-8">
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="px-8 py-4 rounded-xl glass hover:bg-white/10 transition-all text-xl font-semibold border border-white/30 hover:border-white/50"
+            >
+              ⚙️ Admin Access
+            </button>
+          </div>
+          
           {/* Features Grid */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
-            <div className="glass rounded-2xl p-8 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-green-500/10 to-transparent">
-              <div className="text-5xl mb-4 animate-pulse">🏈</div>
-              <h3 className="text-xl font-bold mb-3 text-green-300">Tournament Management</h3>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="glass rounded-2xl p-6 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-green-500/10 to-transparent">
+              <div className="text-4xl mb-3 animate-pulse">🏈</div>
+              <h3 className="text-lg font-bold mb-2 text-green-300">Tournament Management</h3>
               <p className="text-sm opacity-80 leading-relaxed">Create and manage tournaments with ease</p>
             </div>
-            <div className="glass rounded-2xl p-8 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-blue-500/10 to-transparent">
-              <div className="text-5xl mb-4 animate-pulse">👥</div>
-              <h3 className="text-xl font-bold mb-3 text-blue-300">Team Management</h3>
+            <div className="glass rounded-2xl p-6 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-blue-500/10 to-transparent">
+              <div className="text-4xl mb-3 animate-pulse">👥</div>
+              <h3 className="text-lg font-bold mb-2 text-blue-300">Team Management</h3>
               <p className="text-sm opacity-80 leading-relaxed">Organize teams and track performance</p>
             </div>
-            <div className="glass rounded-2xl p-8 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-purple-500/10 to-transparent">
-              <div className="text-5xl mb-4 animate-pulse">⚽</div>
-              <h3 className="text-xl font-bold mb-3 text-purple-300">Match Tracking</h3>
+            <div className="glass rounded-2xl p-6 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-purple-500/10 to-transparent">
+              <div className="text-4xl mb-3 animate-pulse">⚽</div>
+              <h3 className="text-lg font-bold mb-2 text-purple-300">Match Tracking</h3>
               <p className="text-sm opacity-80 leading-relaxed">Real-time match updates and statistics</p>
             </div>
-            <div className="glass rounded-2xl p-8 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-yellow-500/10 to-transparent">
-              <div className="text-5xl mb-4 animate-pulse">📊</div>
-              <h3 className="text-xl font-bold mb-3 text-yellow-300">Player Statistics</h3>
+            <div className="glass rounded-2xl p-6 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-yellow-500/10 to-transparent">
+              <div className="text-4xl mb-3 animate-pulse">📊</div>
+              <h3 className="text-lg font-bold mb-2 text-yellow-300">Player Statistics</h3>
               <p className="text-sm opacity-80 leading-relaxed">Detailed player performance analytics</p>
             </div>
           </div>
           
-          {/* Countdown Timer */}
-          <div className="mb-12">
-            <h3 className="text-3xl font-bold mb-8 text-yellow-300 animate-pulse">🚀 Launch Countdown</h3>
-            <div className="flex justify-center gap-6 flex-wrap">
-              <div className="glass rounded-2xl p-6 min-w-[100px] border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 bg-gradient-to-br from-green-500/20 to-transparent">
-                <div className="text-4xl font-bold text-green-300 animate-pulse" id="days">00</div>
-                <div className="text-sm uppercase opacity-80 font-semibold">Days</div>
-              </div>
-              <div className="glass rounded-2xl p-6 min-w-[100px] border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 bg-gradient-to-br from-blue-500/20 to-transparent">
-                <div className="text-4xl font-bold text-blue-300 animate-pulse" id="hours">00</div>
-                <div className="text-sm uppercase opacity-80 font-semibold">Hours</div>
-              </div>
-              <div className="glass rounded-2xl p-6 min-w-[100px] border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 bg-gradient-to-br from-purple-500/20 to-transparent">
-                <div className="text-4xl font-bold text-purple-300 animate-pulse" id="minutes">00</div>
-                <div className="text-sm uppercase opacity-80 font-semibold">Minutes</div>
-              </div>
-              <div className="glass rounded-2xl p-6 min-w-[100px] border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 bg-gradient-to-br from-yellow-500/20 to-transparent">
-                <div className="text-4xl font-bold text-yellow-300 animate-pulse" id="seconds">00</div>
-                <div className="text-sm uppercase opacity-80 font-semibold">Seconds</div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Contact Info */}
-          <div className="border-t border-white/30 pt-10">
-            <h3 className="text-2xl font-bold mb-6 text-blue-300 animate-pulse">📧 Stay Updated</h3>
-            <p className="text-lg opacity-90 mb-3 font-light">Get notified when we launch!</p>
-            <p className="text-lg opacity-90 mb-8 font-medium text-blue-200">Email: info@myfootballtournament.com</p>
-            
-            <div className="flex justify-center gap-8 text-3xl">
-              <a href="#" className="text-blue-400 hover:scale-125 transition-all duration-300 hover:text-blue-300" title="Facebook">📘</a>
-              <a href="#" className="text-blue-400 hover:scale-125 transition-all duration-300 hover:text-blue-300" title="Twitter">🐦</a>
-              <a href="#" className="text-pink-400 hover:scale-125 transition-all duration-300 hover:text-pink-300" title="Instagram">📷</a>
-              <a href="#" className="text-blue-600 hover:scale-125 transition-all duration-300 hover:text-blue-500" title="LinkedIn">💼</a>
-            </div>
+          {/* Public Access Info */}
+          <div className="border-t border-white/30 pt-6">
+            <p className="text-sm opacity-70 mb-2">Public tournament pages are available for viewing</p>
+            <p className="text-xs opacity-50">Contact organizers for public tournament links</p>
           </div>
         </div>
       </div>
@@ -250,6 +178,17 @@ export default function HomePage() {
                       <div className="text-sm opacity-70">{organizer.email}</div>
                     </button>
                   ))}
+                </div>
+                <div className="mt-4 pt-4 border-t border-white/20">
+                  <button
+                    onClick={() => {
+                      setShowCreateForm(false)
+                      // Show create form by setting organizers to empty temporarily
+                    }}
+                    className="w-full px-4 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
+                  >
+                    + Create New Organizer
+                  </button>
                 </div>
               </div>
             ) : (
