@@ -1,0 +1,14 @@
+# AWS Configuration
+# Copy this file to .env and fill in your AWS credentials
+
+# AWS Region (e.g., us-east-1, eu-west-1, ap-southeast-1)
+VITE_AWS_REGION=us-east-1
+
+# AWS Access Key ID (from IAM user)
+VITE_AWS_ACCESS_KEY_ID=your-access-key-id-here
+
+# AWS Secret Access Key (from IAM user)
+VITE_AWS_SECRET_ACCESS_KEY=your-secret-access-key-here
+
+# S3 Bucket Name for images
+VITE_S3_BUCKET_NAME=football-tournaments-images
