@@ -55,6 +55,7 @@ type AppStore = {
   uploadTeamPhoto: (teamId: string, file: File) => Promise<void>
   uploadPlayerPhoto: (teamId: string, playerId: string, file: File) => Promise<void>
   uploadTournamentLogo: (tournamentId: string, file: File) => Promise<void>
+  uploadTournamentBackground: (tournamentId: string, file: File) => Promise<void>
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
@@ -462,6 +463,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await get().updateTournament(tournamentId, { logo: url })
     } catch (error) {
       console.error('Error uploading tournament logo:', error)
+    }
+  },
+
+  uploadTournamentBackground: async (tournamentId: string, file: File) => {
+    try {
+      const key = `tournaments/${tournamentId}/background-${Date.now()}.${file.name.split('.').pop()}`
+      const url = await uploadImageToS3(file, key)
+      
+      await get().updateTournament(tournamentId, { backgroundImage: url })
+    } catch (error) {
+      console.error('Error uploading tournament background:', error)
     }
   },
 }))

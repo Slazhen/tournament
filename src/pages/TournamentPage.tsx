@@ -9,7 +9,7 @@ import LogoUploader from '../components/LogoUploader'
 
 export default function TournamentPage() {
   const { id } = useParams()
-  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, deleteTournament, uploadTournamentLogo } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, deleteTournament, uploadTournamentLogo, uploadTournamentBackground } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
@@ -278,13 +278,22 @@ export default function TournamentPage() {
                  </button>
                </div>
                
-               {/* Logo Upload Section */}
-               <div className="mt-4 flex justify-center">
+               {/* Tournament Images Upload Section */}
+               <div className="mt-4 flex justify-center gap-8">
                  <div className="text-center">
                    <label className="block text-sm font-medium mb-2">Tournament Logo</label>
                    <LogoUploader 
                      onLogoUpload={(file) => uploadTournamentLogo(tournament.id, file)}
                      currentLogo={tournament.logo}
+                     size={80}
+                   />
+                 </div>
+                 
+                 <div className="text-center">
+                   <label className="block text-sm font-medium mb-2">Tournament Background</label>
+                   <LogoUploader 
+                     onLogoUpload={(file) => uploadTournamentBackground(tournament.id, file)}
+                     currentLogo={tournament.backgroundImage}
                      size={80}
                    />
                  </div>
