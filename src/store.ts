@@ -45,6 +45,7 @@ type AppStore = {
   migrateDataToCurrentOrganizer: () => void
   migrateColorSystem: () => void
   migratePlayerStructure: () => void
+  
 }
 
 export const useAppStore = create<AppStore>()(
