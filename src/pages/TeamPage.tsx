@@ -1,38 +1,23 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState } from 'react'
 import { uid } from '../utils/uid'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 
 export default function TeamPage() {
   const { teamId } = useParams()
-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam, uploadTeamLogo, uploadTeamPhoto } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
   
-  // State for tracking unsaved changes
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [saveMessage, setSaveMessage] = useState('')
+  // State for upload feedback
+  const [uploadMessage, setUploadMessage] = useState('')
   
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)
-  
-  // Monitor team data changes
-  useEffect(() => {
-    if (team) {
-      console.log('Team data updated:', {
-        id: team.id,
-        name: team.name,
-        hasLogo: !!team.logo,
-        logoLength: team.logo?.length || 0,
-        hasPhoto: !!team.photo,
-        photoLength: team.photo?.length || 0
-      })
-    }
-  }, [team])
   
   // Redirect if no organizer is selected
   if (!currentOrganizer) {
@@ -66,101 +51,41 @@ export default function TeamPage() {
 
   const logoFileRef = useRef<HTMLInputElement>(null)
   const photoFileRef = useRef<HTMLInputElement>(null)
-  
-  // Save function - since Zustand auto-saves, this is just for user feedback
-  const saveChanges = () => {
-    setHasUnsavedChanges(false)
-    setSaveMessage('All changes are automatically saved!')
-    setTimeout(() => setSaveMessage(''), 3000)
-  }
-  
-  // Check localStorage usage
-  const checkLocalStorageUsage = () => {
-    try {
-      const data = localStorage.getItem('football-tournaments-storage')
-      if (data) {
-        const sizeInBytes = new Blob([data]).size
-        const sizeInKB = (sizeInBytes / 1024).toFixed(2)
-        console.log('LocalStorage usage:', sizeInKB + ' KB')
-        return sizeInKB
-      }
-    } catch (error) {
-      console.error('Error checking localStorage:', error)
-    }
-    return '0'
-  }
-  
-  // Environment debugging
-  const getEnvironmentInfo = () => {
-    return {
-      isLocalhost: window.location.hostname === 'localhost',
-      isDev: import.meta.env.DEV,
-      isProd: import.meta.env.PROD,
-      hostname: window.location.hostname,
-      protocol: window.location.protocol,
-      userAgent: navigator.userAgent,
-      localStorageAvailable: typeof Storage !== 'undefined'
-    }
-  }
-  
-  // Test localStorage functionality
-  const testLocalStorage = () => {
-    try {
-      const testKey = 'test-photo-upload'
-      const testData = 'test-data-' + Date.now()
-      localStorage.setItem(testKey, testData)
-      const retrieved = localStorage.getItem(testKey)
-      localStorage.removeItem(testKey)
-      return retrieved === testData ? 'Working' : 'Failed'
-    } catch (error) {
-      console.error('LocalStorage test failed:', error)
-      return 'Error: ' + (error instanceof Error ? error.message : String(error))
-    }
-  }
-  
-  // Wrapper function to track changes
-  const updateTeamWithTracking = (teamId: string, updates: any) => {
-    console.log('updateTeamWithTracking called:', { teamId, updates })
-    updateTeam(teamId, updates)
-    setHasUnsavedChanges(true)
-    // Auto-save feedback
-    setTimeout(() => {
-      setSaveMessage('Changes saved automatically!')
-      setTimeout(() => setSaveMessage(''), 2000)
-    }, 100)
-  }
 
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) {
-      console.log('Logo upload started:', { fileName: file.name, fileSize: file.size })
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const base64Data = e.target?.result as string
-        console.log('Logo base64 data length:', base64Data?.length)
-        updateTeamWithTracking(team.id, { logo: base64Data })
-        console.log('Logo update called for team:', team.id)
+    if (file && team) {
+      setUploadMessage('Uploading logo...')
+      try {
+        await uploadTeamLogo(team.id, file)
+        setUploadMessage('Logo uploaded successfully!')
+        setTimeout(() => setUploadMessage(''), 3000)
+      } catch (error) {
+        console.error('Error uploading logo:', error)
+        setUploadMessage('Error uploading logo')
+        setTimeout(() => setUploadMessage(''), 3000)
       }
-      reader.readAsDataURL(file)
     }
   }
 
-  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    if (file) {
-      console.log('Photo upload started:', { fileName: file.name, fileSize: file.size })
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const base64Data = e.target?.result as string
-        console.log('Photo base64 data length:', base64Data?.length)
-        updateTeamWithTracking(team.id, { photo: base64Data })
-        console.log('Photo update called for team:', team.id)
+    if (file && team) {
+      setUploadMessage('Uploading photo...')
+      try {
+        await uploadTeamPhoto(team.id, file)
+        setUploadMessage('Photo uploaded successfully!')
+        setTimeout(() => setUploadMessage(''), 3000)
+      } catch (error) {
+        console.error('Error uploading photo:', error)
+        setUploadMessage('Error uploading photo')
+        setTimeout(() => setUploadMessage(''), 3000)
       }
-      reader.readAsDataURL(file)
     }
   }
 
   const addPlayer = () => {
+    if (!team) return
     const newPlayer: any = {
       id: uid(),
       firstName: 'New',
@@ -170,23 +95,23 @@ export default function TeamPage() {
       isPublic: true,
       createdAtISO: new Date().toISOString()
     }
-    updateTeamWithTracking(team.id, { 
+    updateTeam(team.id, { 
       players: [...(team.players || []), newPlayer] 
     })
   }
 
   const updatePlayer = (playerId: string, updates: any) => {
-    if (!team.players) return
+    if (!team?.players) return
     const updatedPlayers = team.players.map(p => 
       p.id === playerId ? { ...p, ...updates } : p
     )
-    updateTeamWithTracking(team.id, { players: updatedPlayers })
+    updateTeam(team.id, { players: updatedPlayers })
   }
 
   const removePlayer = (playerId: string) => {
-    if (!team.players) return
+    if (!team?.players) return
     const updatedPlayers = team.players.filter(p => p.id !== playerId)
-    updateTeamWithTracking(team.id, { players: updatedPlayers })
+    updateTeam(team.id, { players: updatedPlayers })
   }
 
   // Find tournaments where this team participates
@@ -261,7 +186,7 @@ export default function TeamPage() {
               <input
                 type="text"
                 value={team.name}
-                onChange={(e) => updateTeamWithTracking(team.id, { name: e.target.value })}
+                onChange={(e) => updateTeam(team.id, { name: e.target.value })}
                 className="text-3xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all"
                 placeholder="Team Name"
               />
@@ -282,7 +207,7 @@ export default function TeamPage() {
                       onChange={(e) => {
                         const newColors = [...(team.colors || ['#3B82F6'])]
                         newColors[index] = e.target.value
-                        updateTeamWithTracking(team.id, { colors: newColors })
+                        updateTeam(team.id, { colors: newColors })
                       }}
                       className="w-6 h-6 rounded border border-white/20"
                     />
@@ -291,7 +216,7 @@ export default function TeamPage() {
                     <button
                       onClick={() => {
                         const newColors = [...(team.colors || ['#3B82F6']), '#EF4444']
-                        updateTeamWithTracking(team.id, { colors: newColors })
+                        updateTeam(team.id, { colors: newColors })
                       }}
                       className="w-6 h-6 rounded border border-white/20 bg-white/10 hover:bg-white/20 flex items-center justify-center text-xs"
                       title="Add second color"
@@ -303,7 +228,7 @@ export default function TeamPage() {
                     <button
                       onClick={() => {
                         const newColors = team.colors.slice(0, -1)
-                        updateTeamWithTracking(team.id, { colors: newColors })
+                        updateTeam(team.id, { colors: newColors })
                       }}
                       className="w-6 h-6 rounded border border-white/20 bg-red-500/20 hover:bg-red-500/30 flex items-center justify-center text-xs text-red-400"
                       title="Remove last color"
@@ -319,7 +244,7 @@ export default function TeamPage() {
                   <input
                     type="date"
                     value={team.establishedDate ? team.establishedDate.split('T')[0] : ''}
-                    onChange={(e) => updateTeamWithTracking(team.id, { establishedDate: e.target.value })}
+                    onChange={(e) => updateTeam(team.id, { establishedDate: e.target.value })}
                     className="px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
                   />
                 </div>
@@ -371,7 +296,7 @@ export default function TeamPage() {
                   type="url"
                   placeholder="Facebook page..."
                   value={team.socialMedia.facebook}
-                                    onChange={(e) => updateTeamWithTracking(team.id, { 
+                                    onChange={(e) => updateTeam(team.id, { 
                     socialMedia: { 
                       ...team.socialMedia, 
                       facebook: e.target.value || undefined 
@@ -388,7 +313,7 @@ export default function TeamPage() {
                   type="url"
                   placeholder="Instagram profile..."
                   value={team.socialMedia.instagram}
-                                    onChange={(e) => updateTeamWithTracking(team.id, { 
+                                    onChange={(e) => updateTeam(team.id, { 
                     socialMedia: { 
                       ...team.socialMedia, 
                       instagram: e.target.value || undefined 
@@ -402,56 +327,14 @@ export default function TeamPage() {
         )}
       </section>
 
-      {/* Save Button */}
-      <div className="flex justify-center mb-6">
-        <div className="flex items-center gap-4">
-          {hasUnsavedChanges && (
-            <span className="text-yellow-400 text-sm">⚠️ You have unsaved changes</span>
-          )}
-          <button
-            onClick={saveChanges}
-            className="px-6 py-3 rounded-lg font-semibold transition-all bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            💾 Confirm Changes
-          </button>
-          <button
-            onClick={() => {
-              console.log('Testing photo persistence...')
-              const testPhoto = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-              updateTeamWithTracking(team.id, { photo: testPhoto })
-              console.log('Test photo set, check if it persists after refresh')
-            }}
-            className="px-4 py-2 rounded-lg font-semibold transition-all bg-yellow-600 hover:bg-yellow-700 text-white text-sm"
-          >
-            🧪 Test Photo
-          </button>
-          {saveMessage && (
-            <span className="text-green-400 text-sm">{saveMessage}</span>
-          )}
+      {/* Upload Status */}
+      {uploadMessage && (
+        <div className="flex justify-center mb-6">
+          <div className="px-4 py-2 rounded-lg glass text-sm">
+            {uploadMessage}
+          </div>
         </div>
-      </div>
-
-      {/* Debug Info */}
-      <div className="glass rounded-xl p-4 mb-6 max-w-4xl mx-auto">
-        <h3 className="text-lg font-semibold mb-2 text-yellow-400">🔧 Debug Info</h3>
-        <div className="text-sm space-y-1">
-          <p><strong>Team ID:</strong> {team.id}</p>
-          <p><strong>Team Name:</strong> {team.name}</p>
-          <p><strong>Players Count:</strong> {team.players?.length || 0}</p>
-          <p><strong>Has Logo:</strong> {team.logo ? 'Yes' : 'No'}</p>
-          <p><strong>Logo Length:</strong> {team.logo ? team.logo.length : 0} characters</p>
-          <p><strong>Has Photo:</strong> {team.photo ? 'Yes' : 'No'}</p>
-          <p><strong>Photo Length:</strong> {team.photo ? team.photo.length : 0} characters</p>
-          <p><strong>Colors:</strong> {team.colors?.join(', ') || 'None'}</p>
-          <p><strong>Organizer ID:</strong> {team.organizerId || 'None'}</p>
-          <p><strong>Created:</strong> {new Date(team.createdAtISO).toLocaleString()}</p>
-          <p><strong>LocalStorage Size:</strong> {checkLocalStorageUsage()} KB</p>
-          <p><strong>Environment:</strong> {getEnvironmentInfo().isLocalhost ? 'Localhost' : 'Deployed'}</p>
-          <p><strong>Hostname:</strong> {getEnvironmentInfo().hostname}</p>
-          <p><strong>Protocol:</strong> {getEnvironmentInfo().protocol}</p>
-          <p><strong>LocalStorage Test:</strong> {testLocalStorage()}</p>
-        </div>
-      </div>
+      )}
 
       {/* Team Statistics Summary */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">

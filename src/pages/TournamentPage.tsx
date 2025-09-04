@@ -15,30 +15,8 @@ export default function TournamentPage() {
   const tournaments = getOrganizerTournaments()
   const teams = getOrganizerTeams()
   
-  // State for tracking unsaved changes
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [saveMessage, setSaveMessage] = useState('')
-  
   // Find the specific tournament by ID
   const tournament = tournaments.find(t => t.id === id)
-  
-  // Save function - since Zustand auto-saves, this is just for user feedback
-  const saveChanges = () => {
-    setHasUnsavedChanges(false)
-    setSaveMessage('All changes are automatically saved!')
-    setTimeout(() => setSaveMessage(''), 3000)
-  }
-  
-  // Wrapper function to track changes
-  const updateTournamentWithTracking = (tournamentId: string, updates: any) => {
-    updateTournament(tournamentId, updates)
-    setHasUnsavedChanges(true)
-    // Auto-save feedback
-    setTimeout(() => {
-      setSaveMessage('Changes saved automatically!')
-      setTimeout(() => setSaveMessage(''), 2000)
-    }, 100)
-  }
   
   // Redirect if no organizer is selected
   if (!currentOrganizer) {
@@ -117,19 +95,19 @@ export default function TournamentPage() {
   function setScore(mid: string, homeGoals: number, awayGoals: number) {
     if (!tournament) return
     const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, homeGoals: isNaN(homeGoals) ? undefined : homeGoals, awayGoals: isNaN(awayGoals) ? undefined : awayGoals } : m))
-    updateTournamentWithTracking(tournament.id, { matches })
+    updateTournament(tournament.id, { matches })
   }
 
   function setPlayoffTeams(mid: string, homeTeamId: string, awayTeamId: string) {
     if (!tournament) return
     const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, homeTeamId, awayTeamId } : m))
-    updateTournamentWithTracking(tournament.id, { matches })
+    updateTournament(tournament.id, { matches })
   }
 
   function setDate(mid: string, dateISO: string) {
     if (!tournament) return
     const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, dateISO } : m))
-    updateTournamentWithTracking(tournament.id, { matches })
+    updateTournament(tournament.id, { matches })
   }
 
   const handleEndChampionship = () => {
@@ -143,7 +121,7 @@ export default function TournamentPage() {
     const playoffMatches = createPlayoffMatches(qualifiedTeams, tournament.id)
     
     // Update tournament with playoff matches
-    updateTournamentWithTracking(tournament.id, {
+    updateTournament(tournament.id, {
       matches: [...tournament.matches, ...playoffMatches]
     })
   }
@@ -305,7 +283,7 @@ export default function TournamentPage() {
                  <div className="text-center">
                    <label className="block text-sm font-medium mb-2">Tournament Logo</label>
                    <LogoUploader 
-                     onLogoChange={(logoDataUrl) => updateTournamentWithTracking(tournament.id, { logo: logoDataUrl })}
+                     onLogoChange={(logoDataUrl) => updateTournament(tournament.id, { logo: logoDataUrl })}
                      currentLogo={tournament.logo}
                      size={80}
                    />
@@ -320,7 +298,7 @@ export default function TournamentPage() {
                      type="text"
                      placeholder="Tournament location name..."
                      value={tournament.location?.name || ''}
-                                          onChange={(e) => updateTournamentWithTracking(tournament.id, { 
+                                          onChange={(e) => updateTournament(tournament.id, { 
                        location: { 
                          ...tournament.location, 
                          name: e.target.value || undefined 
@@ -335,7 +313,7 @@ export default function TournamentPage() {
                      type="url"
                      placeholder="Location link..."
                      value={tournament.location?.link || ''}
-                                          onChange={(e) => updateTournamentWithTracking(tournament.id, { 
+                                          onChange={(e) => updateTournament(tournament.id, { 
                        location: { 
                          ...tournament.location, 
                          link: e.target.value || undefined 
@@ -353,7 +331,7 @@ export default function TournamentPage() {
                      type="url"
                      placeholder="Facebook page..."
                      value={tournament.socialMedia?.facebook || ''}
-                                          onChange={(e) => updateTournamentWithTracking(tournament.id, { 
+                                          onChange={(e) => updateTournament(tournament.id, { 
                        socialMedia: { 
                          ...tournament.socialMedia, 
                          facebook: e.target.value || undefined 
@@ -368,7 +346,7 @@ export default function TournamentPage() {
                      type="url"
                      placeholder="Instagram profile..."
                      value={tournament.socialMedia?.instagram || ''}
-                                          onChange={(e) => updateTournamentWithTracking(tournament.id, { 
+                                          onChange={(e) => updateTournament(tournament.id, { 
                        socialMedia: { 
                          ...tournament.socialMedia, 
                          instagram: e.target.value || undefined 
@@ -380,23 +358,6 @@ export default function TournamentPage() {
                </div>
       </section>
 
-      {/* Save Button */}
-      <div className="flex justify-center mb-6">
-        <div className="flex items-center gap-4">
-          {hasUnsavedChanges && (
-            <span className="text-yellow-400 text-sm">⚠️ You have unsaved changes</span>
-          )}
-          <button
-            onClick={saveChanges}
-            className="px-6 py-3 rounded-lg font-semibold transition-all bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            💾 Confirm Changes
-          </button>
-          {saveMessage && (
-            <span className="text-green-400 text-sm">{saveMessage}</span>
-          )}
-        </div>
-      </div>
 
       {/* Championship Table */}
       <section className="glass rounded-xl p-6 w-full max-w-4xl">
