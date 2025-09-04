@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from '../store'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import DebugInfo from '../components/DebugInfo'
 
 export default function AdminPage() {
@@ -30,7 +30,7 @@ export default function AdminPage() {
       if (tournaments.length > 0) {
         // Sort tournaments by creation date (most recent first)
         const sortedTournaments = [...tournaments].sort((a, b) => 
-          new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+          new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime()
         )
         const lastTournament = sortedTournaments[0]
         navigate(`/tournaments/${lastTournament.id}`)
