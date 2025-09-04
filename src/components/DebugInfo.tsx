@@ -8,8 +8,7 @@ export default function DebugInfo() {
     tournaments, 
     getCurrentOrganizer,
     getOrganizerTeams,
-    getOrganizerTournaments,
-    migrateDataToCurrentOrganizer
+    getOrganizerTournaments
   } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
@@ -75,12 +74,9 @@ export default function DebugInfo() {
         
         {currentOrganizerId && (
           <div className="mt-3 pt-2 border-t border-white/20">
-            <button
-              onClick={migrateDataToCurrentOrganizer}
-              className="px-3 py-1 rounded glass hover:bg-white/10 transition-all text-xs"
-            >
-              🔧 Migrate Old Data
-            </button>
+            <div className="text-xs text-gray-300">
+              🔧 AWS Database Active
+            </div>
           </div>
         )}
       </div>

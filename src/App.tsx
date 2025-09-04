@@ -10,20 +10,16 @@ function App() {
   const setCurrentOrganizer = useAppStore((s) => s.setCurrentOrganizer)
 
   const currentOrganizer = getCurrentOrganizer()
-  const migrateDataToCurrentOrganizer = useAppStore((s) => s.migrateDataToCurrentOrganizer)
-  const migrateColorSystem = useAppStore((s) => s.migrateColorSystem)
-  const migratePlayerStructure = useAppStore((s) => s.migratePlayerStructure)
+  const loadOrganizers = useAppStore((s) => s.loadOrganizers)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme)
   }, [settings])
 
   useEffect(() => {
-    // Run migrations when app starts
-    migrateDataToCurrentOrganizer()
-    migrateColorSystem()
-    migratePlayerStructure()
-  }, [migrateDataToCurrentOrganizer, migrateColorSystem, migratePlayerStructure])
+    // Load organizers from AWS when app starts
+    loadOrganizers()
+  }, [loadOrganizers])
 
   const handleThemeToggle = () => {
     updateSettings({ theme: settings.theme === 'dark' ? 'bright' : 'dark' })
