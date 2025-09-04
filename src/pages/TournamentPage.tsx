@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { generatePlayoffBrackets } from '../utils/schedule'
 import LocationIcon from '../components/LocationIcon'
 import FacebookIcon from '../components/FacebookIcon'
