@@ -1,22 +1,42 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAppStore } from '../store'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import DebugInfo from '../components/DebugInfo'
 
 export default function HomePage() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [organizerName, setOrganizerName] = useState('')
   const [organizerEmail, setOrganizerEmail] = useState('')
+  const navigate = useNavigate()
   
   const { 
     organizers, 
     // currentOrganizerId, 
     createOrganizer, 
     setCurrentOrganizer,
-    getCurrentOrganizer
+    getCurrentOrganizer,
+    getOrganizerTournaments
   } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
+  
+  // Redirect to last created tournament when organizer is logged in
+  useEffect(() => {
+    if (currentOrganizer) {
+      const tournaments = getOrganizerTournaments()
+      if (tournaments.length > 0) {
+        // Sort tournaments by creation date (most recent first)
+        const sortedTournaments = [...tournaments].sort((a, b) => 
+          new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime()
+        )
+        const lastTournament = sortedTournaments[0]
+        navigate(`/tournaments/${lastTournament.id}`)
+      } else {
+        // If no tournaments exist, go to tournaments page to create one
+        navigate('/tournaments')
+      }
+    }
+  }, [currentOrganizer, getOrganizerTournaments, navigate])
   
   const handleCreateOrganizer = (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,44 +53,16 @@ export default function HomePage() {
   }
 
   
+  // Show loading state while redirecting
   if (currentOrganizer) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-2">Welcome, {currentOrganizer.name}!</h1>
-            <p className="opacity-80">You're now in your organizer space</p>
+            <p className="opacity-80">Redirecting to your latest tournament...</p>
           </div>
-          
-          <div className="grid gap-4">
-            <Link
-              to="/teams"
-              className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-lg font-medium"
-            >
-              👥 Manage Teams
-            </Link>
-            
-            <Link
-              to="/tournaments"
-              className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-lg font-medium"
-            >
-              🏆 Manage Tournaments
-            </Link>
-            
-            <Link
-              to="/calendar"
-              className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-lg font-medium"
-            >
-              📅 View Calendar
-            </Link>
-            
-            <button
-              onClick={() => setCurrentOrganizer('')}
-              className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-lg font-medium opacity-70 hover:opacity-100"
-            >
-              🔄 Switch Organizer
-            </button>
-          </div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
         </div>
         <DebugInfo />
       </div>
