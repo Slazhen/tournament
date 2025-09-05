@@ -233,16 +233,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   updateTournament: async (tournamentId: string, updates: Partial<Tournament>) => {
     try {
+      console.log('Store: Updating tournament in AWS:', { tournamentId, updates })
+      
       const success = await tournamentService.update(tournamentId, updates)
+      console.log('Store: AWS update result:', success)
+      
       if (success) {
+        console.log('Store: Updating local state with:', updates)
         set(state => ({
           tournaments: state.tournaments.map(tournament =>
             tournament.id === tournamentId ? { ...tournament, ...updates } : tournament
           )
         }))
+        console.log('Store: Local state updated successfully')
+      } else {
+        console.error('Store: AWS update failed')
       }
     } catch (error) {
-      console.error('Error updating tournament:', error)
+      console.error('Store: Error updating tournament:', error)
     }
   },
 
@@ -464,12 +472,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   uploadTournamentLogo: async (tournamentId: string, file: File) => {
     try {
-      const key = `tournaments/${tournamentId}/logo-${Date.now()}.${file.name.split('.').pop()}`
-      const url = await uploadImageToS3(file, key)
+      console.log('Store: Starting tournament logo upload:', { tournamentId, fileName: file.name })
       
+      const key = `tournaments/${tournamentId}/logo-${Date.now()}.${file.name.split('.').pop()}`
+      console.log('Store: Generated S3 key:', key)
+      
+      const url = await uploadImageToS3(file, key)
+      console.log('Store: Uploaded to S3, got URL:', url)
+      
+      console.log('Store: Updating tournament with logo URL:', { tournamentId, logo: url })
       await get().updateTournament(tournamentId, { logo: url })
+      
+      console.log('Store: Tournament logo upload completed successfully')
     } catch (error) {
-      console.error('Error uploading tournament logo:', error)
+      console.error('Store: Error uploading tournament logo:', error)
     }
   },
 
