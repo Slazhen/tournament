@@ -183,6 +183,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const currentOrganizerId = get().currentOrganizerId
     if (!currentOrganizerId) return
 
+    console.log('Store: Creating tournament via AWS:', {
+      name,
+      teamIds,
+      format,
+      organizerId: currentOrganizerId
+    })
+
     set(state => ({ loading: { ...state.loading, tournaments: true } }))
     
     try {

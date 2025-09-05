@@ -285,14 +285,22 @@ export const tournamentService = {
         createdAtISO: new Date().toISOString(),
       }
       
+      console.log('AWS: Creating tournament in DynamoDB:', {
+        tableName: TABLES.TOURNAMENTS,
+        tournamentId: newTournament.id,
+        tournamentName: newTournament.name,
+        organizerId: newTournament.organizerId
+      })
+      
       await dynamoDB.send(new PutCommand({
         TableName: TABLES.TOURNAMENTS,
         Item: newTournament,
       }))
       
+      console.log('AWS: Tournament created successfully in DynamoDB:', newTournament.id)
       return newTournament
     } catch (error) {
-      console.error('Error creating tournament:', error)
+      console.error('AWS: Error creating tournament in DynamoDB:', error)
       return null
     }
   },
