@@ -175,9 +175,42 @@ export default function NewPublicTournament() {
             </div>
           )}
           <h1 className="text-5xl font-bold text-white mb-4">{tournament.name}</h1>
-          {tournament.location && (
-            <p className="text-xl text-gray-300 mb-8">📍 {tournament.location}</p>
-          )}
+          
+          {/* Tournament Info */}
+          <div className="space-y-4 mb-8">
+            {tournament.location && (
+              <p className="text-xl text-gray-300">📍 {tournament.location}</p>
+            )}
+            
+            {/* Social Media Links */}
+            {tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
+              <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
+                {tournament.socialMedia.facebook && (
+                  <a 
+                    href={tournament.socialMedia.facebook} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-all backdrop-blur-sm"
+                  >
+                    <span className="text-blue-400">📘</span>
+                    <span className="text-white">Facebook</span>
+                  </a>
+                )}
+                {tournament.socialMedia.instagram && (
+                  <a 
+                    href={tournament.socialMedia.instagram} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-all backdrop-blur-sm"
+                  >
+                    <span className="text-pink-400">📷</span>
+                    <span className="text-white">Instagram</span>
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+          
           <div className="flex justify-center gap-4 text-sm text-gray-300">
             <span>{teams.length} Teams</span>
             <span>•</span>

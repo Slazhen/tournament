@@ -7,6 +7,7 @@ interface Team {
   id: string
   name: string
   logo?: string
+  photo?: string
   colors?: string[]
   players?: Player[]
   socialMedia?: any
@@ -97,21 +98,62 @@ export default function NewPublicTeam() {
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-black/20"></div>
         <div className="relative container mx-auto px-4 py-16 text-center">
-          {team.logo && (
-            <div className="mb-6">
-              <img 
-                src={team.logo} 
-                alt={`${team.name} logo`}
-                className="w-32 h-32 mx-auto rounded-full object-cover border-4 border-white/20"
-              />
-            </div>
-          )}
+          {/* Team Logo and Photo */}
+          <div className="mb-6 flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6">
+            {team.logo && (
+              <div className="flex-shrink-0">
+                <img 
+                  src={team.logo} 
+                  alt={`${team.name} logo`}
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-white/20"
+                />
+              </div>
+            )}
+            {team.photo && (
+              <div className="flex-shrink-0">
+                <img 
+                  src={team.photo} 
+                  alt={`${team.name} team photo`}
+                  className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl object-cover border-4 border-white/20"
+                />
+              </div>
+            )}
+          </div>
           <h1 className="text-5xl font-bold text-white mb-4">{team.name}</h1>
           {team.establishedDate && (
-            <p className="text-xl text-gray-300 mb-8">
+            <p className="text-xl text-gray-300 mb-4">
               Established {new Date(team.establishedDate).getFullYear()}
             </p>
           )}
+          
+          {/* Social Media Links */}
+          {team.socialMedia && (team.socialMedia.facebook || team.socialMedia.instagram) && (
+            <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6 mb-6">
+              {team.socialMedia.facebook && (
+                <a 
+                  href={team.socialMedia.facebook} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-all backdrop-blur-sm"
+                >
+                  <span className="text-blue-400">📘</span>
+                  <span className="text-white">Facebook</span>
+                </a>
+              )}
+              {team.socialMedia.instagram && (
+                <a 
+                  href={team.socialMedia.instagram} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-all backdrop-blur-sm"
+                >
+                  <span className="text-pink-400">📷</span>
+                  <span className="text-white">Instagram</span>
+                </a>
+              )}
+            </div>
+          )}
+          
           <div className="flex justify-center gap-4 text-sm text-gray-300">
             <span>{publicPlayers.length} Players</span>
             {team.colors && team.colors.length > 0 && (
