@@ -10,9 +10,7 @@ export default function PublicTournamentPage() {
   const { id, orgName, tournamentId } = useParams()
   const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
   const [isLoading, setIsLoading] = useState(true)
-  
-  const tournaments = getAllTournaments()
-  const teams = getAllTeams()
+  const [dataLoaded, setDataLoaded] = useState(false)
   
   // Handle both old and new URL structures
   const actualTournamentId = tournamentId || id
@@ -22,6 +20,7 @@ export default function PublicTournamentPage() {
     const loadData = async () => {
       try {
         await Promise.all([loadTournaments(), loadTeams()])
+        setDataLoaded(true)
       } catch (error) {
         console.error('Error loading data for public tournament page:', error)
       } finally {
@@ -31,7 +30,7 @@ export default function PublicTournamentPage() {
     loadData()
   }, [loadTournaments, loadTeams])
 
-  if (isLoading) {
+  if (isLoading || !dataLoaded) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -41,6 +40,10 @@ export default function PublicTournamentPage() {
       </div>
     )
   }
+
+  // Only access data after it's loaded
+  const tournaments = getAllTournaments()
+  const teams = getAllTeams()
   
   // Debug logging
   console.log('PublicTournamentPage Debug:', {

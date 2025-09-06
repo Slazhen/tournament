@@ -9,15 +9,14 @@ export default function PublicTeamPage() {
   const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  
-  const teams = getAllTeams()
-  const tournaments = getAllTournaments()
+  const [dataLoaded, setDataLoaded] = useState(false)
 
   // Load data from AWS when component mounts
   useEffect(() => {
     const loadData = async () => {
       try {
         await Promise.all([loadTournaments(), loadTeams()])
+        setDataLoaded(true)
       } catch (error) {
         console.error('Error loading data for public team page:', error)
       } finally {
@@ -27,7 +26,7 @@ export default function PublicTeamPage() {
     loadData()
   }, [loadTournaments, loadTeams])
 
-  if (isLoading) {
+  if (isLoading || !dataLoaded) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -37,6 +36,10 @@ export default function PublicTeamPage() {
       </div>
     )
   }
+
+  // Only access data after it's loaded
+  const teams = getAllTeams()
+  const tournaments = getAllTournaments()
   
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)

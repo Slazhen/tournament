@@ -17,6 +17,7 @@ import PublicTournamentPage from './pages/PublicTournamentPage.tsx'
 import PublicTeamPage from './pages/PublicTeamPage.tsx'
 import PublicPlayerPage from './pages/PublicPlayerPage.tsx'
 import PublicMatchPage from './pages/PublicMatchPage.tsx'
+import ErrorBoundary from './components/ErrorBoundary.tsx'
 
 const router = createBrowserRouter([
   {
@@ -38,10 +39,38 @@ const router = createBrowserRouter([
     path: '/public',
     element: <App />,
     children: [
-      { path: 'tournaments/:id', element: <PublicTournamentPage /> },
-      { path: 'tournaments/:tournamentId/matches/:matchId', element: <PublicMatchPage /> },
-      { path: 'teams/:teamId', element: <PublicTeamPage /> },
-      { path: 'players/:playerId', element: <PublicPlayerPage /> },
+      { 
+        path: 'tournaments/:id', 
+        element: (
+          <ErrorBoundary>
+            <PublicTournamentPage />
+          </ErrorBoundary>
+        )
+      },
+      { 
+        path: 'tournaments/:tournamentId/matches/:matchId', 
+        element: (
+          <ErrorBoundary>
+            <PublicMatchPage />
+          </ErrorBoundary>
+        )
+      },
+      { 
+        path: 'teams/:teamId', 
+        element: (
+          <ErrorBoundary>
+            <PublicTeamPage />
+          </ErrorBoundary>
+        )
+      },
+      { 
+        path: 'players/:playerId', 
+        element: (
+          <ErrorBoundary>
+            <PublicPlayerPage />
+          </ErrorBoundary>
+        )
+      },
     ],
   },
   // New URL structure: /orgname/tournamentid, /orgname/playerid
@@ -49,8 +78,22 @@ const router = createBrowserRouter([
     path: '/:orgName',
     element: <App />,
     children: [
-      { path: ':tournamentId', element: <PublicTournamentPage /> },
-      { path: 'players/:playerId', element: <PublicPlayerPage /> },
+      { 
+        path: ':tournamentId', 
+        element: (
+          <ErrorBoundary>
+            <PublicTournamentPage />
+          </ErrorBoundary>
+        )
+      },
+      { 
+        path: 'players/:playerId', 
+        element: (
+          <ErrorBoundary>
+            <PublicPlayerPage />
+          </ErrorBoundary>
+        )
+      },
     ],
   },
 ])
