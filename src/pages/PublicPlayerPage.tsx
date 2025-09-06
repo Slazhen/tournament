@@ -5,7 +5,7 @@ import InstagramIcon from '../components/InstagramIcon'
 import { useEffect, useState } from 'react'
 
 export default function PublicPlayerPage() {
-  const { playerId, orgName } = useParams()
+  const { playerId } = useParams()
   const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
   const [isLoading, setIsLoading] = useState(true)
   
