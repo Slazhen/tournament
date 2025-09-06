@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { dynamoDB, TABLES } from '../lib/aws-config'
-import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { ScanCommand } from '@aws-sdk/lib-dynamodb'
 
 interface Player {
   id: string
