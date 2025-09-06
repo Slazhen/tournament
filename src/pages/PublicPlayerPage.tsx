@@ -2,13 +2,40 @@ import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
+import { useEffect, useState } from 'react'
 
 export default function PublicPlayerPage() {
-  const { playerId } = useParams()
-  const { getAllTournaments, getAllTeams } = useAppStore()
+  const { playerId, orgName } = useParams()
+  const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
+  const [isLoading, setIsLoading] = useState(true)
   
   const teams = getAllTeams()
   const tournaments = getAllTournaments()
+
+  // Load data from AWS when component mounts
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        await Promise.all([loadTournaments(), loadTeams()])
+      } catch (error) {
+        console.error('Error loading data for public player page:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadData()
+  }, [loadTournaments, loadTeams])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="opacity-80">Loading player...</p>
+        </div>
+      </div>
+    )
+  }
   
   // Find the player across all teams
   let player: any = null

@@ -28,22 +28,31 @@ const router = createBrowserRouter([
       { path: 'tournaments', element: <TournamentsPage /> },
       { path: 'tournaments/:id', element: <TournamentPage /> },
       { path: 'tournaments/:tournamentId/matches/:matchId', element: <MatchPage /> },
-                          { path: 'teams', element: <TeamsPage /> },
-                    { path: 'teams/:teamId', element: <TeamPage /> },
-                    { path: 'players/:playerId', element: <PlayerPage /> },
-                    { path: 'calendar', element: <CalendarPage /> },
+      { path: 'teams', element: <TeamsPage /> },
+      { path: 'teams/:teamId', element: <TeamPage /> },
+      { path: 'players/:playerId', element: <PlayerPage /> },
+      { path: 'calendar', element: <CalendarPage /> },
     ],
   },
-                  {
-                  path: '/public',
-                  element: <App />,
-                  children: [
-                    { path: 'tournaments/:id', element: <PublicTournamentPage /> },
-                    { path: 'tournaments/:tournamentId/matches/:matchId', element: <PublicMatchPage /> },
-                    { path: 'teams/:teamId', element: <PublicTeamPage /> },
-                    { path: 'players/:playerId', element: <PublicPlayerPage /> },
-                  ],
-                },
+  {
+    path: '/public',
+    element: <App />,
+    children: [
+      { path: 'tournaments/:id', element: <PublicTournamentPage /> },
+      { path: 'tournaments/:tournamentId/matches/:matchId', element: <PublicMatchPage /> },
+      { path: 'teams/:teamId', element: <PublicTeamPage /> },
+      { path: 'players/:playerId', element: <PublicPlayerPage /> },
+    ],
+  },
+  // New URL structure: /orgname/tournamentid, /orgname/playerid
+  {
+    path: '/:orgName',
+    element: <App />,
+    children: [
+      { path: ':tournamentId', element: <PublicTournamentPage /> },
+      { path: 'players/:playerId', element: <PublicPlayerPage /> },
+    ],
+  },
 ])
 
 createRoot(document.getElementById('root')!).render(

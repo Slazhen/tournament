@@ -96,13 +96,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setCurrentOrganizer: (organizerId: string) => {
     set({ currentOrganizerId: organizerId || null })
     // Persist to localStorage (or remove if empty)
-    if (organizerId) {
-      localStorage.setItem('currentOrganizerId', organizerId)
-      // Load data for the selected organizer
-      get().loadTeams()
-      get().loadTournaments()
-    } else {
-      localStorage.removeItem('currentOrganizerId')
+    try {
+      if (organizerId) {
+        localStorage.setItem('currentOrganizerId', organizerId)
+        // Load data for the selected organizer
+        get().loadTeams()
+        get().loadTournaments()
+      } else {
+        localStorage.removeItem('currentOrganizerId')
+      }
+    } catch (error) {
+      console.error('Store: Error managing localStorage:', error)
     }
   },
 
@@ -380,13 +384,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
       })
       
       // Restore current organizer from localStorage
-      const savedOrganizerId = localStorage.getItem('currentOrganizerId')
-      if (savedOrganizerId && organizers.find(org => org.id === savedOrganizerId)) {
-        console.log('Store: Restoring current organizer from localStorage:', savedOrganizerId)
-        set({ currentOrganizerId: savedOrganizerId })
-        // Load data for the restored organizer
-        get().loadTeams()
-        get().loadTournaments()
+      try {
+        const savedOrganizerId = localStorage.getItem('currentOrganizerId')
+        if (savedOrganizerId && organizers.find(org => org.id === savedOrganizerId)) {
+          console.log('Store: Restoring current organizer from localStorage:', savedOrganizerId)
+          set({ currentOrganizerId: savedOrganizerId })
+          // Load data for the restored organizer
+          get().loadTeams()
+          get().loadTournaments()
+        }
+      } catch (error) {
+        console.error('Store: Error restoring organizer from localStorage:', error)
+        // Clear potentially corrupted localStorage
+        localStorage.removeItem('currentOrganizerId')
       }
     } catch (error) {
       console.error('Error loading organizers:', error)

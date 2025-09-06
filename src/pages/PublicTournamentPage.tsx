@@ -1,21 +1,51 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { generatePlayoffBrackets } from '../utils/schedule'
 import LocationIcon from '../components/LocationIcon'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 
 export default function PublicTournamentPage() {
-  const { id } = useParams()
-  const { getAllTournaments, getAllTeams } = useAppStore()
+  const { id, orgName, tournamentId } = useParams()
+  const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
+  const [isLoading, setIsLoading] = useState(true)
   
   const tournaments = getAllTournaments()
   const teams = getAllTeams()
   
+  // Handle both old and new URL structures
+  const actualTournamentId = tournamentId || id
+
+  // Load data from AWS when component mounts
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        await Promise.all([loadTournaments(), loadTeams()])
+      } catch (error) {
+        console.error('Error loading data for public tournament page:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadData()
+  }, [loadTournaments, loadTeams])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="opacity-80">Loading tournament...</p>
+        </div>
+      </div>
+    )
+  }
+  
   // Debug logging
   console.log('PublicTournamentPage Debug:', {
-    tournamentId: id,
+    tournamentId: actualTournamentId,
+    orgName,
     totalTournaments: tournaments.length,
     totalTeams: teams.length,
     tournaments: tournaments.map(t => ({ 
@@ -32,11 +62,11 @@ export default function PublicTournamentPage() {
   
   // Check if tournament exists
   if (tournaments.length > 0) {
-    console.log('Found tournament:', tournaments.find(t => t.id === id))
+    console.log('Found tournament:', tournaments.find(t => t.id === actualTournamentId))
   }
   
   // Find the specific tournament by ID
-  const tournament = tournaments.find(t => t.id === id)
+  const tournament = tournaments.find(t => t.id === actualTournamentId)
   
   // Show tournament not found if it doesn't exist
   if (!tournament) {
@@ -46,7 +76,7 @@ export default function PublicTournamentPage() {
           <h1 className="text-xl font-semibold mb-4">Tournament Not Found</h1>
           <p className="opacity-80 mb-6">The tournament you're looking for doesn't exist.</p>
           <div className="text-sm opacity-60 mb-4">
-            <p>Looking for ID: {id}</p>
+            <p>Looking for ID: {actualTournamentId}</p>
             <p>Available tournaments: {tournaments.length}</p>
             <p>Available teams: {teams.length}</p>
           </div>
