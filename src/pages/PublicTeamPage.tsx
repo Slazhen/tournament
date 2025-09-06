@@ -38,8 +38,8 @@ export default function PublicTeamPage() {
   }
 
   // Only access data after it's loaded
-  const teams = getAllTeams()
-  const tournaments = getAllTournaments()
+  const teams = getAllTeams() || []
+  const tournaments = getAllTournaments() || []
   
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)

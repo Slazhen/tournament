@@ -41,35 +41,57 @@ export default function PublicTournamentPage() {
     )
   }
 
-  // Only access data after it's loaded
-  const tournaments = getAllTournaments()
-  const teams = getAllTeams()
+  // Only access data after it's loaded with error handling
+  let tournaments: any[] = []
+  let teams: any[] = []
+  let tournament: any = null
   
-  // Debug logging
-  console.log('PublicTournamentPage Debug:', {
-    tournamentId: actualTournamentId,
-    orgName,
-    totalTournaments: tournaments.length,
-    totalTeams: teams.length,
-    tournaments: tournaments.map(t => ({ 
-      id: t.id, 
-      name: t.name, 
-      organizerId: t.organizerId,
-      teamIds: t.teamIds?.length || 0,
-      matches: t.matches?.length || 0
-    })),
-    teams: teams.map(t => ({ id: t.id, name: t.name, organizerId: t.organizerId })),
-    rawTournaments: tournaments,
-    rawTeams: teams
-  })
-  
-  // Check if tournament exists
-  if (tournaments.length > 0) {
-    console.log('Found tournament:', tournaments.find(t => t.id === actualTournamentId))
+  try {
+    tournaments = getAllTournaments() || []
+    teams = getAllTeams() || []
+    
+    // Debug logging
+    console.log('PublicTournamentPage Debug:', {
+      tournamentId: actualTournamentId,
+      orgName,
+      totalTournaments: tournaments.length,
+      totalTeams: teams.length,
+      tournaments: tournaments.map(t => t ? { 
+        id: t.id, 
+        name: t.name, 
+        organizerId: t.organizerId,
+        teamIds: t.teamIds?.length || 0,
+        matches: t.matches?.length || 0
+      } : null).filter(Boolean),
+      teams: teams.map(t => t ? { id: t.id, name: t.name, organizerId: t.organizerId } : null).filter(Boolean),
+      rawTournaments: tournaments,
+      rawTeams: teams
+    })
+    
+    // Check if tournament exists
+    if (tournaments.length > 0) {
+      console.log('Found tournament:', tournaments.find(t => t && t.id === actualTournamentId))
+    }
+    
+    // Find the specific tournament by ID
+    tournament = tournaments.find(t => t && t.id === actualTournamentId)
+  } catch (error) {
+    console.error('Error accessing data in PublicTournamentPage:', error)
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <h1 className="text-xl font-semibold mb-4">Error Loading Data</h1>
+          <p className="opacity-80 mb-6">There was an error loading the tournament data. Please try again.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all"
+          >
+            Refresh Page
+          </button>
+        </div>
+      </div>
+    )
   }
-  
-  // Find the specific tournament by ID
-  const tournament = tournaments.find(t => t.id === actualTournamentId)
   
   // Show tournament not found if it doesn't exist
   if (!tournament) {

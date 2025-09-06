@@ -35,8 +35,8 @@ export default function PublicMatchPage() {
   }
 
   // Only access data after it's loaded
-  const tournaments = getAllTournaments()
-  const teams = getAllTeams()
+  const tournaments = getAllTournaments() || []
+  const teams = getAllTeams() || []
 
   const tournament = tournaments.find(t => t.id === tournamentId)
   const match = tournament?.matches.find(m => m.id === matchId)

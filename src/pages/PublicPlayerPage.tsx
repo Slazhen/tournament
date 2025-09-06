@@ -37,19 +37,21 @@ export default function PublicPlayerPage() {
   }
 
   // Only access data after it's loaded
-  const teams = getAllTeams()
-  const tournaments = getAllTournaments()
+  const teams = getAllTeams() || []
+  const tournaments = getAllTournaments() || []
   
   // Find the player across all teams
   let player: any = null
   let currentTeam: any = null
   
   for (const team of teams) {
-    const foundPlayer = team.players?.find(p => p.id === playerId)
-    if (foundPlayer && foundPlayer.isPublic) {
-      player = foundPlayer
-      currentTeam = team
-      break
+    if (team && team.players && Array.isArray(team.players)) {
+      const foundPlayer = team.players.find(p => p && p.id === playerId)
+      if (foundPlayer && foundPlayer.isPublic) {
+        player = foundPlayer
+        currentTeam = team
+        break
+      }
     }
   }
   
