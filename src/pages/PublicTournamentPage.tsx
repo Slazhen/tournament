@@ -121,27 +121,60 @@ export default function PublicTournamentPage() {
     )
   }
 
+  // Additional safety check for tournament data structure
+  if (!tournament.matches || !Array.isArray(tournament.matches) || 
+      !tournament.teamIds || !Array.isArray(tournament.teamIds)) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <h1 className="text-xl font-semibold mb-4">Invalid Tournament Data</h1>
+          <p className="opacity-80 mb-6">The tournament data is corrupted or incomplete.</p>
+          <Link to="/" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all">
+            Go to Home
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   const rounds = useMemo(() => {
-    if (!tournament) return [] as { round: number; matchIds: string[] }[]
-    
-    // Only include league matches (non-playoff matches)
-    const leagueMatches = tournament.matches.filter((m: any) => !m.isPlayoff)
-    
-    const groups: Record<number, string[]> = {}
-    for (const m of leagueMatches) {
-      const r = (m as any).round ?? 0
-      groups[r] = groups[r] || []
-      groups[r].push((m as any).id)
+    if (!tournament || !tournament.matches || !Array.isArray(tournament.matches)) {
+      return [] as { round: number; matchIds: string[] }[]
     }
-    return Object.entries(groups)
-      .map(([r, ids]) => ({ round: Number(r), matchIds: ids }))
-      .sort((a, b) => a.round - b.round)
+    
+    try {
+      // Only include league matches (non-playoff matches)
+      const leagueMatches = tournament.matches.filter((m: any) => m && !m.isPlayoff)
+      
+      const groups: Record<number, string[]> = {}
+      for (const m of leagueMatches) {
+        if (m && typeof m === 'object') {
+          const r = (m as any).round ?? 0
+          groups[r] = groups[r] || []
+          groups[r].push((m as any).id)
+        }
+      }
+      return Object.entries(groups)
+        .map(([r, ids]) => ({ round: Number(r), matchIds: ids }))
+        .sort((a, b) => a.round - b.round)
+    } catch (error) {
+      console.error('Error calculating rounds:', error)
+      return [] as { round: number; matchIds: string[] }[]
+    }
   }, [tournament])
 
   // Separate playoff matches
   const playoffMatches = useMemo(() => {
-    if (!tournament) return []
-    return tournament.matches.filter((m: any) => m.isPlayoff)
+    if (!tournament || !tournament.matches || !Array.isArray(tournament.matches)) {
+      return []
+    }
+    
+    try {
+      return tournament.matches.filter((m: any) => m && m.isPlayoff)
+    } catch (error) {
+      console.error('Error calculating playoff matches:', error)
+      return []
+    }
   }, [tournament])
 
   // Check if championship is finished (all league matches have scores)
@@ -166,27 +199,50 @@ export default function PublicTournamentPage() {
   }, [tournament])
 
   const calculateTable = () => {
-    const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
-    for (const tid of tournament.teamIds) {
-      stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
+    if (!tournament || !tournament.teamIds || !Array.isArray(tournament.teamIds) || 
+        !tournament.matches || !Array.isArray(tournament.matches)) {
+      return []
     }
     
-    // Only count league matches for the table
-    const leagueMatches = tournament.matches.filter((m: any) => !m.isPlayoff)
-    
-    for (const m of leagueMatches) {
-      if ((m as any).homeGoals == null || (m as any).awayGoals == null) continue
-      const a = stats[(m as any).homeTeamId]
-      const b = stats[(m as any).awayTeamId]
-      a.p++; b.p++
-      a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
-      b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
-      if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
-      else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
-      else { a.d++; b.d++; a.pts++; b.pts++ }
+    try {
+      const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
+      for (const tid of tournament.teamIds) {
+        if (tid) {
+          stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
+        }
+      }
+      
+      // Only count league matches for the table
+      const leagueMatches = tournament.matches.filter((m: any) => m && !m.isPlayoff)
+      
+      for (const m of leagueMatches) {
+        if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
+        
+        const homeTeamId = (m as any).homeTeamId
+        const awayTeamId = (m as any).awayTeamId
+        
+        if (!homeTeamId || !awayTeamId) continue
+        
+        const a = stats[homeTeamId]
+        const b = stats[awayTeamId]
+        
+        if (!a || !b) continue
+        
+        a.p++; b.p++
+        a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
+        b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
+        
+        if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
+        else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
+        else { a.d++; b.d++; a.pts++; b.pts++ }
+      }
+      
+      return Object.entries(stats).map(([id, s]) => ({ id, ...s }))
+        .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
+    } catch (error) {
+      console.error('Error calculating table:', error)
+      return []
     }
-    return Object.entries(stats).map(([id, s]) => ({ id, ...s }))
-      .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
   }
 
   const table = useMemo(() => calculateTable(), [tournament])
