@@ -336,7 +336,7 @@ export default function PublicTournamentPage() {
           <div className="grid gap-6">
             {/* Playoff Rounds */}
             {Array.from({ length: playoffStructure?.rounds || 0 }, (_, roundIndex) => {
-              const roundMatches = playoffMatches.filter(m => m.playoffRound === roundIndex)
+              const roundMatches = playoffMatches.filter((m: any) => m.playoffRound === roundIndex)
               const roundName = getPlayoffRoundName(roundIndex, playoffStructure?.rounds || 0)
               
               return (
@@ -440,7 +440,7 @@ export default function PublicTournamentPage() {
           <div key={r.round} className="glass rounded-xl p-4 grid gap-2">
             <div className="font-medium">Round {r.round + 1}</div>
             {r.matchIds.map((mid) => {
-              const m = tournament.matches.find((x) => x.id === mid)!
+              const m = tournament.matches.find((x: any) => x.id === mid)!
               return (
                 <div key={mid} className="grid md:grid-cols-4 gap-2 items-center">
                   <div className="md:col-span-2 flex items-center gap-2">
@@ -527,7 +527,7 @@ export default function PublicTournamentPage() {
         {playoffMatches.length > 0 && (
           <div className="glass rounded-xl p-4 grid gap-2">
             <div className="font-medium">Playoff Matches</div>
-            {playoffMatches.map((m) => (
+            {playoffMatches.map((m: any) => (
               <div key={m.id} className="grid md:grid-cols-4 gap-2 items-center">
                 <div className="md:col-span-2">
                   <Link 
