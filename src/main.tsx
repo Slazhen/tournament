@@ -13,11 +13,9 @@ import TournamentPage from './pages/TournamentPage.tsx'
 import TeamPage from './pages/TeamPage.tsx'
 import PlayerPage from './pages/PlayerPage.tsx'
 import MatchPage from './pages/MatchPage.tsx'
-import PublicTournamentPage from './pages/PublicTournamentPage.tsx'
-import PublicTeamPage from './pages/PublicTeamPage.tsx'
-import PublicPlayerPage from './pages/PublicPlayerPage.tsx'
-import PublicMatchPage from './pages/PublicMatchPage.tsx'
-import ErrorBoundary from './components/ErrorBoundary.tsx'
+import NewPublicTournament from './pages/NewPublicTournament.tsx'
+import NewPublicTeam from './pages/NewPublicTeam.tsx'
+import NewPublicPlayer from './pages/NewPublicPlayer.tsx'
 import NotFound from './components/NotFound.tsx'
 
 const router = createBrowserRouter([
@@ -38,62 +36,32 @@ const router = createBrowserRouter([
   },
   {
     path: '/public',
-    element: <App />,
     children: [
       { 
         path: 'tournaments/:id', 
-        element: (
-          <ErrorBoundary>
-            <PublicTournamentPage />
-          </ErrorBoundary>
-        )
+        element: <NewPublicTournament />
       },
       { 
-        path: 'tournaments/:tournamentId/matches/:matchId', 
-        element: (
-          <ErrorBoundary>
-            <PublicMatchPage />
-          </ErrorBoundary>
-        )
+        path: 'teams/:id', 
+        element: <NewPublicTeam />
       },
       { 
-        path: 'teams/:teamId', 
-        element: (
-          <ErrorBoundary>
-            <PublicTeamPage />
-          </ErrorBoundary>
-        )
-      },
-      { 
-        path: 'players/:playerId', 
-        element: (
-          <ErrorBoundary>
-            <PublicPlayerPage />
-          </ErrorBoundary>
-        )
+        path: 'players/:id', 
+        element: <NewPublicPlayer />
       },
     ],
   },
   // New URL structure: /orgname/tournamentid, /orgname/playerid
   {
     path: '/:orgName',
-    element: <App />,
     children: [
       { 
         path: ':tournamentId', 
-        element: (
-          <ErrorBoundary>
-            <PublicTournamentPage />
-          </ErrorBoundary>
-        )
+        element: <NewPublicTournament />
       },
       { 
         path: 'players/:playerId', 
-        element: (
-          <ErrorBoundary>
-            <PublicPlayerPage />
-          </ErrorBoundary>
-        )
+        element: <NewPublicPlayer />
       },
     ],
   },
