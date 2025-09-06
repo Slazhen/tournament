@@ -14,6 +14,14 @@ export default function PublicTournamentPage() {
   
   // Handle both old and new URL structures
   const actualTournamentId = tournamentId || id
+  
+  console.log('PublicTournamentPage: Component mounted', {
+    id,
+    orgName,
+    tournamentId,
+    actualTournamentId,
+    windowLocation: window.location.href
+  })
 
   // Load data from AWS when component mounts
   useEffect(() => {

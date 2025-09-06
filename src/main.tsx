@@ -18,6 +18,7 @@ import PublicTeamPage from './pages/PublicTeamPage.tsx'
 import PublicPlayerPage from './pages/PublicPlayerPage.tsx'
 import PublicMatchPage from './pages/PublicMatchPage.tsx'
 import ErrorBoundary from './components/ErrorBoundary.tsx'
+import NotFound from './components/NotFound.tsx'
 
 const router = createBrowserRouter([
   {
@@ -95,6 +96,11 @@ const router = createBrowserRouter([
         )
       },
     ],
+  },
+  // Catch-all route for debugging
+  {
+    path: '*',
+    element: <NotFound />,
   },
 ])
 
