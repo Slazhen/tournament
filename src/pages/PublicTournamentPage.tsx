@@ -117,13 +117,13 @@ export default function PublicTournamentPage() {
     if (!tournament) return [] as { round: number; matchIds: string[] }[]
     
     // Only include league matches (non-playoff matches)
-    const leagueMatches = tournament.matches.filter(m => !m.isPlayoff)
+    const leagueMatches = tournament.matches.filter((m: any) => !m.isPlayoff)
     
     const groups: Record<number, string[]> = {}
     for (const m of leagueMatches) {
-      const r = m.round ?? 0
+      const r = (m as any).round ?? 0
       groups[r] = groups[r] || []
-      groups[r].push(m.id)
+      groups[r].push((m as any).id)
     }
     return Object.entries(groups)
       .map(([r, ids]) => ({ round: Number(r), matchIds: ids }))
@@ -133,7 +133,7 @@ export default function PublicTournamentPage() {
   // Separate playoff matches
   const playoffMatches = useMemo(() => {
     if (!tournament) return []
-    return tournament.matches.filter(m => m.isPlayoff)
+    return tournament.matches.filter((m: any) => m.isPlayoff)
   }, [tournament])
 
   // Check if championship is finished (all league matches have scores)
@@ -164,21 +164,21 @@ export default function PublicTournamentPage() {
     }
     
     // Only count league matches for the table
-    const leagueMatches = tournament.matches.filter(m => !m.isPlayoff)
+    const leagueMatches = tournament.matches.filter((m: any) => !m.isPlayoff)
     
     for (const m of leagueMatches) {
-      if (m.homeGoals == null || m.awayGoals == null) continue
-      const a = stats[m.homeTeamId]
-      const b = stats[m.awayTeamId]
+      if ((m as any).homeGoals == null || (m as any).awayGoals == null) continue
+      const a = stats[(m as any).homeTeamId]
+      const b = stats[(m as any).awayTeamId]
       a.p++; b.p++
-      a.gf += m.homeGoals; a.ga += m.awayGoals
-      b.gf += m.awayGoals; b.ga += m.homeGoals
-      if (m.homeGoals > m.awayGoals) { a.w++; b.l++; a.pts += 3 }
-      else if (m.homeGoals < m.awayGoals) { b.w++; a.l++; b.pts += 3 }
+      a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
+      b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
+      if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
+      else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
       else { a.d++; b.d++; a.pts++; b.pts++ }
     }
     return Object.entries(stats).map(([id, s]) => ({ id, ...s }))
-      .sort((x, y) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
+      .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
   }
 
   const table = useMemo(() => calculateTable(), [tournament])
@@ -286,7 +286,7 @@ export default function PublicTournamentPage() {
                     <td className="py-2 pr-3">{index + 1}</td>
                     <td className="py-2 pr-3 flex items-center gap-2">
                       {(() => {
-                        const team = teams.find(t => t.id === row.id)
+                        const team = teams.find((t: any) => t.id === row.id)
                         if (team?.logo) {
                           return (
                             <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
@@ -303,7 +303,7 @@ export default function PublicTournamentPage() {
                         to={`/public/teams/${row.id}`}
                         className="hover:opacity-80 transition-opacity"
                       >
-                        {teams.find(t => t.id === row.id)?.name ?? row.id}
+                        {teams.find((t: any) => t.id === row.id)?.name ?? row.id}
                       </Link>
                       {isQualified && (
                         <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full">
@@ -343,9 +343,9 @@ export default function PublicTournamentPage() {
                 <div key={roundIndex} className="glass rounded-lg p-4">
                   <h3 className="text-lg font-semibold mb-4 text-center">{roundName}</h3>
                   <div className="grid gap-3">
-                    {roundMatches.map((match) => {
-                      const homeTeam = teams.find(t => t.id === match.homeTeamId)
-                      const awayTeam = teams.find(t => t.id === match.awayTeamId)
+                    {roundMatches.map((match: any) => {
+                      const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
+                      const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
                       
                       return (
                         <div key={match.id} className="grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg">
@@ -445,7 +445,7 @@ export default function PublicTournamentPage() {
                 <div key={mid} className="grid md:grid-cols-4 gap-2 items-center">
                   <div className="md:col-span-2 flex items-center gap-2">
                     {(() => {
-                      const homeTeam = teams.find(t => t.id === m.homeTeamId)
+                      const homeTeam = teams.find((t: any) => t.id === m.homeTeamId)
                       if (homeTeam?.logo) {
                         return (
                           <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
@@ -462,7 +462,7 @@ export default function PublicTournamentPage() {
                       to={`/public/teams/${m.homeTeamId}`}
                       className="hover:opacity-80 transition-opacity"
                     >
-                      {teams.find(t => t.id === m.homeTeamId)?.name ?? 'Home'}
+                      {teams.find((t: any) => t.id === m.homeTeamId)?.name ?? 'Home'}
                     </Link>
                     <Link 
                       to={`/public/tournaments/${tournament.id}/matches/${m.id}`}
@@ -471,7 +471,7 @@ export default function PublicTournamentPage() {
                       {' vs '}
                     </Link>
                     {(() => {
-                      const awayTeam = teams.find(t => t.id === m.awayTeamId)
+                      const awayTeam = teams.find((t: any) => t.id === m.awayTeamId)
                       if (awayTeam?.logo) {
                         return (
                           <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
@@ -488,7 +488,7 @@ export default function PublicTournamentPage() {
                       to={`/public/teams/${m.awayTeamId}`}
                       className="hover:opacity-80 transition-opacity"
                     >
-                      {teams.find(t => t.id === m.awayTeamId)?.name ?? 'Away'}
+                      {teams.find((t: any) => t.id === m.awayTeamId)?.name ?? 'Away'}
                     </Link>
                   </div>
                   <div className="text-center">
@@ -534,14 +534,14 @@ export default function PublicTournamentPage() {
                     to={`/public/teams/${m.homeTeamId}`}
                     className="hover:opacity-80 transition-opacity"
                   >
-                    {teams.find(t => t.id === m.homeTeamId)?.name ?? 'TBD'}
+                    {teams.find((t: any) => t.id === m.homeTeamId)?.name ?? 'TBD'}
                   </Link>
                   {' vs '}
                   <Link 
                     to={`/public/teams/${m.awayTeamId}`}
                     className="hover:opacity-80 transition-opacity"
                   >
-                    {teams.find(t => t.id === m.awayTeamId)?.name ?? 'TBD'}
+                    {teams.find((t: any) => t.id === m.awayTeamId)?.name ?? 'TBD'}
                   </Link>
                 </div>
                 <div className="text-center">
