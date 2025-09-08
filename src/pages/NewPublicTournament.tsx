@@ -84,10 +84,28 @@ export default function NewPublicTournament() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white text-xl">Loading tournament...</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center relative overflow-hidden">
+        {/* Background decorative elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute top-40 right-20 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl animate-pulse delay-1000"></div>
+          <div className="absolute bottom-20 left-1/4 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+          <div className="absolute bottom-32 right-1/3 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl animate-pulse delay-3000"></div>
+        </div>
+        
+        <div className="glass rounded-2xl p-8 max-w-md w-full text-center relative z-10 shadow-2xl border border-white/20">
+          <div className="mb-6">
+            <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-white/20 animate-pulse">
+              <span className="text-3xl">🏆</span>
+            </div>
+            <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+              Loading Tournament
+            </h1>
+            <p className="text-lg opacity-80 text-gray-300">Please wait while we load the tournament data...</p>
+          </div>
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-white/20 border-t-blue-400"></div>
+          </div>
         </div>
       </div>
     )
@@ -95,17 +113,30 @@ export default function NewPublicTournament() {
 
   if (error || !tournament) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-8">
-          <div className="text-6xl mb-4">🏆</div>
-          <h1 className="text-3xl font-bold text-white mb-4">Tournament Not Found</h1>
-          <p className="text-gray-300 mb-6">{error || 'The tournament you\'re looking for doesn\'t exist.'}</p>
-          <Link 
-            to="/" 
-            className="inline-block bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-lg transition-all backdrop-blur-sm"
-          >
-            Go to Home
-          </Link>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center relative overflow-hidden">
+        {/* Background decorative elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-32 h-32 bg-red-500/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute top-40 right-20 w-24 h-24 bg-orange-500/10 rounded-full blur-2xl animate-pulse delay-1000"></div>
+          <div className="absolute bottom-20 left-1/4 w-40 h-40 bg-yellow-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+        </div>
+        
+        <div className="glass rounded-2xl p-8 max-w-md w-full text-center relative z-10 shadow-2xl border border-white/20">
+          <div className="mb-6">
+            <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-2xl flex items-center justify-center border border-white/20">
+              <span className="text-3xl">🏆</span>
+            </div>
+            <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+              Tournament Not Found
+            </h1>
+            <p className="text-lg opacity-80 text-gray-300 mb-6">{error || 'The tournament you\'re looking for doesn\'t exist.'}</p>
+            <Link 
+              to="/" 
+              className="inline-block px-6 py-3 rounded-xl glass hover:bg-white/10 transition-all duration-300 text-white font-medium border border-white/20 hover:border-white/30 hover:shadow-lg hover:shadow-white/5"
+            >
+              Go to Home
+            </Link>
+          </div>
         </div>
       </div>
     )
@@ -160,116 +191,169 @@ export default function NewPublicTournament() {
   const standings = calculateStandings()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-40 right-20 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl animate-pulse delay-1000"></div>
+        <div className="absolute bottom-20 left-1/4 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+        <div className="absolute bottom-32 right-1/3 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl animate-pulse delay-3000"></div>
+      </div>
+
       {/* Header */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/20"></div>
-        <div className="relative container mx-auto px-4 py-16 text-center">
-          {tournament.logo && (
-            <div className="mb-6">
-              <img 
-                src={tournament.logo} 
-                alt={`${tournament.name} logo`}
-                className="w-24 h-24 mx-auto rounded-full object-cover border-4 border-white/20"
-              />
-            </div>
-          )}
-          <h1 className="text-5xl font-bold text-white mb-4">{tournament.name}</h1>
-          
-          {/* Tournament Info */}
-          <div className="space-y-4 mb-8">
-            {tournament.location && (
-              <p className="text-xl text-gray-300">📍 {tournament.location}</p>
-            )}
-            
-            {/* Social Media Links */}
-            {tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
-              <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
-                {tournament.socialMedia.facebook && (
-                  <a 
-                    href={tournament.socialMedia.facebook} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-all backdrop-blur-sm"
-                  >
-                    <span className="text-blue-400">📘</span>
-                    <span className="text-white">Facebook</span>
-                  </a>
-                )}
-                {tournament.socialMedia.instagram && (
-                  <a 
-                    href={tournament.socialMedia.instagram} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-all backdrop-blur-sm"
-                  >
-                    <span className="text-pink-400">📷</span>
-                    <span className="text-white">Instagram</span>
-                  </a>
-                )}
+      <div className="relative z-10">
+        <div className="container mx-auto px-4 py-16 text-center">
+          <div className="glass rounded-2xl p-8 max-w-4xl mx-auto shadow-2xl border border-white/20">
+            {tournament.logo && (
+              <div className="mb-6">
+                <div className="relative inline-block">
+                  <div className="absolute inset-0 rounded-full blur-2xl opacity-30 bg-gradient-to-r from-blue-400/20 to-purple-400/20"></div>
+                  <div className="relative bg-white/10 backdrop-blur-sm rounded-full p-6 border border-white/20 shadow-xl">
+                    <img 
+                      src={tournament.logo} 
+                      alt={`${tournament.name} logo`}
+                      className="w-24 h-24 object-contain"
+                    />
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-          
-          <div className="flex justify-center gap-4 text-sm text-gray-300">
-            <span>{teams.length} Teams</span>
-            <span>•</span>
-            <span>{tournament.matches?.length || 0} Matches</span>
+            
+            <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+              {tournament.name}
+            </h1>
+            
+            {/* Tournament Info */}
+            <div className="space-y-4 mb-8">
+              {tournament.location && (
+                <div className="flex items-center justify-center gap-2 text-xl text-gray-300">
+                  <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                  <span>📍 {tournament.location}</span>
+                </div>
+              )}
+              
+              {/* Social Media Links */}
+              {tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
+                <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
+                  {tournament.socialMedia.facebook && (
+                    <a 
+                      href={tournament.socialMedia.facebook} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-6 py-3 rounded-xl transition-all backdrop-blur-sm"
+                    >
+                      <span className="text-2xl group-hover:scale-110 transition-transform">📘</span>
+                      <span className="text-white font-medium">Facebook</span>
+                    </a>
+                  )}
+                  {tournament.socialMedia.instagram && (
+                    <a 
+                      href={tournament.socialMedia.instagram} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-6 py-3 rounded-xl transition-all backdrop-blur-sm"
+                    >
+                      <span className="text-2xl group-hover:scale-110 transition-transform">📷</span>
+                      <span className="text-white font-medium">Instagram</span>
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-center gap-6 text-sm text-gray-300">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                <span>{teams.length} Teams</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                <span>{tournament.matches?.length || 0} Matches</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 relative z-10">
         {/* Standings */}
         <div className="mb-12">
-          <h2 className="text-3xl font-bold text-white mb-6 text-center">Standings</h2>
-          <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 overflow-hidden">
+          <div className="text-center mb-8">
+            <h2 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Standings</h2>
+            <p className="text-gray-400">Current tournament rankings</p>
+          </div>
+          <div className="glass rounded-2xl p-8 overflow-hidden shadow-2xl border border-white/20">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/20">
-                    <th className="text-left py-3 px-4 text-white font-semibold">#</th>
-                    <th className="text-left py-3 px-4 text-white font-semibold">Team</th>
-                    <th className="text-center py-3 px-4 text-white font-semibold">P</th>
-                    <th className="text-center py-3 px-4 text-white font-semibold">W</th>
-                    <th className="text-center py-3 px-4 text-white font-semibold">D</th>
-                    <th className="text-center py-3 px-4 text-white font-semibold">L</th>
-                    <th className="text-center py-3 px-4 text-white font-semibold">GF</th>
-                    <th className="text-center py-3 px-4 text-white font-semibold">GA</th>
-                    <th className="text-center py-3 px-4 text-white font-semibold">GD</th>
-                    <th className="text-center py-3 px-4 text-white font-semibold">Pts</th>
+                    <th className="text-left py-4 px-6 text-white font-semibold text-lg">#</th>
+                    <th className="text-left py-4 px-6 text-white font-semibold text-lg">Team</th>
+                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">P</th>
+                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">W</th>
+                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">D</th>
+                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">L</th>
+                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">GF</th>
+                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">GA</th>
+                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">GD</th>
+                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">Pts</th>
                   </tr>
                 </thead>
                 <tbody>
                   {standings.map((team, index) => {
                     const teamData = teams.find(t => t.id === team.teamId)
+                    const isTopThree = index < 3
                     return (
-                      <tr key={team.teamId} className="border-b border-white/10 hover:bg-white/5 transition-colors">
-                        <td className="py-4 px-4 text-white font-bold">{index + 1}</td>
-                        <td className="py-4 px-4">
+                      <tr key={team.teamId} className={`border-b border-white/10 hover:bg-white/5 transition-all duration-300 ${isTopThree ? 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5' : ''}`}>
+                        <td className="py-6 px-6 text-white font-bold text-lg">
+                          <div className="flex items-center gap-2">
+                            {isTopThree && (
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                index === 0 ? 'bg-yellow-500 text-black' : 
+                                index === 1 ? 'bg-gray-400 text-black' : 
+                                'bg-orange-500 text-black'
+                              }`}>
+                                {index + 1}
+                              </div>
+                            )}
+                            {!isTopThree && <span>{index + 1}</span>}
+                          </div>
+                        </td>
+                        <td className="py-6 px-6">
                           <Link 
                             to={`/public/teams/${team.teamId}`}
-                            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                            className="group flex items-center gap-4 hover:text-blue-300 transition-colors duration-300"
                           >
-                            {teamData?.logo && (
-                              <img 
-                                src={teamData.logo} 
-                                alt={`${teamData.name} logo`}
-                                className="w-8 h-8 rounded-full object-cover"
-                              />
+                            {teamData?.logo ? (
+                              <div className="relative">
+                                <img 
+                                  src={teamData.logo} 
+                                  alt={`${teamData.name} logo`}
+                                  className="w-10 h-10 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                                />
+                                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
+                              </div>
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
+                                <span className="text-sm font-bold text-white">
+                                  {teamData?.name?.charAt(0) || 'T'}
+                                </span>
+                              </div>
                             )}
-                            <span className="text-white font-medium">{teamData?.name || 'Unknown Team'}</span>
+                            <span className="font-medium text-lg group-hover:text-blue-300 transition-colors duration-300">
+                              {teamData?.name || 'Unknown Team'}
+                            </span>
                           </Link>
                         </td>
-                        <td className="py-4 px-4 text-center text-white">{team.p}</td>
-                        <td className="py-4 px-4 text-center text-white">{team.w}</td>
-                        <td className="py-4 px-4 text-center text-white">{team.d}</td>
-                        <td className="py-4 px-4 text-center text-white">{team.l}</td>
-                        <td className="py-4 px-4 text-center text-white">{team.gf}</td>
-                        <td className="py-4 px-4 text-center text-white">{team.ga}</td>
-                        <td className="py-4 px-4 text-center text-white">{team.gf - team.ga}</td>
-                        <td className="py-4 px-4 text-center text-white font-bold">{team.pts}</td>
+                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.p}</td>
+                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.w}</td>
+                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.d}</td>
+                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.l}</td>
+                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.gf}</td>
+                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.ga}</td>
+                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.gf - team.ga}</td>
+                        <td className="py-6 px-6 text-center text-white font-bold text-xl">{team.pts}</td>
                       </tr>
                     )
                   })}
