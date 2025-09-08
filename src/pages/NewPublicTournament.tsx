@@ -155,8 +155,12 @@ export default function NewPublicTournament() {
     // Process matches
     tournament.matches?.forEach(match => {
       console.log('Processing match:', match.id, 'homeGoals:', match.homeGoals, 'awayGoals:', match.awayGoals)
-      if (match.homeGoals !== null && match.awayGoals !== null && 
-          match.homeGoals !== undefined && match.awayGoals !== undefined) {
+      // Only process matches that have been played (both scores are valid numbers)
+      const hasValidScores = typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number' &&
+                           !isNaN(match.homeGoals) && !isNaN(match.awayGoals) &&
+                           match.homeGoals >= 0 && match.awayGoals >= 0
+      
+      if (hasValidScores) {
         const homeTeam = stats[match.homeTeamId]
         const awayTeam = stats[match.awayTeamId]
         
