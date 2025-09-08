@@ -4,6 +4,9 @@ export {
   generatePlayoffBrackets, 
   createPlayoffMatches,
   populatePlayoffBrackets,
-  generateSwissEliminationSchedule
+  generateSwissEliminationSchedule,
+  generateCustomPlayoffHomebush,
+  calculateTeamStandings,
+  sortTeamsByStandings
 } from './schedule'
 

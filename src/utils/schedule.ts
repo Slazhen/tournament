@@ -1,4 +1,4 @@
-import type { Match, PlayoffBracket } from '../types'
+import type { Match, PlayoffBracket, CustomPlayoffRound, TeamStanding } from '../types'
 
 export function generateRoundRobinSchedule(teamIds: string[], roundsMultiplier: number = 1): Match[] {
   if (teamIds.length < 2) return []
@@ -340,5 +340,320 @@ export function populatePlayoffBrackets(brackets: PlayoffBracket[], finalStandin
   }))
   
   return populatedBrackets
+}
+
+// Custom Playoff Homebush Implementation
+export function generateCustomPlayoffHomebush(
+  teamStandings: TeamStanding[], 
+  config: {
+    topSeeds?: number
+    playoffTeams?: number
+    enableBye?: boolean
+    reSeedRound5?: boolean
+  } = {}
+): CustomPlayoffRound[] {
+  const {
+    playoffTeams = 8,
+    enableBye = true,
+    reSeedRound5 = true
+  } = config
+
+  // Sort teams by position (1st to last)
+  const sortedTeams = [...teamStandings].sort((a, b) => a.position - b.position)
+  const playoffTeamsList = sortedTeams.slice(0, playoffTeams)
+  
+  const rounds: CustomPlayoffRound[] = []
+  let currentRound = 1
+
+  // Round 1: Qualifiers and Elimination matches
+  const round1Matches: Match[] = []
+  
+  // Qualifier A: Seed(1) vs Seed(2) - not elimination
+  round1Matches.push({
+    id: `r1-qual-a-${playoffTeamsList[0].teamId}-${playoffTeamsList[1].teamId}`,
+    homeTeamId: playoffTeamsList[0].teamId, // Higher seed at home
+    awayTeamId: playoffTeamsList[1].teamId,
+    round: currentRound,
+    isPlayoff: true
+  })
+
+  // Qualifier B: Seed(3) vs Seed(4) - not elimination  
+  round1Matches.push({
+    id: `r1-qual-b-${playoffTeamsList[2].teamId}-${playoffTeamsList[3].teamId}`,
+    homeTeamId: playoffTeamsList[2].teamId, // Higher seed at home
+    awayTeamId: playoffTeamsList[3].teamId,
+    round: currentRound,
+    isPlayoff: true
+  })
+
+  // Elimination matches for lower seeds
+  if (playoffTeamsList.length >= 8) {
+    // Elim A: Seed(5) vs Seed(8) - elimination
+    round1Matches.push({
+      id: `r1-elim-a-${playoffTeamsList[4].teamId}-${playoffTeamsList[7].teamId}`,
+      homeTeamId: playoffTeamsList[4].teamId,
+      awayTeamId: playoffTeamsList[7].teamId,
+      round: currentRound,
+      isPlayoff: true
+    })
+
+    // Elim B: Seed(6) vs Seed(7) - elimination
+    round1Matches.push({
+      id: `r1-elim-b-${playoffTeamsList[5].teamId}-${playoffTeamsList[6].teamId}`,
+      homeTeamId: playoffTeamsList[5].teamId,
+      awayTeamId: playoffTeamsList[6].teamId,
+      round: currentRound,
+      isPlayoff: true
+    })
+  } else if (playoffTeamsList.length === 9 && enableBye) {
+    // Handle 9 teams with BYE for Seed(9)
+    round1Matches.push({
+      id: `r1-elim-a-${playoffTeamsList[4].teamId}-${playoffTeamsList[7].teamId}`,
+      homeTeamId: playoffTeamsList[4].teamId,
+      awayTeamId: playoffTeamsList[7].teamId,
+      round: currentRound,
+      isPlayoff: true
+    })
+
+    round1Matches.push({
+      id: `r1-elim-b-${playoffTeamsList[5].teamId}-${playoffTeamsList[6].teamId}`,
+      homeTeamId: playoffTeamsList[5].teamId,
+      awayTeamId: playoffTeamsList[6].teamId,
+      round: currentRound,
+      isPlayoff: true
+    })
+  }
+
+  rounds.push({
+    id: 'round-1',
+    name: 'Round 1 - Qualifiers & Elimination',
+    round: currentRound,
+    matches: round1Matches,
+    isElimination: false, // Mixed round
+    description: 'Qualifiers A & B (non-elimination), Elimination A & B (elimination)'
+  })
+
+  currentRound++
+
+  // Round 2: Elim C - Elimination
+  const round2Matches: Match[] = []
+  round2Matches.push({
+    id: `r2-elim-c-winner-elim-a-vs-winner-elim-b`,
+    homeTeamId: 'TBD', // Will be populated with actual winners
+    awayTeamId: 'TBD',
+    round: currentRound,
+    isPlayoff: true
+  })
+
+  rounds.push({
+    id: 'round-2',
+    name: 'Round 2 - Elimination C',
+    round: currentRound,
+    matches: round2Matches,
+    isElimination: true,
+    description: 'Winner of Elim A vs Winner of Elim B (elimination)'
+  })
+
+  currentRound++
+
+  // Round 3: Semi (Upper) - not elimination
+  const round3Matches: Match[] = []
+  round3Matches.push({
+    id: `r3-semi-upper-loser-qual-a-vs-winner-qual-b`,
+    homeTeamId: 'TBD', // Loser of Qualifier A
+    awayTeamId: 'TBD', // Winner of Qualifier B
+    round: currentRound,
+    isPlayoff: true
+  })
+
+  rounds.push({
+    id: 'round-3',
+    name: 'Round 3 - Semi (Upper)',
+    round: currentRound,
+    matches: round3Matches,
+    isElimination: false,
+    description: 'Loser of Qualifier A vs Winner of Qualifier B (non-elimination)'
+  })
+
+  currentRound++
+
+  // Round 4: Knockout - Elimination
+  const round4Matches: Match[] = []
+  round4Matches.push({
+    id: `r4-knockout-loser-r3-vs-ladder-survivor`,
+    homeTeamId: 'TBD', // Loser of R3
+    awayTeamId: 'TBD', // Ladder Survivor (Winner of R2)
+    round: currentRound,
+    isPlayoff: true
+  })
+
+  rounds.push({
+    id: 'round-4',
+    name: 'Round 4 - Knockout',
+    round: currentRound,
+    matches: round4Matches,
+    isElimination: true,
+    description: 'Loser of R3 vs Ladder Survivor (elimination)'
+  })
+
+  currentRound++
+
+  // Round 5: Preliminary Finals - both elimination
+  const round5Matches: Match[] = []
+  
+  if (reSeedRound5) {
+    // Re-seed remaining teams by original position
+    round5Matches.push({
+      id: `r5-pf-a-highest-vs-lowest`,
+      homeTeamId: 'TBD', // Highest remaining seed
+      awayTeamId: 'TBD', // Lowest remaining seed
+      round: currentRound,
+      isPlayoff: true
+    })
+
+    round5Matches.push({
+      id: `r5-pf-b-middle-seeds`,
+      homeTeamId: 'TBD', // Second highest remaining seed
+      awayTeamId: 'TBD', // Second lowest remaining seed
+      round: currentRound,
+      isPlayoff: true
+    })
+  } else {
+    // Use bracket progression
+    round5Matches.push({
+      id: `r5-pf-a-winner-qual-a-vs-winner-r3`,
+      homeTeamId: 'TBD', // Winner of Qualifier A
+      awayTeamId: 'TBD', // Winner of R3
+      round: currentRound,
+      isPlayoff: true
+    })
+
+    round5Matches.push({
+      id: `r5-pf-b-winner-r4-vs-tbd`,
+      homeTeamId: 'TBD', // Winner of R4
+      awayTeamId: 'TBD', // TBD based on bracket
+      round: currentRound,
+      isPlayoff: true
+    })
+  }
+
+  rounds.push({
+    id: 'round-5',
+    name: 'Round 5 - Preliminary Finals',
+    round: currentRound,
+    matches: round5Matches,
+    isElimination: true,
+    description: 'Two Preliminary Finals (both elimination)'
+  })
+
+  currentRound++
+
+  // Round 6: Grand Final - elimination
+  const round6Matches: Match[] = []
+  round6Matches.push({
+    id: `r6-grand-final-winner-pf-a-vs-winner-pf-b`,
+    homeTeamId: 'TBD', // Winner of PF-A
+    awayTeamId: 'TBD', // Winner of PF-B
+    round: currentRound,
+    isPlayoff: true
+  })
+
+  rounds.push({
+    id: 'round-6',
+    name: 'Round 6 - Grand Final',
+    round: currentRound,
+    matches: round6Matches,
+    isElimination: true,
+    description: 'Grand Final - Winner of PF-A vs Winner of PF-B (elimination)'
+  })
+
+  return rounds
+}
+
+// Tie-breaker system
+export function calculateTeamStandings(
+  matches: Match[], 
+  teamId: string
+): TeamStanding {
+  const teamMatches = matches.filter(m => 
+    m.homeTeamId === teamId || m.awayTeamId === teamId
+  ).filter(m => m.homeGoals !== null && m.awayGoals !== null)
+
+  let points = 0
+  let played = teamMatches.length
+  let won = 0
+  let drawn = 0
+  let lost = 0
+  let goalsFor = 0
+  let goalsAgainst = 0
+  let disciplinaryPoints = 0
+
+  teamMatches.forEach(match => {
+    const isHome = match.homeTeamId === teamId
+    const teamGoals = isHome ? match.homeGoals! : match.awayGoals!
+    const opponentGoals = isHome ? match.awayGoals! : match.homeGoals!
+
+    goalsFor += teamGoals
+    goalsAgainst += opponentGoals
+
+    if (teamGoals > opponentGoals) {
+      won++
+      points += 3
+    } else if (teamGoals === opponentGoals) {
+      drawn++
+      points += 1
+    } else {
+      lost++
+    }
+
+    // TODO: Add disciplinary points calculation when cards are implemented
+  })
+
+  return {
+    teamId,
+    position: 0, // Will be calculated after all teams
+    points,
+    played,
+    won,
+    drawn,
+    lost,
+    goalsFor,
+    goalsAgainst,
+    goalDifference: goalsFor - goalsAgainst,
+    disciplinaryPoints
+  }
+}
+
+// Sort teams by tie-breaker criteria
+export function sortTeamsByStandings(standings: TeamStanding[]): TeamStanding[] {
+  return standings.sort((a, b) => {
+    // 1. Points (descending)
+    if (a.points !== b.points) return b.points - a.points
+    
+    // 2. Goal difference (descending)
+    if (a.goalDifference !== b.goalDifference) return b.goalDifference - a.goalDifference
+    
+    // 3. Goals scored (descending)
+    if (a.goalsFor !== b.goalsFor) return b.goalsFor - a.goalsFor
+    
+    // 4. Head-to-head points (if available)
+    if (a.headToHeadPoints !== undefined && b.headToHeadPoints !== undefined) {
+      if (a.headToHeadPoints !== b.headToHeadPoints) return b.headToHeadPoints - a.headToHeadPoints
+    }
+    
+    // 5. Head-to-head goal difference (if available)
+    if (a.headToHeadGoalDifference !== undefined && b.headToHeadGoalDifference !== undefined) {
+      if (a.headToHeadGoalDifference !== b.headToHeadGoalDifference) return b.headToHeadGoalDifference - a.headToHeadGoalDifference
+    }
+    
+    // 6. Fewer disciplinary points (ascending)
+    if (a.disciplinaryPoints !== b.disciplinaryPoints) return a.disciplinaryPoints - b.disciplinaryPoints
+    
+    // 7. Coin toss (random)
+    return Math.random() - 0.5
+  }).map((standing, index) => ({
+    ...standing,
+    position: index + 1
+  }))
 }
 
