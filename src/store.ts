@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Team, Tournament, Match, Organizer, AppSettings } from './types'
-import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule } from './utils/tournament'
+import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule, generateCustomPlayoffHomebush } from './utils/tournament'
 import { organizerService, teamService, tournamentService, matchService, uploadImageToS3 } from './lib/aws-database'
 
 type AppStore = {
@@ -239,6 +239,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
         } else if (tournamentFormat.mode === 'swiss_elimination') {
           const swissResult = generateSwissEliminationSchedule(teamIds)
           matches = [...swissResult.leagueMatches, ...swissResult.eliminationMatches]
+        } else if (tournamentFormat.mode === 'custom_playoff_homebush') {
+          // Generate round-robin matches first
+          const leagueMatches = generateRoundRobinSchedule(teamIds, tournamentFormat.rounds || 1)
+          
+          // Create placeholder team standings for playoff generation
+          const teamStandings = teamIds.map((teamId, index) => ({
+            teamId,
+            position: index + 1,
+            points: 0,
+            played: 0,
+            won: 0,
+            drawn: 0,
+            lost: 0,
+            goalsFor: 0,
+            goalsAgainst: 0,
+            goalDifference: 0,
+            disciplinaryPoints: 0
+          }))
+          
+          // Generate custom playoff matches
+          const playoffRounds = generateCustomPlayoffHomebush(teamStandings, tournamentFormat.customPlayoffConfig || {
+            topSeeds: 4,
+            playoffTeams: 8,
+            enableBye: true,
+            reSeedRound5: true
+          })
+          
+          // Extract all matches from playoff rounds
+          const playoffMatches = playoffRounds.flatMap(round => round.matches)
+          
+          // Combine league and playoff matches
+          matches = [...leagueMatches, ...playoffMatches]
         }
         
         // Update tournament with generated matches
