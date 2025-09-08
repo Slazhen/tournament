@@ -55,36 +55,17 @@ export default function MatchPage() {
     updateTournament(tournament.id, { matches: updatedMatches })
   }
 
-  const addGoal = (team: 'home' | 'away', playerId: string, minute: number, type: 'goal' | 'penalty' | 'own_goal' = 'goal', assistPlayerId?: string) => {
-    const newGoal = {
-      id: uid(),
-      team,
-      playerId,
-      minute,
-      type,
-      assistPlayerId,
-      goalNumber: (match.goals?.filter(g => g.team === team).length || 0) + 1
-    }
-    const goals = [...(match.goals || []), newGoal]
-    updateMatch({ goals })
-    
-    // Update score
-    const homeGoals = goals.filter(g => g.team === 'home').length
-    const awayGoals = goals.filter(g => g.team === 'away').length
-    updateMatch({ homeGoals, awayGoals })
-  }
-
   const updateGoal = (goalId: string, updates: Partial<{ minute: number; playerId: string; assistPlayerId?: string; type: 'goal' | 'penalty' | 'own_goal' }>) => {
     if (!goalId) {
       // Create new goal if no ID provided
-      const team = updates.playerId && homeTeam.players.find(p => p.id === updates.playerId) ? 'home' : 'away'
+      const team: 'home' | 'away' = updates.playerId && homeTeam.players.find(p => p.id === updates.playerId) ? 'home' : 'away'
       const goalNumber = (match.goals?.filter(g => g.team === team).length || 0) + 1
       const newGoal = {
         id: uid(),
         team,
         playerId: updates.playerId || '',
         minute: updates.minute || 0,
-        type: updates.type || 'goal',
+        type: updates.type || 'goal' as 'goal' | 'penalty' | 'own_goal',
         assistPlayerId: updates.assistPlayerId,
         goalNumber
       }
