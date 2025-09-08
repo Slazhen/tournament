@@ -80,15 +80,26 @@ export default function TournamentPage() {
 
   // Get playoff structure based on tournament format
   const playoffStructure = useMemo(() => {
-            if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination')) return null
+            if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination' && tournament.format.mode !== 'custom_playoff_homebush')) return null
     
-    const qualifiers = tournament.format.playoffQualifiers || 4
-    const rounds = Math.ceil(Math.log2(qualifiers))
-    
-    return {
-      qualifiers,
-      rounds,
-      structure: generatePlayoffBrackets([...Array(qualifiers)].map((_, i) => `team_${i}`))
+    if (tournament.format.mode === 'custom_playoff_homebush') {
+      // Custom playoff has exactly 6 rounds
+      const playoffTeams = tournament.format.customPlayoffConfig?.playoffTeams || 8
+      return {
+        qualifiers: playoffTeams,
+        rounds: 6, // Custom playoff has 6 rounds
+        structure: [] // Custom playoff doesn't use standard bracket structure
+      }
+    } else {
+      // Standard playoff formats
+      const qualifiers = tournament.format.playoffQualifiers || 4
+      const rounds = Math.ceil(Math.log2(qualifiers))
+      
+      return {
+        qualifiers,
+        rounds,
+        structure: generatePlayoffBrackets([...Array(qualifiers)].map((_, i) => `team_${i}`))
+      }
     }
   }, [tournament])
 

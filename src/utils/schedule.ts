@@ -374,7 +374,8 @@ export function generateCustomPlayoffHomebush(
     homeTeamId: playoffTeamsList[0].teamId, // Higher seed at home
     awayTeamId: playoffTeamsList[1].teamId,
     round: currentRound,
-    isPlayoff: true
+    isPlayoff: true,
+    playoffRound: 0 // Round 1
   })
 
   // Qualifier B: Seed(3) vs Seed(4) - not elimination  
@@ -383,7 +384,8 @@ export function generateCustomPlayoffHomebush(
     homeTeamId: playoffTeamsList[2].teamId, // Higher seed at home
     awayTeamId: playoffTeamsList[3].teamId,
     round: currentRound,
-    isPlayoff: true
+    isPlayoff: true,
+    playoffRound: 0 // Round 1
   })
 
   // Elimination matches for lower seeds
@@ -394,7 +396,8 @@ export function generateCustomPlayoffHomebush(
       homeTeamId: playoffTeamsList[4].teamId,
       awayTeamId: playoffTeamsList[7].teamId,
       round: currentRound,
-      isPlayoff: true
+      isPlayoff: true,
+      playoffRound: 0 // Round 1
     })
 
     // Elim B: Seed(6) vs Seed(7) - elimination
@@ -403,7 +406,8 @@ export function generateCustomPlayoffHomebush(
       homeTeamId: playoffTeamsList[5].teamId,
       awayTeamId: playoffTeamsList[6].teamId,
       round: currentRound,
-      isPlayoff: true
+      isPlayoff: true,
+      playoffRound: 0 // Round 1
     })
   } else if (playoffTeamsList.length === 9 && enableBye) {
     // Handle 9 teams with BYE for Seed(9)
@@ -412,7 +416,8 @@ export function generateCustomPlayoffHomebush(
       homeTeamId: playoffTeamsList[4].teamId,
       awayTeamId: playoffTeamsList[7].teamId,
       round: currentRound,
-      isPlayoff: true
+      isPlayoff: true,
+      playoffRound: 0 // Round 1
     })
 
     round1Matches.push({
@@ -420,7 +425,8 @@ export function generateCustomPlayoffHomebush(
       homeTeamId: playoffTeamsList[5].teamId,
       awayTeamId: playoffTeamsList[6].teamId,
       round: currentRound,
-      isPlayoff: true
+      isPlayoff: true,
+      playoffRound: 0 // Round 1
     })
   }
 
@@ -442,7 +448,8 @@ export function generateCustomPlayoffHomebush(
     homeTeamId: 'TBD', // Will be populated with actual winners
     awayTeamId: 'TBD',
     round: currentRound,
-    isPlayoff: true
+    isPlayoff: true,
+    playoffRound: 1 // Round 2
   })
 
   rounds.push({
@@ -463,7 +470,8 @@ export function generateCustomPlayoffHomebush(
     homeTeamId: 'TBD', // Loser of Qualifier A
     awayTeamId: 'TBD', // Winner of Qualifier B
     round: currentRound,
-    isPlayoff: true
+    isPlayoff: true,
+    playoffRound: 2 // Round 3
   })
 
   rounds.push({
@@ -484,7 +492,8 @@ export function generateCustomPlayoffHomebush(
     homeTeamId: 'TBD', // Loser of R3
     awayTeamId: 'TBD', // Ladder Survivor (Winner of R2)
     round: currentRound,
-    isPlayoff: true
+    isPlayoff: true,
+    playoffRound: 3 // Round 4
   })
 
   rounds.push({
@@ -508,7 +517,8 @@ export function generateCustomPlayoffHomebush(
       homeTeamId: 'TBD', // Highest remaining seed
       awayTeamId: 'TBD', // Lowest remaining seed
       round: currentRound,
-      isPlayoff: true
+      isPlayoff: true,
+      playoffRound: 4 // Round 5
     })
 
     round5Matches.push({
@@ -516,7 +526,8 @@ export function generateCustomPlayoffHomebush(
       homeTeamId: 'TBD', // Second highest remaining seed
       awayTeamId: 'TBD', // Second lowest remaining seed
       round: currentRound,
-      isPlayoff: true
+      isPlayoff: true,
+      playoffRound: 4 // Round 5
     })
   } else {
     // Use bracket progression
@@ -525,7 +536,8 @@ export function generateCustomPlayoffHomebush(
       homeTeamId: 'TBD', // Winner of Qualifier A
       awayTeamId: 'TBD', // Winner of R3
       round: currentRound,
-      isPlayoff: true
+      isPlayoff: true,
+      playoffRound: 4 // Round 5
     })
 
     round5Matches.push({
@@ -533,7 +545,8 @@ export function generateCustomPlayoffHomebush(
       homeTeamId: 'TBD', // Winner of R4
       awayTeamId: 'TBD', // TBD based on bracket
       round: currentRound,
-      isPlayoff: true
+      isPlayoff: true,
+      playoffRound: 4 // Round 5
     })
   }
 
@@ -555,7 +568,8 @@ export function generateCustomPlayoffHomebush(
     homeTeamId: 'TBD', // Winner of PF-A
     awayTeamId: 'TBD', // Winner of PF-B
     round: currentRound,
-    isPlayoff: true
+    isPlayoff: true,
+    playoffRound: 5 // Round 6
   })
 
   rounds.push({
