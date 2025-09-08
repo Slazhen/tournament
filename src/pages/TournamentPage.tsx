@@ -656,15 +656,38 @@ export default function TournamentPage() {
                       </div>
                     </div>
 
-                    {/* Date */}
+                    {/* Date & Time */}
                     <div className="flex flex-col gap-1">
                       <label className="text-xs opacity-70">Date & Time</label>
-                      <input 
-                        type="datetime-local" 
-                        className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-xs" 
-                        value={m.dateISO ? new Date(m.dateISO).toISOString().slice(0,16) : ''} 
-                        onChange={(e) => setDate(mid, new Date(e.target.value).toISOString())} 
-                      />
+                      <div className="flex gap-2">
+                        <input 
+                          type="date" 
+                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-xs flex-1" 
+                          value={m.dateISO ? new Date(m.dateISO).toISOString().split('T')[0] : ''} 
+                          onChange={(e) => {
+                            const newDate = e.target.value ? new Date(e.target.value) : new Date()
+                            // Preserve time if it exists, otherwise set to 12:00
+                            if (m.dateISO) {
+                              const time = new Date(m.dateISO)
+                              newDate.setHours(time.getHours(), time.getMinutes())
+                            } else {
+                              newDate.setHours(12, 0)
+                            }
+                            setDate(mid, newDate.toISOString())
+                          }} 
+                        />
+                        <input 
+                          type="time" 
+                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-xs w-20" 
+                          value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0,5) : '12:00'} 
+                          onChange={(e) => {
+                            const currentDate = m.dateISO ? new Date(m.dateISO) : new Date()
+                            const [hours, minutes] = e.target.value.split(':').map(Number)
+                            currentDate.setHours(hours || 12, minutes || 0)
+                            setDate(mid, currentDate.toISOString())
+                          }} 
+                        />
+                      </div>
                     </div>
 
                     {/* Actions */}

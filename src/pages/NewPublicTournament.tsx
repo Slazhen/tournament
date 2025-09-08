@@ -781,7 +781,6 @@ export default function NewPublicTournament() {
                                     <div className="text-xl sm:text-3xl font-bold text-white">
                                       {match.homeGoals} - {match.awayGoals}
                                     </div>
-                                    <div className="text-xs text-green-400 font-medium">FINAL</div>
                                   </div>
                                 ) : (
                                   <div className="space-y-1 sm:space-y-2">
@@ -792,14 +791,23 @@ export default function NewPublicTournament() {
                                   </div>
                                 )}
                                 
-                                {/* Match Date */}
+                                {/* Match Date & Time */}
                                 {match.dateISO && (
                                   <div className="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
-                                    {new Date(match.dateISO).toLocaleDateString('en-US', {
-                                      weekday: 'short',
-                                      month: 'short',
-                                      day: 'numeric'
-                                    })}
+                                    <div>
+                                      {new Date(match.dateISO).toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric'
+                                      })}
+                                    </div>
+                                    <div>
+                                      {new Date(match.dateISO).toLocaleTimeString('en-US', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        hour12: true
+                                      })}
+                                    </div>
                                   </div>
                                 )}
                               </div>
