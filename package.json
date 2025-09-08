@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "predeploy": "vite build",
     "deploy": "gh-pages -d dist",
-    "setup-auth": "node scripts/setup-auth-tables.js"
+    "setup-auth": "node scripts/setup-auth-tables.js",
+    "prebuild": "rm -rf node_modules package-lock.json && npm install --legacy-peer-deps"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.879.0",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@eslint/js": "^9.33.0",
     "@tailwindcss/postcss": "^4.1.12",
+    "@types/node": "^20.14.10",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^4.3.4",
