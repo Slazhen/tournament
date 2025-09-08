@@ -1,5 +1,5 @@
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb')
-const { DynamoDBDocumentClient, CreateTableCommand } = require('@aws-sdk/lib-dynamodb')
+import { DynamoDBClient, CreateTableCommand } from '@aws-sdk/client-dynamodb'
+import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb'
 
 // AWS Configuration
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1'
