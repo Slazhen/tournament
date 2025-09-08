@@ -700,20 +700,20 @@ export default function NewPublicTournament() {
               )
               
               return (
-                <div key={roundNumber} className="mb-8">
-                  <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
+                <div key={roundNumber} className="mb-6 sm:mb-8">
+                  <div className="glass rounded-2xl p-3 sm:p-6 shadow-2xl border border-white/20">
                     {/* Round Header */}
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center border border-white/20">
-                          <span className="text-xl font-bold text-white">{roundNumber + 1}</span>
+                    <div className="flex items-center justify-between mb-4 sm:mb-6">
+                      <div className="flex items-center gap-2 sm:gap-4">
+                        <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center border border-white/20">
+                          <span className="text-sm sm:text-xl font-bold text-white">{roundNumber + 1}</span>
                         </div>
                         <div>
-                          <h3 className="text-2xl font-bold text-white">Tour {roundNumber + 1}</h3>
-                          <div className="flex items-center gap-2 text-sm text-gray-400">
+                          <h3 className="text-lg sm:text-2xl font-bold text-white">Tour {roundNumber + 1}</h3>
+                          <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-400">
                             <span>{roundMatches.length} matches</span>
                             <span>•</span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            <span className={`px-1 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium ${
                               isFinished ? 'bg-green-500/20 text-green-400 border border-green-400/30' :
                               isUpcoming ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30' :
                               'bg-yellow-500/20 text-yellow-400 border border-yellow-400/30'
@@ -726,7 +726,7 @@ export default function NewPublicTournament() {
                     </div>
                     
                     {/* Matches Grid */}
-                    <div className="grid gap-4">
+                    <div className="grid gap-2 sm:gap-4">
                       {roundMatches.map((match) => {
                         const homeTeam = teams.find(t => t.id === match.homeTeamId)
                         const awayTeam = teams.find(t => t.id === match.awayTeamId)
@@ -734,14 +734,14 @@ export default function NewPublicTournament() {
                         const isMatchUpcoming = match.homeGoals === null && match.awayGoals === null
                         
                         return (
-                          <div key={match.id} className={`group relative bg-white/5 backdrop-blur-sm rounded-xl p-6 hover:bg-white/10 transition-all duration-300 border ${
+                          <div key={match.id} className={`group relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
                             isMatchFinished ? 'border-green-500/20' : 
                             isMatchUpcoming ? 'border-blue-500/20' : 
                             'border-yellow-500/20'
                           }`}>
                             {/* Match Status Indicator */}
-                            <div className="absolute top-4 right-4">
-                              <div className={`w-3 h-3 rounded-full ${
+                            <div className="absolute top-2 right-2 sm:top-4 sm:right-4">
+                              <div className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${
                                 isMatchFinished ? 'bg-green-400' : 
                                 isMatchUpcoming ? 'bg-blue-400' : 
                                 'bg-yellow-400 animate-pulse'
@@ -750,42 +750,42 @@ export default function NewPublicTournament() {
                             
                             <div className="flex items-center justify-between">
                               {/* Home Team */}
-                              <div className="flex items-center gap-4 flex-1">
+                              <div className="flex items-center gap-2 sm:gap-4 flex-1">
                                 {homeTeam?.logo ? (
                                   <div className="relative">
                                     <img 
                                       src={homeTeam.logo} 
                                       alt={`${homeTeam.name} logo`}
-                                      className="w-14 h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                                      className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
                                     />
                                     <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
                                   </div>
                                 ) : (
-                                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                                    <span className="text-lg font-bold text-white">
+                                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
+                                    <span className="text-sm sm:text-lg font-bold text-white">
                                       {homeTeam?.name?.charAt(0) || 'H'}
                                     </span>
                                   </div>
                                 )}
                                 <div>
-                                  <span className="text-white font-semibold text-lg group-hover:text-blue-300 transition-colors duration-300">
+                                  <span className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300">
                                     {homeTeam?.name || 'Unknown Team'}
                                   </span>
                                 </div>
                               </div>
                               
                               {/* Score/VS */}
-                              <div className="text-center px-6">
+                              <div className="text-center px-2 sm:px-6">
                                 {isMatchFinished ? (
-                                  <div className="space-y-2">
-                                    <div className="text-3xl font-bold text-white">
+                                  <div className="space-y-1 sm:space-y-2">
+                                    <div className="text-xl sm:text-3xl font-bold text-white">
                                       {match.homeGoals} - {match.awayGoals}
                                     </div>
                                     <div className="text-xs text-green-400 font-medium">FINAL</div>
                                   </div>
                                 ) : (
-                                  <div className="space-y-2">
-                                    <div className="text-xl font-semibold text-gray-300">vs</div>
+                                  <div className="space-y-1 sm:space-y-2">
+                                    <div className="text-sm sm:text-xl font-semibold text-gray-300">vs</div>
                                     <div className="text-xs text-blue-400 font-medium">
                                       {isMatchUpcoming ? 'UPCOMING' : 'LIVE'}
                                     </div>
@@ -794,7 +794,7 @@ export default function NewPublicTournament() {
                                 
                                 {/* Match Date */}
                                 {match.dateISO && (
-                                  <div className="text-sm text-gray-400 mt-2">
+                                  <div className="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
                                     {new Date(match.dateISO).toLocaleDateString('en-US', {
                                       weekday: 'short',
                                       month: 'short',
@@ -805,9 +805,9 @@ export default function NewPublicTournament() {
                               </div>
                               
                               {/* Away Team */}
-                              <div className="flex items-center gap-4 flex-1 justify-end">
+                              <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
                                 <div className="text-right">
-                                  <span className="text-white font-semibold text-lg group-hover:text-blue-300 transition-colors duration-300">
+                                  <span className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300">
                                     {awayTeam?.name || 'Unknown Team'}
                                   </span>
                                 </div>
@@ -816,13 +816,13 @@ export default function NewPublicTournament() {
                                     <img 
                                       src={awayTeam.logo} 
                                       alt={`${awayTeam.name} logo`}
-                                      className="w-14 h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                                      className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
                                     />
                                     <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
                                   </div>
                                 ) : (
-                                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                                    <span className="text-lg font-bold text-white">
+                                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
+                                    <span className="text-sm sm:text-lg font-bold text-white">
                                       {awayTeam?.name?.charAt(0) || 'A'}
                                     </span>
                                   </div>
