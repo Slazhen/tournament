@@ -319,9 +319,21 @@ export const deleteOrganizerAccount = async (organizerName: string): Promise<voi
 
 // Reset organizer password
 export const resetOrganizerPassword = async (organizerName: string, newPassword: string): Promise<void> => {
+  console.log('Looking for organizer with username:', organizerName)
   const user = await getUserByUsername(organizerName)
+  console.log('Found user:', user)
+  
   if (!user) {
-    throw new Error('Organizer not found')
+    // Let's also check if there are any users with similar names
+    const allUsers = await dynamoDB.send(new ScanCommand({
+      TableName: TABLES.AUTH_USERS,
+      FilterExpression: 'role = :role',
+      ExpressionAttributeValues: {
+        ':role': 'organizer'
+      }
+    }))
+    console.log('All organizer users:', allUsers.Items?.map(u => ({ username: u.username, id: u.id })))
+    throw new Error(`Organizer not found: ${organizerName}`)
   }
   
   await updateUserPassword(user.id, newPassword)

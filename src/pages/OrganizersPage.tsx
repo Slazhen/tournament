@@ -77,7 +77,10 @@ export default function OrganizersPage() {
       // Get the created organizer ID (we'll need to fetch it)
       const result = await dynamoDB.send(new ScanCommand({
         TableName: TABLES.ORGANIZERS,
-        FilterExpression: 'name = :name AND email = :email',
+        FilterExpression: '#name = :name AND email = :email',
+        ExpressionAttributeNames: {
+          '#name': 'name'
+        },
         ExpressionAttributeValues: {
           ':name': newOrganizer.name,
           ':email': newOrganizer.email
@@ -85,9 +88,14 @@ export default function OrganizersPage() {
       }))
       
       const organizer = result.Items?.[0] as Organizer
+      console.log('Found organizer:', organizer)
       if (organizer) {
         // Create auth account for organizer with custom password
+        console.log('Creating auth account for:', newOrganizer.name, 'with ID:', organizer.id)
         await createOrganizerAccount(newOrganizer.name, organizer.id, newOrganizer.password)
+        console.log('Auth account created successfully')
+      } else {
+        console.error('No organizer found after creation')
       }
       
       // Reset form and reload
