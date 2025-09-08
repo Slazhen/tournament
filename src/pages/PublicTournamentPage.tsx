@@ -353,13 +353,13 @@ export default function PublicTournamentPage() {
                         const team = teams.find((t: any) => t.id === row.id)
                         if (team?.logo) {
                           return (
-                            <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                            <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                               <img src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
                             </div>
                           )
                         } else {
                           return (
-                            <span className="h-3 w-3 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
+                            <span className="h-4 w-4 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
                           )
                         }
                       })()}

@@ -31,8 +31,8 @@ export default function NewPublicTournament() {
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeStatsTab, setActiveStatsTab] = useState<'team' | 'player'>('team')
-  const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('all')
+  const [activeStatsTab, setActiveStatsTab] = useState<'team' | 'player'>('player')
+  const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
 
   useEffect(() => {
     const loadData = async () => {
@@ -369,36 +369,14 @@ export default function NewPublicTournament() {
         <div className="mb-12">
           <div className="text-center mb-8">
             <h2 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Statistics</h2>
-            <p className="text-gray-400">Team and player performance analytics</p>
+            <p className="text-gray-400">Player performance analytics</p>
           </div>
           
-          {/* Statistics Tabs */}
+          {/* Player Statistics */}
           <div className="glass rounded-2xl p-8 shadow-2xl border border-white/20">
-            <div className="flex flex-wrap gap-4 mb-8">
-              <button
-                onClick={() => setActiveStatsTab('team')}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                  activeStatsTab === 'team'
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                    : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
-                }`}
-              >
-                Team Statistics
-              </button>
-              <button
-                onClick={() => setActiveStatsTab('player')}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                  activeStatsTab === 'player'
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                    : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
-                }`}
-              >
-                Player Statistics
-              </button>
-            </div>
 
-            {/* Team Statistics Tab */}
-            {activeStatsTab === 'team' && (
+            {/* Team Statistics Tab - Removed */}
+            {false && (
               <div className="space-y-6">
                 <h3 className="text-2xl font-bold text-white mb-6">Team Performance</h3>
                 <div className="overflow-x-auto">
@@ -527,8 +505,7 @@ export default function NewPublicTournament() {
               </div>
             )}
 
-            {/* Player Statistics Tab */}
-            {activeStatsTab === 'player' && (
+            {/* Player Statistics */}
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                   <h3 className="text-2xl font-bold text-white">Player Performance</h3>
@@ -613,9 +590,9 @@ export default function NewPublicTournament() {
                         // Filter and sort based on selected filter
                         let filteredStats = playerStats
                         if (playerStatsFilter === 'scorers') {
-                          filteredStats = playerStats.filter(p => p.goals > 0).sort((a, b) => b.goals - a.goals)
+                          filteredStats = playerStats.filter(p => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 5)
                         } else if (playerStatsFilter === 'assists') {
-                          filteredStats = playerStats.filter(p => p.assists > 0).sort((a, b) => b.assists - a.assists)
+                          filteredStats = playerStats.filter(p => p.assists > 0).sort((a, b) => b.assists - a.assists).slice(0, 5)
                         } else {
                           // Sort by goals first, then assists
                           filteredStats = playerStats.sort((a, b) => {
@@ -683,7 +660,6 @@ export default function NewPublicTournament() {
                   </table>
                 </div>
               </div>
-            )}
           </div>
         </div>
 
