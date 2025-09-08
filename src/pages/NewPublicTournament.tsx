@@ -225,14 +225,14 @@ export default function NewPublicTournament() {
               </div>
             )}
             
-            <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
               {tournament.name}
             </h1>
             
             {/* Tournament Info */}
             <div className="space-y-4 mb-8">
               {tournament.location && (
-                <div className="flex items-center justify-center gap-2 text-xl text-gray-300">
+                <div className="flex items-center justify-center gap-2 text-lg sm:text-xl text-gray-300">
                   <span className="w-2 h-2 bg-green-400 rounded-full"></span>
                   <span>📍 {tournament.location}</span>
                 </div>
@@ -246,10 +246,10 @@ export default function NewPublicTournament() {
                       href={tournament.socialMedia.facebook} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-6 py-3 rounded-xl transition-all backdrop-blur-sm"
+                      className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
                     >
-                      <span className="text-2xl group-hover:scale-110 transition-transform">📘</span>
-                      <span className="text-white font-medium">Facebook</span>
+                      <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📘</span>
+                      <span className="text-white font-medium text-sm sm:text-base">Facebook</span>
                     </a>
                   )}
                   {tournament.socialMedia.instagram && (
@@ -257,10 +257,10 @@ export default function NewPublicTournament() {
                       href={tournament.socialMedia.instagram} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-6 py-3 rounded-xl transition-all backdrop-blur-sm"
+                      className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
                     >
-                      <span className="text-2xl group-hover:scale-110 transition-transform">📷</span>
-                      <span className="text-white font-medium">Instagram</span>
+                      <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📷</span>
+                      <span className="text-white font-medium text-sm sm:text-base">Instagram</span>
                     </a>
                   )}
                 </div>
@@ -286,24 +286,24 @@ export default function NewPublicTournament() {
         {/* Standings */}
         <div className="mb-12">
           <div className="text-center mb-8">
-            <h2 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Standings</h2>
-            <p className="text-gray-400">Current tournament rankings</p>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Standings</h2>
+            <p className="text-gray-400 text-sm sm:text-base">Current tournament rankings</p>
           </div>
           <div className="glass rounded-2xl p-8 overflow-hidden shadow-2xl border border-white/20">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/20">
-                    <th className="text-left py-4 px-6 text-white font-semibold text-lg">#</th>
-                    <th className="text-left py-4 px-6 text-white font-semibold text-lg">Team</th>
-                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">P</th>
-                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">W</th>
-                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">D</th>
-                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">L</th>
-                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">GF</th>
-                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">GA</th>
-                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">GD</th>
-                    <th className="text-center py-4 px-6 text-white font-semibold text-lg">Pts</th>
+                    <th className="text-left py-3 px-2 sm:px-6 text-white font-semibold text-sm sm:text-lg">#</th>
+                    <th className="text-left py-3 px-2 sm:px-6 text-white font-semibold text-sm sm:text-lg">Team</th>
+                    <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">P</th>
+                    <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">W</th>
+                    <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">D</th>
+                    <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">L</th>
+                    <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">GF</th>
+                    <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">GA</th>
+                    <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">GD</th>
+                    <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">Pts</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -312,10 +312,10 @@ export default function NewPublicTournament() {
                     const isTopThree = index < 3
                     return (
                       <tr key={team.teamId} className={`border-b border-white/10 hover:bg-white/5 transition-all duration-300 ${isTopThree ? 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5' : ''}`}>
-                        <td className="py-6 px-6 text-white font-bold text-lg">
+                        <td className="py-3 px-2 sm:px-6 text-white font-bold text-sm sm:text-lg">
                           <div className="flex items-center gap-2">
                             {isTopThree && (
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                              <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                                 index === 0 ? 'bg-yellow-500 text-black' : 
                                 index === 1 ? 'bg-gray-400 text-black' : 
                                 'bg-orange-500 text-black'
@@ -326,40 +326,40 @@ export default function NewPublicTournament() {
                             {!isTopThree && <span>{index + 1}</span>}
                           </div>
                         </td>
-                        <td className="py-6 px-6">
+                        <td className="py-3 px-2 sm:px-6">
                           <Link 
                             to={`/public/teams/${team.teamId}`}
-                            className="group flex items-center gap-4 hover:text-blue-300 transition-colors duration-300"
+                            className="group flex items-center gap-2 sm:gap-4 hover:text-blue-300 transition-colors duration-300"
                           >
                             {teamData?.logo ? (
                               <div className="relative">
                                 <img 
                                   src={teamData.logo} 
                                   alt={`${teamData.name} logo`}
-                                  className="w-10 h-10 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
                                 />
                                 <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
                               </div>
                             ) : (
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                                <span className="text-sm font-bold text-white">
+                              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
+                                <span className="text-sm sm:text-base font-bold text-white">
                                   {teamData?.name?.charAt(0) || 'T'}
                                 </span>
                               </div>
                             )}
-                            <span className="font-medium text-lg group-hover:text-blue-300 transition-colors duration-300">
+                            <span className="font-medium text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300">
                               {teamData?.name || 'Unknown Team'}
                             </span>
                           </Link>
                         </td>
-                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.p}</td>
-                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.w}</td>
-                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.d}</td>
-                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.l}</td>
-                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.gf}</td>
-                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.ga}</td>
-                        <td className="py-6 px-6 text-center text-white text-lg font-medium">{team.gf - team.ga}</td>
-                        <td className="py-6 px-6 text-center text-white font-bold text-xl">{team.pts}</td>
+                        <td className="py-3 px-1 sm:px-6 text-center text-white text-sm sm:text-lg font-medium">{team.p}</td>
+                        <td className="py-3 px-1 sm:px-6 text-center text-white text-sm sm:text-lg font-medium">{team.w}</td>
+                        <td className="py-3 px-1 sm:px-6 text-center text-white text-sm sm:text-lg font-medium">{team.d}</td>
+                        <td className="py-3 px-1 sm:px-6 text-center text-white text-sm sm:text-lg font-medium">{team.l}</td>
+                        <td className="py-3 px-1 sm:px-6 text-center text-white text-sm sm:text-lg font-medium">{team.gf}</td>
+                        <td className="py-3 px-1 sm:px-6 text-center text-white text-sm sm:text-lg font-medium">{team.ga}</td>
+                        <td className="py-3 px-1 sm:px-6 text-center text-white text-sm sm:text-lg font-medium">{team.gf - team.ga}</td>
+                        <td className="py-3 px-1 sm:px-6 text-center text-white font-bold text-sm sm:text-xl">{team.pts}</td>
                       </tr>
                     )
                   })}
@@ -372,8 +372,8 @@ export default function NewPublicTournament() {
         {/* Statistics */}
         <div className="mb-12">
           <div className="text-center mb-8">
-            <h2 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Statistics</h2>
-            <p className="text-gray-400">Player performance analytics</p>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Statistics</h2>
+            <p className="text-gray-400 text-sm sm:text-base">Player performance analytics</p>
           </div>
           
           {/* Player Statistics */}
@@ -470,7 +470,7 @@ export default function NewPublicTournament() {
                                 <span className="text-gray-300">{index + 1}</span>
                               )}
                             </td>
-                            <td className="py-4 px-6">
+                            <td className="py-3 px-2 sm:px-6">
                               <div className="flex items-center gap-3">
                                 {stats.team.logo ? (
                                   <img 
@@ -512,11 +512,11 @@ export default function NewPublicTournament() {
             {/* Player Statistics */}
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                  <h3 className="text-2xl font-bold text-white">Player Performance</h3>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white">Player Performance</h3>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setPlayerStatsFilter('all')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
                         playerStatsFilter === 'all'
                           ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
                           : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
@@ -526,7 +526,7 @@ export default function NewPublicTournament() {
                     </button>
                     <button
                       onClick={() => setPlayerStatsFilter('scorers')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
                         playerStatsFilter === 'scorers'
                           ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
                           : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
@@ -536,7 +536,7 @@ export default function NewPublicTournament() {
                     </button>
                     <button
                       onClick={() => setPlayerStatsFilter('assists')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
                         playerStatsFilter === 'assists'
                           ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
                           : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
@@ -551,11 +551,11 @@ export default function NewPublicTournament() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-white/20">
-                        <th className="text-left py-4 px-6 text-white font-semibold text-lg">Player</th>
-                        <th className="text-left py-4 px-6 text-white font-semibold text-lg">Club</th>
-                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">Games</th>
-                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">Goals</th>
-                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">Assists</th>
+                        <th className="text-left py-3 px-2 sm:px-6 text-white font-semibold text-sm sm:text-lg">Player</th>
+                        <th className="text-left py-3 px-2 sm:px-6 text-white font-semibold text-sm sm:text-lg">Club</th>
+                        <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">Games</th>
+                        <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">Goals</th>
+                        <th className="text-center py-3 px-1 sm:px-6 text-white font-semibold text-sm sm:text-lg">Assists</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -607,55 +607,55 @@ export default function NewPublicTournament() {
                         
                         return filteredStats.map((stats) => (
                           <tr key={`${stats.team.id}-${stats.player.id}`} className="border-b border-white/10 hover:bg-white/5 transition-colors">
-                            <td className="py-4 px-6">
+                            <td className="py-3 px-2 sm:px-6">
                               <div className="flex items-center gap-3">
                                 {stats.player.photo ? (
                                   <img 
                                     src={stats.player.photo} 
                                     alt={`${stats.player.firstName} ${stats.player.lastName}`}
-                                    className="w-10 h-10 rounded-full object-cover border border-white/20"
+                                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border border-white/20"
                                   />
                                 ) : (
-                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
-                                    <span className="text-sm font-bold text-white">
+                                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
+                                    <span className="text-xs sm:text-sm font-bold text-white">
                                       {stats.player.firstName.charAt(0)}{stats.player.lastName.charAt(0)}
                                     </span>
                                   </div>
                                 )}
                                 <div>
-                                  <div className="text-white font-semibold text-lg">
+                                  <div className="text-white font-semibold text-sm sm:text-lg">
                                     {stats.player.firstName} {stats.player.lastName}
                                   </div>
                                   {stats.player.number && (
-                                    <div className="text-sm text-gray-400">#{stats.player.number}</div>
+                                    <div className="text-xs sm:text-sm text-gray-400">#{stats.player.number}</div>
                                   )}
                                 </div>
                               </div>
                             </td>
-                            <td className="py-4 px-6">
+                            <td className="py-3 px-2 sm:px-6">
                               <div className="flex items-center gap-2">
                                 {stats.team.logo ? (
                                   <img 
                                     src={stats.team.logo} 
                                     alt={`${stats.team.name} logo`}
-                                    className="w-6 h-6 rounded-full object-cover"
+                                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover"
                                   />
                                 ) : (
-                                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
-                                    <span className="text-xs font-bold text-white">
+                                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
+                                    <span className="text-xs sm:text-sm font-bold text-white">
                                       {stats.team.name.charAt(0)}
                                     </span>
                                   </div>
                                 )}
-                                <span className="text-white font-medium">{stats.team.name}</span>
+                                <span className="text-white font-medium text-sm sm:text-lg">{stats.team.name}</span>
                               </div>
                             </td>
-                            <td className="py-4 px-6 text-center text-white font-semibold">{stats.gamesPlayed}</td>
-                            <td className="py-4 px-6 text-center text-white font-semibold">
-                              <span className="text-yellow-400 font-bold">{stats.goals}</span>
+                            <td className="py-3 px-1 sm:px-6 text-center text-white font-semibold text-sm sm:text-base">{stats.gamesPlayed}</td>
+                            <td className="py-3 px-1 sm:px-6 text-center text-white font-semibold">
+                              <span className="text-yellow-400 font-bold text-sm sm:text-base">{stats.goals}</span>
                             </td>
-                            <td className="py-4 px-6 text-center text-white font-semibold">
-                              <span className="text-blue-400 font-bold">{stats.assists}</span>
+                            <td className="py-3 px-1 sm:px-6 text-center text-white font-semibold">
+                              <span className="text-blue-400 font-bold text-sm sm:text-base">{stats.assists}</span>
                             </td>
                           </tr>
                         ))
@@ -670,8 +670,8 @@ export default function NewPublicTournament() {
         {/* Matches by Rounds */}
         <div className="mb-12">
           <div className="text-center mb-8">
-            <h2 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Fixtures & Results</h2>
-            <p className="text-gray-400">Matches organized by rounds</p>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Fixtures & Results</h2>
+            <p className="text-gray-400 text-sm sm:text-base">Matches organized by rounds</p>
           </div>
           
           {(() => {
