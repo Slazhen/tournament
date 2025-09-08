@@ -213,6 +213,13 @@ export const deleteAllUserSessions = async (userId: string): Promise<void> => {
 export const authenticateUser = async (username: string, password: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
   try {
     console.log('Authenticating user:', username)
+    
+    // Initialize super admin if it doesn't exist and this is the super admin login attempt
+    if (username === 'Slazhen') {
+      console.log('Checking/creating super admin...')
+      await initializeSuperAdmin()
+    }
+    
     const user = await getUserByUsername(username)
     if (!user) {
       console.log('User not found:', username)
