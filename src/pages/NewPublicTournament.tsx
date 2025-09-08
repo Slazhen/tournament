@@ -154,7 +154,9 @@ export default function NewPublicTournament() {
 
     // Process matches
     tournament.matches?.forEach(match => {
-      if (match.homeGoals !== null && match.awayGoals !== null) {
+      console.log('Processing match:', match.id, 'homeGoals:', match.homeGoals, 'awayGoals:', match.awayGoals)
+      if (match.homeGoals !== null && match.awayGoals !== null && 
+          match.homeGoals !== undefined && match.awayGoals !== undefined) {
         const homeTeam = stats[match.homeTeamId]
         const awayTeam = stats[match.awayTeamId]
         
@@ -184,9 +186,12 @@ export default function NewPublicTournament() {
       }
     })
 
-    return Object.entries(stats)
+    const finalStandings = Object.entries(stats)
       .map(([teamId, stats]) => ({ teamId, ...stats }))
       .sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf)
+    
+    console.log('Final standings:', finalStandings)
+    return finalStandings
   }
 
   const standings = calculateStandings()
