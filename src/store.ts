@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Team, Tournament, Match, Organizer, AppSettings } from './types'
-import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule, generateCustomPlayoffHomebush } from './utils/tournament'
+import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule } from './utils/tournament'
 import { organizerService, teamService, tournamentService, matchService, uploadImageToS3 } from './lib/aws-database'
 
 type AppStore = {
