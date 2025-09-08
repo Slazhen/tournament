@@ -3,9 +3,12 @@ import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
+import { AuthProvider } from './contexts/AuthContext'
+import ProtectedRoute from './components/ProtectedRoute.tsx'
 
 import HomePage from './pages/HomePage.tsx'
 import AdminPage from './pages/AdminPage.tsx'
+import AdminLoginPage from './pages/AdminLoginPage.tsx'
 import TournamentsPage from './pages/TournamentsPage.tsx'
 import TeamsPage from './pages/TeamsPage.tsx'
 import CalendarPage from './pages/CalendarPage.tsx'
@@ -24,7 +27,15 @@ const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <HomePage /> },
-      { path: 'admin', element: <AdminPage /> },
+      { path: 'admin/login', element: <AdminLoginPage /> },
+      { 
+        path: 'admin', 
+        element: (
+          <ProtectedRoute>
+            <AdminPage />
+          </ProtectedRoute>
+        ) 
+      },
       { path: 'tournaments', element: <TournamentsPage /> },
       { path: 'tournaments/:id', element: <TournamentPage /> },
       { path: 'tournaments/:tournamentId/matches/:matchId', element: <MatchPage /> },
@@ -74,6 +85,8 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
   </StrictMode>,
 )

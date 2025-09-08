@@ -41,6 +41,8 @@ export const TABLES = {
   TEAMS: 'football-tournaments-teams',
   TOURNAMENTS: 'football-tournaments-tournaments',
   MATCHES: 'football-tournaments-matches',
+  AUTH_USERS: 'football-tournaments-auth-users',
+  AUTH_SESSIONS: 'football-tournaments-auth-sessions',
 } as const
 
 // Helper function to generate S3 URLs

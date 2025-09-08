@@ -1,0 +1,249 @@
+import { dynamoDB, TABLES } from './aws-config'
+import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { randomBytes, createHash, pbkdf2Sync } from 'crypto'
+
+// Types
+export type UserRole = 'super_admin' | 'organizer'
+export type AuthUser = {
+  id: string
+  username: string
+  role: UserRole
+  passwordHash: string
+  salt: string
+  organizerId?: string // Only for organizer users
+  createdAt: string
+  lastLogin?: string
+  isActive: boolean
+}
+
+export type AuthSession = {
+  id: string
+  userId: string
+  token: string
+  expiresAt: string
+  createdAt: string
+  userAgent?: string
+  ipAddress?: string
+}
+
+// Password utilities
+export const generateSalt = (): string => {
+  return randomBytes(32).toString('hex')
+}
+
+export const hashPassword = (password: string, salt: string): string => {
+  return pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex')
+}
+
+export const verifyPassword = (password: string, hash: string, salt: string): boolean => {
+  return hashPassword(password, salt) === hash
+}
+
+// Session utilities
+export const generateSessionToken = (): string => {
+  return randomBytes(32).toString('hex')
+}
+
+export const isSessionExpired = (expiresAt: string): boolean => {
+  return new Date(expiresAt) < new Date()
+}
+
+// User management
+export const createUser = async (userData: Omit<AuthUser, 'id' | 'passwordHash' | 'salt' | 'createdAt'>, password: string): Promise<AuthUser> => {
+  const salt = generateSalt()
+  const passwordHash = hashPassword(password, salt)
+  
+  const user: AuthUser = {
+    id: randomBytes(16).toString('hex'),
+    ...userData,
+    passwordHash,
+    salt,
+    createdAt: new Date().toISOString(),
+    isActive: true
+  }
+
+  await dynamoDB.send(new PutCommand({
+    TableName: TABLES.AUTH_USERS,
+    Item: user
+  }))
+
+  return user
+}
+
+export const getUserByUsername = async (username: string): Promise<AuthUser | null> => {
+  const result = await dynamoDB.send(new ScanCommand({
+    TableName: TABLES.AUTH_USERS,
+    FilterExpression: 'username = :username AND isActive = :isActive',
+    ExpressionAttributeValues: {
+      ':username': username,
+      ':isActive': true
+    }
+  }))
+
+  return result.Items?.[0] as AuthUser || null
+}
+
+export const getUserById = async (id: string): Promise<AuthUser | null> => {
+  const result = await dynamoDB.send(new GetCommand({
+    TableName: TABLES.AUTH_USERS,
+    Key: { id }
+  }))
+
+  return result.Item as AuthUser || null
+}
+
+export const updateUserPassword = async (userId: string, newPassword: string): Promise<void> => {
+  const salt = generateSalt()
+  const passwordHash = hashPassword(newPassword, salt)
+
+  await dynamoDB.send(new UpdateCommand({
+    TableName: TABLES.AUTH_USERS,
+    Key: { id: userId },
+    UpdateExpression: 'SET passwordHash = :passwordHash, salt = :salt, lastLogin = :lastLogin',
+    ExpressionAttributeValues: {
+      ':passwordHash': passwordHash,
+      ':salt': salt,
+      ':lastLogin': new Date().toISOString()
+    }
+  }))
+}
+
+// Session management
+export const createSession = async (userId: string, userAgent?: string, ipAddress?: string): Promise<AuthSession> => {
+  const session: AuthSession = {
+    id: randomBytes(16).toString('hex'),
+    userId,
+    token: generateSessionToken(),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+    createdAt: new Date().toISOString(),
+    userAgent,
+    ipAddress
+  }
+
+  await dynamoDB.send(new PutCommand({
+    TableName: TABLES.AUTH_SESSIONS,
+    Item: session
+  }))
+
+  return session
+}
+
+export const getSessionByToken = async (token: string): Promise<AuthSession | null> => {
+  const result = await dynamoDB.send(new ScanCommand({
+    TableName: TABLES.AUTH_SESSIONS,
+    FilterExpression: 'token = :token',
+    ExpressionAttributeValues: {
+      ':token': token
+    }
+  }))
+
+  const session = result.Items?.[0] as AuthSession
+  if (!session || isSessionExpired(session.expiresAt)) {
+    return null
+  }
+
+  return session
+}
+
+export const deleteSession = async (token: string): Promise<void> => {
+  const session = await getSessionByToken(token)
+  if (session) {
+    await dynamoDB.send(new DeleteCommand({
+      TableName: TABLES.AUTH_SESSIONS,
+      Key: { id: session.id }
+    }))
+  }
+}
+
+export const deleteAllUserSessions = async (userId: string): Promise<void> => {
+  const result = await dynamoDB.send(new ScanCommand({
+    TableName: TABLES.AUTH_SESSIONS,
+    FilterExpression: 'userId = :userId',
+    ExpressionAttributeValues: {
+      ':userId': userId
+    }
+  }))
+
+  const deletePromises = result.Items?.map(item => 
+    dynamoDB.send(new DeleteCommand({
+      TableName: TABLES.AUTH_SESSIONS,
+      Key: { id: item.id }
+    }))
+  ) || []
+
+  await Promise.all(deletePromises)
+}
+
+// Authentication functions
+export const authenticateUser = async (username: string, password: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
+  const user = await getUserByUsername(username)
+  if (!user || !verifyPassword(password, user.passwordHash, user.salt)) {
+    return null
+  }
+
+  // Update last login
+  await dynamoDB.send(new UpdateCommand({
+    TableName: TABLES.AUTH_USERS,
+    Key: { id: user.id },
+    UpdateExpression: 'SET lastLogin = :lastLogin',
+    ExpressionAttributeValues: {
+      ':lastLogin': new Date().toISOString()
+    }
+  }))
+
+  // Create new session
+  const session = await createSession(user.id)
+
+  return { user, session }
+}
+
+export const verifySession = async (token: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
+  const session = await getSessionByToken(token)
+  if (!session) {
+    return null
+  }
+
+  const user = await getUserById(session.userId)
+  if (!user || !user.isActive) {
+    return null
+  }
+
+  return { user, session }
+}
+
+// Initialize super admin
+export const initializeSuperAdmin = async (): Promise<void> => {
+  const existingAdmin = await getUserByUsername('Slazhen')
+  if (existingAdmin) {
+    return // Super admin already exists
+  }
+
+  await createUser({
+    username: 'Slazhen',
+    role: 'super_admin',
+    isActive: true
+  }, 'qweRTY1')
+}
+
+// Role-based access control
+export const hasPermission = (user: AuthUser, action: string, resource?: string): boolean => {
+  switch (user.role) {
+    case 'super_admin':
+      return true // Super admin has access to everything
+    case 'organizer':
+      // Organizers can only access their own data
+      if (action === 'access_organizer_data' && resource === user.organizerId) {
+        return true
+      }
+      return false
+    default:
+      return false
+  }
+}
+
+export const canAccessOrganizer = (user: AuthUser, organizerId: string): boolean => {
+  if (user.role === 'super_admin') {
+    return true
+  }
+  return user.role === 'organizer' && user.organizerId === organizerId
+}

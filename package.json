@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "vite build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "setup-auth": "node scripts/setup-auth-tables.js"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.879.0",
