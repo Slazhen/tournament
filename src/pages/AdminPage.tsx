@@ -66,9 +66,19 @@ export default function AdminPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Admin Panel</h1>
+            <div className="flex items-center gap-4 mb-2">
+              <h1 className="text-4xl font-bold text-white">Admin Panel</h1>
+              {isSuperAdmin && (
+                <div className="px-4 py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-400/30 rounded-full">
+                  <span className="text-yellow-400 font-semibold text-sm flex items-center gap-2">
+                    <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                    SUPERADMIN
+                  </span>
+                </div>
+              )}
+            </div>
             <p className="text-gray-400">
-              Welcome, {user.username} ({user.role === 'super_admin' ? 'Super Admin' : 'Organizer'})
+              Welcome, {user.username} {isSuperAdmin ? '- Full System Access' : '- Organizer Access'}
             </p>
           </div>
           <button

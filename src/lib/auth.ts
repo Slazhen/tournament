@@ -293,13 +293,13 @@ export const initializeSuperAdmin = async (): Promise<void> => {
 }
 
 // Create organizer account
-export const createOrganizerAccount = async (organizerName: string, organizerId: string): Promise<AuthUser> => {
+export const createOrganizerAccount = async (organizerName: string, organizerId: string, password?: string): Promise<AuthUser> => {
   return await createUser({
     username: organizerName,
     role: 'organizer',
     organizerId: organizerId,
     isActive: true
-  }, '123')
+  }, password || '123')
 }
 
 // Role-based access control

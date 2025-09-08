@@ -24,8 +24,10 @@ export default function OrganizersPage() {
   const [newOrganizer, setNewOrganizer] = useState({
     name: '',
     email: '',
-    description: ''
+    description: '',
+    password: ''
   })
+  const [createError, setCreateError] = useState('')
 
   useEffect(() => {
     loadOrganizers()
@@ -47,7 +49,25 @@ export default function OrganizersPage() {
 
   const handleCreateOrganizer = async (e: React.FormEvent) => {
     e.preventDefault()
+    setCreateError('')
+    
     try {
+      // Check if organizer name already exists
+      const existingOrganizer = organizers.find(org => 
+        org.name.toLowerCase() === newOrganizer.name.toLowerCase()
+      )
+      
+      if (existingOrganizer) {
+        setCreateError('An organizer with this name already exists. Please choose a different name.')
+        return
+      }
+      
+      // Validate password
+      if (!newOrganizer.password || newOrganizer.password.length < 6) {
+        setCreateError('Password must be at least 6 characters long.')
+        return
+      }
+      
       // Create organizer in the main system
       await createOrganizer(newOrganizer.name, newOrganizer.email)
       
@@ -63,16 +83,17 @@ export default function OrganizersPage() {
       
       const organizer = result.Items?.[0] as Organizer
       if (organizer) {
-        // Create auth account for organizer
-        await createOrganizerAccount(newOrganizer.name, organizer.id)
+        // Create auth account for organizer with custom password
+        await createOrganizerAccount(newOrganizer.name, organizer.id, newOrganizer.password)
       }
       
       // Reset form and reload
-      setNewOrganizer({ name: '', email: '', description: '' })
+      setNewOrganizer({ name: '', email: '', description: '', password: '' })
       setShowCreateForm(false)
       loadOrganizers()
     } catch (error) {
       console.error('Error creating organizer:', error)
+      setCreateError('Failed to create organizer. Please try again.')
     }
   }
 
@@ -103,7 +124,15 @@ export default function OrganizersPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Organizers Management</h1>
+            <div className="flex items-center gap-4 mb-2">
+              <h1 className="text-4xl font-bold text-white">Organizers Management</h1>
+              <div className="px-4 py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-400/30 rounded-full">
+                <span className="text-yellow-400 font-semibold text-sm flex items-center gap-2">
+                  <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                  SUPERADMIN
+                </span>
+              </div>
+            </div>
             <p className="text-gray-400">Manage tournament organizers and their access</p>
           </div>
           <div className="flex gap-4">
@@ -167,6 +196,26 @@ export default function OrganizersPage() {
                   rows={3}
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Initial Password
+                </label>
+                <input
+                  type="password"
+                  value={newOrganizer.password}
+                  onChange={(e) => setNewOrganizer({ ...newOrganizer, password: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-white placeholder-gray-400"
+                  placeholder="Enter initial password (min 6 characters)"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">This will be the organizer's login password</p>
+              </div>
+              {createError && (
+                <div className="bg-red-500/10 border border-red-400/30 rounded-xl p-4">
+                  <p className="text-red-400 text-sm">{createError}</p>
+                </div>
+              )}
+              
               <div className="flex gap-4">
                 <button
                   type="submit"
@@ -231,7 +280,7 @@ export default function OrganizersPage() {
                         Created: {new Date(organizer.createdAtISO).toLocaleDateString()}
                       </p>
                       <p className="text-xs text-blue-400 mt-1">
-                        Login: {organizer.name} / 123
+                        Login: {organizer.name} / [Custom Password]
                       </p>
                     </div>
                   </div>
