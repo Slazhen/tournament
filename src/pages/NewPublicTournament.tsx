@@ -593,7 +593,7 @@ export default function NewPublicTournament() {
                             
                             tournament.matches?.forEach(match => {
                               if (match.goals) {
-                                match.goals.forEach(goal => {
+                                match.goals.forEach((goal: any) => {
                                   if (goal.playerId === player.id) goals++
                                   if (goal.assistPlayerId === player.id) assists++
                                 })
@@ -624,7 +624,7 @@ export default function NewPublicTournament() {
                           })
                         }
                         
-                        return filteredStats.map((stats, index) => (
+                        return filteredStats.map((stats) => (
                           <tr key={`${stats.team.id}-${stats.player.id}`} className="border-b border-white/10 hover:bg-white/5 transition-colors">
                             <td className="py-4 px-6">
                               <div className="flex items-center gap-3">
