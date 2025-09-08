@@ -80,15 +80,17 @@ export default function TournamentPage() {
 
   // Get playoff structure based on tournament format
   const playoffStructure = useMemo(() => {
-            if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination' && tournament.format.mode !== 'custom_playoff_homebush')) return null
+            if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination' && tournament.format.mode !== 'league_custom_playoff')) return null
     
-    if (tournament.format.mode === 'custom_playoff_homebush') {
-      // Custom playoff has exactly 6 rounds
-      const playoffTeams = tournament.format.customPlayoffConfig?.playoffTeams || 8
+    if (tournament.format.mode === 'league_custom_playoff') {
+      // League + Custom Playoff format
+      const playoffTeams = tournament.format.customPlayoffConfig?.playoffTeams || 4
+      const playoffRounds = tournament.format.customPlayoffConfig?.playoffRounds || []
       return {
         qualifiers: playoffTeams,
-        rounds: 6, // Custom playoff has 6 rounds
-        structure: [] // Custom playoff doesn't use standard bracket structure
+        rounds: playoffRounds.length, // Number of configured playoff rounds
+        structure: [], // Custom playoff doesn't use standard bracket structure
+        customRounds: playoffRounds // Custom round configurations
       }
     } else {
       // Standard playoff formats
@@ -688,7 +690,8 @@ export default function TournamentPage() {
           <div className="space-y-6">
             {Array.from({ length: playoffStructure?.rounds || 0 }, (_, roundIndex) => {
               const roundMatches = playoffMatches.filter(m => m.playoffRound === roundIndex)
-              const roundName = getPlayoffRoundName(roundIndex, playoffStructure?.rounds || 0)
+              const roundName = playoffStructure?.customRounds?.[roundIndex]?.name || 
+                               getPlayoffRoundName(roundIndex, playoffStructure?.rounds || 0)
               
               if (roundMatches.length === 0) return null
               
@@ -809,17 +812,10 @@ function getPlayoffRoundName(roundIndex: number, totalRounds: number): string {
     if (roundIndex === 2) return '1/2 Final'
     return 'Final'
   }
-  if (totalRounds === 6) {
-    // Custom Playoff Homebush format
-    const roundNames = [
-      'Round 1 - Qualifiers & Elimination',
-      'Round 2 - Elimination C',
-      'Round 3 - Semi (Upper)',
-      'Round 4 - Knockout',
-      'Round 5 - Preliminary Finals',
-      'Round 6 - Grand Final'
-    ]
-    return roundNames[roundIndex] || `Round ${roundIndex + 1}`
+  // For custom playoff rounds, use the configured names
+  if (totalRounds > 0 && totalRounds <= 10) {
+    // This will be handled by the custom round names from playoffStructure.customRounds
+    return `Round ${roundIndex + 1}`
   }
   return `Round ${roundIndex + 1}`
 }

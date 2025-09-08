@@ -8,7 +8,7 @@ export default function TournamentsPage() {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [rounds, setRounds] = useState(1)
-  const [mode, setMode] = useState<'league' | 'league_playoff' | 'swiss_elimination' | 'custom_playoff_homebush'>('league')
+  const [mode, setMode] = useState<'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff'>('league')
   const [qualifiers, setQualifiers] = useState(4)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string>("")
@@ -48,11 +48,10 @@ export default function TournamentsPage() {
         rounds,
         mode,
         playoffQualifiers: mode === 'league_playoff' ? qualifiers : undefined,
-        customPlayoffConfig: mode === 'custom_playoff_homebush' ? {
-          topSeeds: 4,
+        customPlayoffConfig: mode === 'league_custom_playoff' ? {
           playoffTeams: qualifiers,
           enableBye: true,
-          reSeedRound5: true
+          playoffRounds: [] // Will be configured later
         } : undefined
       }
       
@@ -175,13 +174,13 @@ export default function TournamentsPage() {
                   <label className="block text-sm font-medium mb-2">Tournament Mode</label>
                   <select
                     value={mode}
-                    onChange={(e) => setMode(e.target.value as 'league' | 'league_playoff' | 'swiss_elimination' | 'custom_playoff_homebush')}
+                    onChange={(e) => setMode(e.target.value as 'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff')}
                     className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                   >
                     <option value="league">League Only</option>
                     <option value="league_playoff">League + Playoffs</option>
                     <option value="swiss_elimination">Swiss + Elimination</option>
-                    <option value="custom_playoff_homebush">Custom Playoff Homebush</option>
+                    <option value="league_custom_playoff">League + Custom Playoff</option>
                   </select>
                 </div>
               </div>
@@ -201,9 +200,9 @@ export default function TournamentsPage() {
                 </div>
               )}
 
-              {mode === 'custom_playoff_homebush' && (
-                <div className="space-y-4 p-4 bg-blue-500/10 border border-blue-400/30 rounded-lg">
-                  <h3 className="text-lg font-semibold text-blue-400">Custom Playoff Homebush Configuration</h3>
+              {mode === 'league_custom_playoff' && (
+                <div className="space-y-4 p-4 bg-green-500/10 border border-green-400/30 rounded-lg">
+                  <h3 className="text-lg font-semibold text-green-400">League + Custom Playoff Configuration</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-2">Playoff Teams</label>
@@ -212,29 +211,32 @@ export default function TournamentsPage() {
                         onChange={(e) => setQualifiers(Number(e.target.value))}
                         className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                       >
+                        <option value={4}>4 Teams</option>
+                        <option value={6}>6 Teams</option>
                         <option value={8}>8 Teams</option>
-                        <option value={9}>9 Teams (with BYE)</option>
                         <option value={10}>10 Teams</option>
                         <option value={12}>12 Teams</option>
-                        <option value={16}>16 Teams</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">Top Seeds</label>
+                      <label className="block text-sm font-medium mb-2">League Rounds</label>
                       <select
-                        value={4}
-                        disabled
-                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none opacity-50"
+                        value={rounds}
+                        onChange={(e) => setRounds(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                       >
-                        <option value={4}>4 Teams (Double-Chance)</option>
+                        <option value={1}>1 Round</option>
+                        <option value={2}>2 Rounds</option>
+                        <option value={3}>3 Rounds</option>
+                        <option value={4}>4 Rounds</option>
                       </select>
                     </div>
                   </div>
-                  <div className="text-sm text-blue-300">
-                    <p>• <strong>Double-Chance Path:</strong> Top 4 seeds get second opportunity</p>
-                    <p>• <strong>Elimination Ladder:</strong> Lower seeds fight through elimination bracket</p>
-                    <p>• <strong>6 Rounds:</strong> Complete tournament progression to Grand Final</p>
-                    <p>• <strong>Re-seeding:</strong> Teams re-seeded for Preliminary Finals</p>
+                  <div className="text-sm text-green-300">
+                    <p>• <strong>League Phase:</strong> All teams play each other (with BYE for odd numbers)</p>
+                    <p>• <strong>Custom Playoff:</strong> Configure each playoff round as knockout or additional league</p>
+                    <p>• <strong>Points System:</strong> Additional league games count toward table, knockout games don't</p>
+                    <p>• <strong>Flexible:</strong> Mix knockout and league games as needed</p>
                   </div>
                 </div>
               )}

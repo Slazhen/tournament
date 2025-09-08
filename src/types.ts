@@ -141,6 +141,13 @@ export type TeamStanding = {
   headToHeadGoalDifference?: number
 }
 
+export type CustomPlayoffRoundConfig = {
+  roundNumber: number
+  name: string
+  type: 'knockout' | 'league' // knockout = elimination, league = points count toward table
+  description?: string
+}
+
 export type Tournament = {
   id: string
   name: string
@@ -150,13 +157,12 @@ export type Tournament = {
   matches: Match[]
   format?: {
     rounds: number
-    mode: 'league' | 'league_playoff' | 'swiss_elimination' | 'custom_playoff_homebush'
+    mode: 'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff'
     playoffQualifiers?: number
     customPlayoffConfig?: {
-      topSeeds: number // Number of top seeds for double-chance path (default: 4)
-      playoffTeams: number // Total teams in playoffs (default: 8)
+      playoffTeams: number // Total teams in playoffs
       enableBye: boolean // Enable BYE for odd numbers (default: true)
-      reSeedRound5: boolean // Re-seed for Preliminary Finals (default: true)
+      playoffRounds?: CustomPlayoffRoundConfig[] // Configuration for each playoff round
     }
   }
   logo?: string

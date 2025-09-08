@@ -239,38 +239,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
         } else if (tournamentFormat.mode === 'swiss_elimination') {
           const swissResult = generateSwissEliminationSchedule(teamIds)
           matches = [...swissResult.leagueMatches, ...swissResult.eliminationMatches]
-        } else if (tournamentFormat.mode === 'custom_playoff_homebush') {
-          // Generate round-robin matches first
+        } else if (tournamentFormat.mode === 'league_custom_playoff') {
+          // Generate round-robin matches first (with BYE handling for odd numbers)
           const leagueMatches = generateRoundRobinSchedule(teamIds, tournamentFormat.rounds || 1)
           
-          // Create placeholder team standings for playoff generation
-          const teamStandings = teamIds.map((teamId, index) => ({
-            teamId,
-            position: index + 1,
-            points: 0,
-            played: 0,
-            won: 0,
-            drawn: 0,
-            lost: 0,
-            goalsFor: 0,
-            goalsAgainst: 0,
-            goalDifference: 0,
-            disciplinaryPoints: 0
-          }))
-          
-          // Generate custom playoff matches
-          const playoffRounds = generateCustomPlayoffHomebush(teamStandings, tournamentFormat.customPlayoffConfig || {
-            topSeeds: 4,
-            playoffTeams: 8,
-            enableBye: true,
-            reSeedRound5: true
-          })
-          
-          // Extract all matches from playoff rounds
-          const playoffMatches = playoffRounds.flatMap(round => round.matches)
-          
-          // Combine league and playoff matches
-          matches = [...leagueMatches, ...playoffMatches]
+          // For now, just create the league matches
+          // Playoff rounds will be configured later by the admin
+          matches = leagueMatches
         }
         
         // Update tournament with generated matches
