@@ -13,7 +13,9 @@ export default function AdminPage() {
   useEffect(() => {
     const init = async () => {
       try {
+        console.log('Initializing super admin...')
         await initializeSuperAdmin()
+        console.log('Super admin initialized successfully')
         setIsInitialized(true)
       } catch (error) {
         console.error('Failed to initialize super admin:', error)

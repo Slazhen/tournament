@@ -9,6 +9,7 @@ import ProtectedRoute from './components/ProtectedRoute.tsx'
 import HomePage from './pages/HomePage.tsx'
 import AdminPage from './pages/AdminPage.tsx'
 import AdminLoginPage from './pages/AdminLoginPage.tsx'
+import OrganizersPage from './pages/OrganizersPage.tsx'
 import TournamentsPage from './pages/TournamentsPage.tsx'
 import TeamsPage from './pages/TeamsPage.tsx'
 import CalendarPage from './pages/CalendarPage.tsx'
@@ -33,6 +34,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <AdminPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/organizers', 
+        element: (
+          <ProtectedRoute requireSuperAdmin>
+            <OrganizersPage />
           </ProtectedRoute>
         ) 
       },

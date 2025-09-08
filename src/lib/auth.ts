@@ -211,25 +211,41 @@ export const deleteAllUserSessions = async (userId: string): Promise<void> => {
 
 // Authentication functions
 export const authenticateUser = async (username: string, password: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
-  const user = await getUserByUsername(username)
-  if (!user || !(await verifyPassword(password, user.passwordHash, user.salt))) {
+  try {
+    console.log('Authenticating user:', username)
+    const user = await getUserByUsername(username)
+    if (!user) {
+      console.log('User not found:', username)
+      return null
+    }
+    
+    console.log('User found, verifying password...')
+    const isValidPassword = await verifyPassword(password, user.passwordHash, user.salt)
+    if (!isValidPassword) {
+      console.log('Invalid password for user:', username)
+      return null
+    }
+    
+    console.log('Authentication successful for user:', username)
+
+    // Update last login
+    await dynamoDB.send(new UpdateCommand({
+      TableName: TABLES.AUTH_USERS,
+      Key: { id: user.id },
+      UpdateExpression: 'SET lastLogin = :lastLogin',
+      ExpressionAttributeValues: {
+        ':lastLogin': new Date().toISOString()
+      }
+    }))
+
+    // Create new session
+    const session = await createSession(user.id)
+
+    return { user, session }
+  } catch (error) {
+    console.error('Error in authenticateUser:', error)
     return null
   }
-
-  // Update last login
-  await dynamoDB.send(new UpdateCommand({
-    TableName: TABLES.AUTH_USERS,
-    Key: { id: user.id },
-    UpdateExpression: 'SET lastLogin = :lastLogin',
-    ExpressionAttributeValues: {
-      ':lastLogin': new Date().toISOString()
-    }
-  }))
-
-  // Create new session
-  const session = await createSession(user.id)
-
-  return { user, session }
 }
 
 export const verifySession = async (token: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
@@ -248,16 +264,25 @@ export const verifySession = async (token: string): Promise<{ user: AuthUser; se
 
 // Initialize super admin
 export const initializeSuperAdmin = async (): Promise<void> => {
-  const existingAdmin = await getUserByUsername('Slazhen')
-  if (existingAdmin) {
-    return // Super admin already exists
-  }
+  try {
+    console.log('Checking for existing super admin...')
+    const existingAdmin = await getUserByUsername('Slazhen')
+    if (existingAdmin) {
+      console.log('Super admin already exists')
+      return // Super admin already exists
+    }
 
-  await createUser({
-    username: 'Slazhen',
-    role: 'super_admin',
-    isActive: true
-  }, '123')
+    console.log('Creating super admin account...')
+    await createUser({
+      username: 'Slazhen',
+      role: 'super_admin',
+      isActive: true
+    }, '123')
+    console.log('Super admin created successfully')
+  } catch (error) {
+    console.error('Error in initializeSuperAdmin:', error)
+    throw error
+  }
 }
 
 // Create organizer account
