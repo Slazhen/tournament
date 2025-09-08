@@ -100,6 +100,20 @@ export const organizerService = {
       console.error('Error updating organizer:', error)
       return false
     }
+  },
+
+  async delete(id: string): Promise<boolean> {
+    try {
+      await dynamoDB.send(new DeleteCommand({
+        TableName: TABLES.ORGANIZERS,
+        Key: { id },
+      }))
+      
+      return true
+    } catch (error) {
+      console.error('Error deleting organizer:', error)
+      return false
+    }
   }
 }
 
