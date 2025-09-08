@@ -1,6 +1,6 @@
 import { dynamoDB, TABLES } from './aws-config'
 import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
-import { randomBytes, pbkdf2Sync } from 'crypto'
+// Browser-compatible crypto utilities
 
 // Types
 export type UserRole = 'super_admin' | 'organizer'
@@ -26,22 +26,57 @@ export type AuthSession = {
   ipAddress?: string
 }
 
+// Browser-compatible crypto utilities
+const generateRandomBytes = (length: number): Uint8Array => {
+  const array = new Uint8Array(length)
+  crypto.getRandomValues(array)
+  return array
+}
+
+const arrayBufferToHex = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer)
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 // Password utilities
 export const generateSalt = (): string => {
-  return randomBytes(32).toString('hex')
+  const bytes = generateRandomBytes(32)
+  return arrayBufferToHex(bytes.buffer)
 }
 
-export const hashPassword = (password: string, salt: string): string => {
-  return pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex')
+export const hashPassword = async (password: string, salt: string): Promise<string> => {
+  const encoder = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  )
+  
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: encoder.encode(salt),
+      iterations: 100000,
+      hash: 'SHA-512'
+    },
+    keyMaterial,
+    512
+  )
+  
+  return arrayBufferToHex(derivedBits)
 }
 
-export const verifyPassword = (password: string, hash: string, salt: string): boolean => {
-  return hashPassword(password, salt) === hash
+export const verifyPassword = async (password: string, hash: string, salt: string): Promise<boolean> => {
+  const passwordHash = await hashPassword(password, salt)
+  return passwordHash === hash
 }
 
 // Session utilities
 export const generateSessionToken = (): string => {
-  return randomBytes(32).toString('hex')
+  const bytes = generateRandomBytes(32)
+  return arrayBufferToHex(bytes.buffer)
 }
 
 export const isSessionExpired = (expiresAt: string): boolean => {
@@ -51,10 +86,10 @@ export const isSessionExpired = (expiresAt: string): boolean => {
 // User management
 export const createUser = async (userData: Omit<AuthUser, 'id' | 'passwordHash' | 'salt' | 'createdAt'>, password: string): Promise<AuthUser> => {
   const salt = generateSalt()
-  const passwordHash = hashPassword(password, salt)
+  const passwordHash = await hashPassword(password, salt)
   
   const user: AuthUser = {
-    id: randomBytes(16).toString('hex'),
+    id: arrayBufferToHex(generateRandomBytes(16).buffer),
     ...userData,
     passwordHash,
     salt,
@@ -94,7 +129,7 @@ export const getUserById = async (id: string): Promise<AuthUser | null> => {
 
 export const updateUserPassword = async (userId: string, newPassword: string): Promise<void> => {
   const salt = generateSalt()
-  const passwordHash = hashPassword(newPassword, salt)
+  const passwordHash = await hashPassword(newPassword, salt)
 
   await dynamoDB.send(new UpdateCommand({
     TableName: TABLES.AUTH_USERS,
@@ -111,7 +146,7 @@ export const updateUserPassword = async (userId: string, newPassword: string): P
 // Session management
 export const createSession = async (userId: string, userAgent?: string, ipAddress?: string): Promise<AuthSession> => {
   const session: AuthSession = {
-    id: randomBytes(16).toString('hex'),
+    id: arrayBufferToHex(generateRandomBytes(16).buffer),
     userId,
     token: generateSessionToken(),
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
@@ -177,7 +212,7 @@ export const deleteAllUserSessions = async (userId: string): Promise<void> => {
 // Authentication functions
 export const authenticateUser = async (username: string, password: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
   const user = await getUserByUsername(username)
-  if (!user || !verifyPassword(password, user.passwordHash, user.salt)) {
+  if (!user || !(await verifyPassword(password, user.passwordHash, user.salt))) {
     return null
   }
 
