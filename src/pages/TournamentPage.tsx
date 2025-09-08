@@ -685,6 +685,168 @@ export default function TournamentPage() {
           </div>
         ))}
 
+        {/* Custom Playoff Configuration */}
+        {tournament.format?.mode === 'league_custom_playoff' && (
+          <div className="glass rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-center mb-4">Custom Playoff Configuration</h2>
+            <div className="space-y-4">
+              <p className="text-center text-sm opacity-80">
+                Configure your playoff rounds. Each round can be knockout (elimination) or additional league (points count toward table).
+              </p>
+              
+              {/* Add Playoff Round Button */}
+              <div className="text-center">
+                <button
+                  onClick={() => {
+                    const newRound = {
+                      roundNumber: (tournament.format?.customPlayoffConfig?.playoffRounds?.length || 0) + 1,
+                      name: `Round ${(tournament.format?.customPlayoffConfig?.playoffRounds?.length || 0) + 1}`,
+                      type: 'knockout' as const,
+                      description: ''
+                    }
+                    const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || []), newRound]
+                    updateTournament(tournament.id, {
+                      format: {
+                        rounds: tournament.format?.rounds || 1,
+                        mode: tournament.format?.mode || 'league',
+                        playoffQualifiers: tournament.format?.playoffQualifiers,
+                        customPlayoffConfig: {
+                          playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
+                          enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                          playoffRounds: updatedRounds
+                        }
+                      }
+                    })
+                  }}
+                  className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+                >
+                  ➕ Add Playoff Round
+                </button>
+              </div>
+
+              {/* Configured Rounds */}
+              {tournament.format?.customPlayoffConfig?.playoffRounds?.map((round, index) => (
+                <div key={index} className="p-4 glass rounded-lg">
+                  <div className="grid md:grid-cols-3 gap-4 items-center">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Round Name</label>
+                      <input
+                        type="text"
+                        value={round.name}
+                        onChange={(e) => {
+                          const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
+                          updatedRounds[index] = { ...round, name: e.target.value }
+                          updateTournament(tournament.id, {
+                            format: {
+                              rounds: tournament.format?.rounds || 1,
+                              mode: tournament.format?.mode || 'league',
+                              playoffQualifiers: tournament.format?.playoffQualifiers,
+                              customPlayoffConfig: {
+                                playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
+                                enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                playoffRounds: updatedRounds
+                              }
+                            }
+                          })
+                        }}
+                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Round Type</label>
+                      <select
+                        value={round.type}
+                        onChange={(e) => {
+                          const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
+                          updatedRounds[index] = { ...round, type: e.target.value as 'knockout' | 'league' }
+                          updateTournament(tournament.id, {
+                            format: {
+                              rounds: tournament.format?.rounds || 1,
+                              mode: tournament.format?.mode || 'league',
+                              playoffQualifiers: tournament.format?.playoffQualifiers,
+                              customPlayoffConfig: {
+                                playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
+                                enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                playoffRounds: updatedRounds
+                              }
+                            }
+                          })
+                        }}
+                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                      >
+                        <option value="knockout">Knockout (Elimination)</option>
+                        <option value="league">Additional League (Points Count)</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          const updatedRounds = tournament.format?.customPlayoffConfig?.playoffRounds?.filter((_, i) => i !== index) || []
+                          updateTournament(tournament.id, {
+                            format: {
+                              rounds: tournament.format?.rounds || 1,
+                              mode: tournament.format?.mode || 'league',
+                              playoffQualifiers: tournament.format?.playoffQualifiers,
+                              customPlayoffConfig: {
+                                playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
+                                enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                playoffRounds: updatedRounds
+                              }
+                            }
+                          })
+                        }}
+                        className="px-3 py-2 rounded-md bg-red-500/20 hover:bg-red-500/30 transition-all text-red-400"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <label className="block text-sm font-medium mb-1">Description (Optional)</label>
+                    <input
+                      type="text"
+                      value={round.description || ''}
+                      onChange={(e) => {
+                        const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
+                        updatedRounds[index] = { ...round, description: e.target.value }
+                        updateTournament(tournament.id, {
+                          format: {
+                            rounds: tournament.format?.rounds || 1,
+                            mode: tournament.format?.mode || 'league',
+                            playoffQualifiers: tournament.format?.playoffQualifiers,
+                            customPlayoffConfig: {
+                              playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
+                              enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                              playoffRounds: updatedRounds
+                            }
+                          }
+                        })
+                      }}
+                      placeholder="e.g., Semi-Finals, Final, etc."
+                      className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )) || []}
+
+              {/* Generate Matches Button */}
+              {(tournament.format?.customPlayoffConfig?.playoffRounds?.length || 0) > 0 && (
+                <div className="text-center">
+                  <button
+                    onClick={() => {
+                      // TODO: Generate playoff matches based on configuration
+                      alert('Generate playoff matches functionality coming soon!')
+                    }}
+                    className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all font-medium"
+                  >
+                    🎯 Generate Playoff Matches
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Playoff Matches in Fixtures - Divided by Stage */}
         {playoffMatches.length > 0 && (
           <div className="space-y-6">
