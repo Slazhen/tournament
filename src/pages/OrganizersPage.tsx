@@ -4,7 +4,7 @@ import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
 import { createOrganizerAccount } from '../lib/auth'
 import { dynamoDB, TABLES } from '../lib/aws-config'
-import { ScanCommand, PutCommand } from '@aws-sdk/lib-dynamodb'
+import { ScanCommand } from '@aws-sdk/lib-dynamodb'
 
 interface Organizer {
   id: string
@@ -16,7 +16,7 @@ interface Organizer {
 }
 
 export default function OrganizersPage() {
-  const { user, isSuperAdmin } = useAuth()
+  const { isSuperAdmin } = useAuth()
   const { createOrganizer } = useAppStore()
   const [organizers, setOrganizers] = useState<Organizer[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,10 +49,23 @@ export default function OrganizersPage() {
     e.preventDefault()
     try {
       // Create organizer in the main system
-      const organizer = await createOrganizer(newOrganizer.name, newOrganizer.email, newOrganizer.description)
+      await createOrganizer(newOrganizer.name, newOrganizer.email)
       
-      // Create auth account for organizer
-      await createOrganizerAccount(newOrganizer.name, organizer.id)
+      // Get the created organizer ID (we'll need to fetch it)
+      const result = await dynamoDB.send(new ScanCommand({
+        TableName: TABLES.ORGANIZERS,
+        FilterExpression: 'name = :name AND email = :email',
+        ExpressionAttributeValues: {
+          ':name': newOrganizer.name,
+          ':email': newOrganizer.email
+        }
+      }))
+      
+      const organizer = result.Items?.[0] as Organizer
+      if (organizer) {
+        // Create auth account for organizer
+        await createOrganizerAccount(newOrganizer.name, organizer.id)
+      }
       
       // Reset form and reload
       setNewOrganizer({ name: '', email: '', description: '' })
