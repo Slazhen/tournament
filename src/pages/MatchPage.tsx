@@ -62,7 +62,8 @@ export default function MatchPage() {
       playerId,
       minute,
       type,
-      assistPlayerId
+      assistPlayerId,
+      goalNumber: (match.goals?.filter(g => g.team === team).length || 0) + 1
     }
     const goals = [...(match.goals || []), newGoal]
     updateMatch({ goals })
@@ -71,6 +72,36 @@ export default function MatchPage() {
     const homeGoals = goals.filter(g => g.team === 'home').length
     const awayGoals = goals.filter(g => g.team === 'away').length
     updateMatch({ homeGoals, awayGoals })
+  }
+
+  const updateGoal = (goalId: string, updates: Partial<{ minute: number; playerId: string; assistPlayerId?: string; type: 'goal' | 'penalty' | 'own_goal' }>) => {
+    if (!goalId) {
+      // Create new goal if no ID provided
+      const team = updates.playerId && homeTeam.players.find(p => p.id === updates.playerId) ? 'home' : 'away'
+      const goalNumber = (match.goals?.filter(g => g.team === team).length || 0) + 1
+      const newGoal = {
+        id: uid(),
+        team,
+        playerId: updates.playerId || '',
+        minute: updates.minute || 0,
+        type: updates.type || 'goal',
+        assistPlayerId: updates.assistPlayerId,
+        goalNumber
+      }
+      const goals = [...(match.goals || []), newGoal]
+      updateMatch({ goals })
+      
+      // Update score
+      const homeGoals = goals.filter(g => g.team === 'home').length
+      const awayGoals = goals.filter(g => g.team === 'away').length
+      updateMatch({ homeGoals, awayGoals })
+      return
+    }
+
+    const goals = match.goals?.map(g => 
+      g.id === goalId ? { ...g, ...updates } : g
+    ) || []
+    updateMatch({ goals })
   }
 
   const removeGoal = (goalId: string) => {
@@ -549,85 +580,177 @@ export default function MatchPage() {
 
         {activeTab === 'goals' && (
           <div className="space-y-6">
-            <h3 className="font-semibold mb-4">Goals & Events</h3>
-            
-            {/* Add Goal Form */}
-            <div className="glass rounded-lg p-4">
-              <h4 className="font-semibold mb-4">Add Goal</h4>
-              <div className="grid md:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Team</label>
-                  <select
-                    id="goalTeam"
-                    className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                  >
-                    <option value="home">{homeTeam.name}</option>
-                    <option value="away">{awayTeam.name}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Player</label>
-                  <select
-                    id="goalPlayer"
-                    className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                  >
-                    <option value="">Select Player</option>
-                    {homeTeam.players.map(player => (
-                      <option key={player.id} value={player.id} data-team="home">
-                        {player.firstName} {player.lastName}
-                      </option>
-                    ))}
-                    {awayTeam.players.map(player => (
-                      <option key={player.id} value={player.id} data-team="away">
-                        {player.firstName} {player.lastName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Minute</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="120"
-                    id="goalMinute"
-                    className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Type</label>
-                  <select
-                    id="goalType"
-                    className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                  >
-                    <option value="goal">Goal</option>
-                    <option value="penalty">Penalty</option>
-                    <option value="own_goal">Own Goal</option>
-                  </select>
-                </div>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-xl">Goals & Events</h3>
+              <div className="text-sm text-gray-400">
+                {match.homeGoals || 0} - {match.awayGoals || 0}
               </div>
-              <button
-                onClick={() => {
-                  const teamSelect = document.getElementById('goalTeam') as HTMLSelectElement
-                  const playerSelect = document.getElementById('goalPlayer') as HTMLSelectElement
-                  const minuteInput = document.getElementById('goalMinute') as HTMLInputElement
-                  const typeSelect = document.getElementById('goalType') as HTMLSelectElement
-                  
-                  const team = teamSelect.value as 'home' | 'away'
-                  const playerId = playerSelect.value
-                  const minute = Number(minuteInput.value)
-                  const type = typeSelect.value as 'goal' | 'penalty' | 'own_goal'
-                  
-                  if (playerId && minute) {
-                    addGoal(team, playerId, minute, type)
-                    playerSelect.value = ''
-                    minuteInput.value = ''
-                  }
-                }}
-                className="mt-4 px-4 py-2 rounded glass hover:bg-white/10 transition-all"
-              >
-                Add Goal
-              </button>
+            </div>
+            
+            {/* Goal Entries Management */}
+            <div className="space-y-6">
+              {/* Home Team Goals */}
+              {Array.from({ length: match.homeGoals || 0 }, (_, index) => {
+                const goal = match.goals?.find(g => g.team === 'home' && g.goalNumber === index + 1)
+                return (
+                  <div key={`home-${index}`} className="glass rounded-xl p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center border border-blue-400/30">
+                        <span className="text-blue-400 font-bold">{index + 1}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {homeTeam.logo && (
+                          <img src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-8 h-8 rounded-full object-cover" />
+                        )}
+                        <span className="font-semibold text-blue-400">{homeTeam.name} Goal #{index + 1}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="grid md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Minute</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="120"
+                          value={goal?.minute || ''}
+                          onChange={(e) => updateGoal(goal?.id || '', { minute: Number(e.target.value) })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all"
+                          placeholder="Minute"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Scorer</label>
+                        <select
+                          value={goal?.playerId || ''}
+                          onChange={(e) => updateGoal(goal?.id || '', { playerId: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all"
+                        >
+                          <option value="">Select Scorer</option>
+                          {homeTeam.players.map(player => (
+                            <option key={player.id} value={player.id}>
+                              {player.firstName} {player.lastName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Assist Provider</label>
+                        <select
+                          value={goal?.assistPlayerId || ''}
+                          onChange={(e) => updateGoal(goal?.id || '', { assistPlayerId: e.target.value || undefined })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all"
+                        >
+                          <option value="">No Assist</option>
+                          {homeTeam.players.map(player => (
+                            <option key={player.id} value={player.id}>
+                              {player.firstName} {player.lastName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Type</label>
+                        <select
+                          value={goal?.type || 'goal'}
+                          onChange={(e) => updateGoal(goal?.id || '', { type: e.target.value as 'goal' | 'penalty' | 'own_goal' })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all"
+                        >
+                          <option value="goal">Goal</option>
+                          <option value="penalty">Penalty</option>
+                          <option value="own_goal">Own Goal</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              
+              {/* Away Team Goals */}
+              {Array.from({ length: match.awayGoals || 0 }, (_, index) => {
+                const goal = match.goals?.find(g => g.team === 'away' && g.goalNumber === index + 1)
+                return (
+                  <div key={`away-${index}`} className="glass rounded-xl p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="w-8 h-8 bg-red-500/20 rounded-full flex items-center justify-center border border-red-400/30">
+                        <span className="text-red-400 font-bold">{index + 1}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {awayTeam.logo && (
+                          <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-8 h-8 rounded-full object-cover" />
+                        )}
+                        <span className="font-semibold text-red-400">{awayTeam.name} Goal #{index + 1}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="grid md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Minute</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="120"
+                          value={goal?.minute || ''}
+                          onChange={(e) => updateGoal(goal?.id || '', { minute: Number(e.target.value) })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-red-400/50 focus:outline-none focus:ring-2 focus:ring-red-400/20 transition-all"
+                          placeholder="Minute"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Scorer</label>
+                        <select
+                          value={goal?.playerId || ''}
+                          onChange={(e) => updateGoal(goal?.id || '', { playerId: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-red-400/50 focus:outline-none focus:ring-2 focus:ring-red-400/20 transition-all"
+                        >
+                          <option value="">Select Scorer</option>
+                          {awayTeam.players.map(player => (
+                            <option key={player.id} value={player.id}>
+                              {player.firstName} {player.lastName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Assist Provider</label>
+                        <select
+                          value={goal?.assistPlayerId || ''}
+                          onChange={(e) => updateGoal(goal?.id || '', { assistPlayerId: e.target.value || undefined })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-red-400/50 focus:outline-none focus:ring-2 focus:ring-red-400/20 transition-all"
+                        >
+                          <option value="">No Assist</option>
+                          {awayTeam.players.map(player => (
+                            <option key={player.id} value={player.id}>
+                              {player.firstName} {player.lastName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Type</label>
+                        <select
+                          value={goal?.type || 'goal'}
+                          onChange={(e) => updateGoal(goal?.id || '', { type: e.target.value as 'goal' | 'penalty' | 'own_goal' })}
+                          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-red-400/50 focus:outline-none focus:ring-2 focus:ring-red-400/20 transition-all"
+                        >
+                          <option value="goal">Goal</option>
+                          <option value="penalty">Penalty</option>
+                          <option value="own_goal">Own Goal</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              
+              {/* No Goals Message */}
+              {(!match.homeGoals || match.homeGoals === 0) && (!match.awayGoals || match.awayGoals === 0) && (
+                <div className="glass rounded-xl p-8 text-center">
+                  <div className="text-4xl mb-4">⚽</div>
+                  <h4 className="font-semibold text-lg mb-2">No Goals Yet</h4>
+                  <p className="text-gray-400">Update the match score to create goal entries</p>
+                </div>
+              )}
             </div>
 
             {/* Goals List */}

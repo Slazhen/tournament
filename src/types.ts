@@ -83,6 +83,7 @@ export type Match = {
     minute: number
     type: 'goal' | 'penalty' | 'own_goal'
     assistPlayerId?: string
+    goalNumber?: number // Goal number for this team (1st, 2nd, 3rd goal, etc.)
   }>
   // Lineups
   lineups?: {
