@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
-import { createOrganizerAccount } from '../lib/auth'
+import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword } from '../lib/auth'
 import { dynamoDB, TABLES } from '../lib/aws-config'
 import { ScanCommand } from '@aws-sdk/lib-dynamodb'
 
@@ -17,7 +17,7 @@ interface Organizer {
 
 export default function OrganizersPage() {
   const { isSuperAdmin } = useAuth()
-  const { createOrganizer } = useAppStore()
+  const { createOrganizer, deleteOrganizer } = useAppStore()
   const [organizers, setOrganizers] = useState<Organizer[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -28,6 +28,9 @@ export default function OrganizersPage() {
     password: ''
   })
   const [createError, setCreateError] = useState('')
+  const [showPasswordReset, setShowPasswordReset] = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
 
   useEffect(() => {
     loadOrganizers()
@@ -94,6 +97,44 @@ export default function OrganizersPage() {
     } catch (error) {
       console.error('Error creating organizer:', error)
       setCreateError('Failed to create organizer. Please try again.')
+    }
+  }
+
+  const handleDeleteOrganizer = async (organizerId: string, organizerName: string) => {
+    if (!confirm(`Are you sure you want to delete organizer "${organizerName}"? This will also delete their authentication account and cannot be undone.`)) {
+      return
+    }
+
+    try {
+      // Delete from main system
+      await deleteOrganizer(organizerId)
+      
+      // Delete authentication account
+      await deleteOrganizerAccount(organizerName)
+      
+      // Reload organizers
+      loadOrganizers()
+    } catch (error) {
+      console.error('Error deleting organizer:', error)
+      alert('Failed to delete organizer. Please try again.')
+    }
+  }
+
+  const handlePasswordReset = async (organizerName: string) => {
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters long.')
+      return
+    }
+
+    try {
+      await resetOrganizerPassword(organizerName, newPassword)
+      setShowPasswordReset(null)
+      setNewPassword('')
+      setPasswordError('')
+      alert('Password reset successfully!')
+    } catch (error) {
+      console.error('Error resetting password:', error)
+      setPasswordError('Failed to reset password. Please try again.')
     }
   }
 
@@ -275,15 +316,67 @@ export default function OrganizersPage() {
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-400">
-                        Created: {new Date(organizer.createdAtISO).toLocaleDateString()}
-                      </p>
-                      <p className="text-xs text-blue-400 mt-1">
-                        Login: {organizer.name} / [Custom Password]
-                      </p>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-sm text-gray-400">
+                          Created: {new Date(organizer.createdAtISO).toLocaleDateString()}
+                        </p>
+                        <p className="text-xs text-blue-400 mt-1">
+                          Login: {organizer.name} / [Custom Password]
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowPasswordReset(organizer.name)}
+                          className="px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 rounded-lg transition-all text-yellow-400 text-sm"
+                          title="Reset Password"
+                        >
+                          🔑 Reset
+                        </button>
+                        <button
+                          onClick={() => handleDeleteOrganizer(organizer.id, organizer.name)}
+                          className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg transition-all text-red-400 text-sm"
+                          title="Delete Organizer"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
+                  
+                  {/* Password Reset Form */}
+                  {showPasswordReset === organizer.name && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Enter new password (min 6 characters)"
+                          className="flex-1 px-4 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-yellow-400/50 focus:outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all text-white placeholder-gray-400"
+                        />
+                        <button
+                          onClick={() => handlePasswordReset(organizer.name)}
+                          className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 rounded-lg transition-all text-green-400 text-sm"
+                        >
+                          Update
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowPasswordReset(null)
+                            setNewPassword('')
+                            setPasswordError('')
+                          }}
+                          className="px-4 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-400/30 rounded-lg transition-all text-gray-400 text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {passwordError && (
+                        <p className="text-red-400 text-sm mt-2">{passwordError}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

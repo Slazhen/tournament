@@ -302,6 +302,31 @@ export const createOrganizerAccount = async (organizerName: string, organizerId:
   }, password || '123')
 }
 
+// Delete organizer account
+export const deleteOrganizerAccount = async (organizerName: string): Promise<void> => {
+  const user = await getUserByUsername(organizerName)
+  if (user) {
+    // Delete all sessions for this user
+    await deleteAllUserSessions(user.id)
+    
+    // Delete the user account
+    await dynamoDB.send(new DeleteCommand({
+      TableName: TABLES.AUTH_USERS,
+      Key: { id: user.id }
+    }))
+  }
+}
+
+// Reset organizer password
+export const resetOrganizerPassword = async (organizerName: string, newPassword: string): Promise<void> => {
+  const user = await getUserByUsername(organizerName)
+  if (!user) {
+    throw new Error('Organizer not found')
+  }
+  
+  await updateUserPassword(user.id, newPassword)
+}
+
 // Role-based access control
 export const hasPermission = (user: AuthUser, action: string, resource?: string): boolean => {
   switch (user.role) {

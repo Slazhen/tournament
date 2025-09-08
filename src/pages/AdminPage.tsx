@@ -6,7 +6,7 @@ import { initializeSuperAdmin } from '../lib/auth'
 
 export default function AdminPage() {
   const { user, isSuperAdmin, isOrganizer, logout } = useAuth()
-  const { getOrganizerTeams, getOrganizerTournaments } = useAppStore()
+  const { getOrganizerTeams, getOrganizerTournaments, getAllTeams, getAllTournaments, organizers } = useAppStore()
   const [isInitialized, setIsInitialized] = useState(false)
 
   // Initialize super admin on first load
@@ -25,8 +25,9 @@ export default function AdminPage() {
     init()
   }, [])
 
-  const teams = getOrganizerTeams()
-  const tournaments = getOrganizerTournaments()
+  // Show all data for super admin, organizer-specific data for organizers
+  const teams = isSuperAdmin ? getAllTeams() : getOrganizerTeams()
+  const tournaments = isSuperAdmin ? getAllTournaments() : getOrganizerTournaments()
 
   if (!isInitialized) {
     return (
@@ -180,7 +181,13 @@ export default function AdminPage() {
         {/* Quick Stats */}
         <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
           <h3 className="text-xl font-semibold text-white mb-4">Quick Stats</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className={`grid gap-4 ${isSuperAdmin ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
+            {isSuperAdmin && (
+              <div className="text-center">
+                <div className="text-2xl font-bold text-yellow-400">{organizers.length}</div>
+                <div className="text-sm text-gray-400">Organizers</div>
+              </div>
+            )}
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-400">{teams.length}</div>
               <div className="text-sm text-gray-400">Teams</div>
@@ -196,7 +203,7 @@ export default function AdminPage() {
               <div className="text-sm text-gray-400">Matches</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-400">
+              <div className="text-2xl font-bold text-cyan-400">
                 {teams.reduce((acc, t) => acc + (t.players?.length || 0), 0)}
               </div>
               <div className="text-sm text-gray-400">Players</div>

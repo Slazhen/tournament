@@ -1,12 +1,14 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAppStore } from '../store'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function AdminNavigation() {
   const { getCurrentOrganizer, setCurrentOrganizer, settings, updateSettings } = useAppStore()
+  const { isSuperAdmin } = useAuth()
   const currentOrganizer = getCurrentOrganizer()
   const location = useLocation()
 
-  if (!currentOrganizer) {
+  if (!currentOrganizer && !isSuperAdmin) {
     return null
   }
 
@@ -26,23 +28,41 @@ export default function AdminNavigation() {
     <header className="sticky top-0 z-50 glass border-b border-white/10">
       <div className="mx-auto container-max px-6 py-4">
         <div className="flex items-center justify-between">
-          {/* Left: Organizer Info */}
+          {/* Left: User Info */}
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3 px-4 py-2 glass rounded-lg">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                {currentOrganizer.name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div className="font-medium text-sm">Logged in as</div>
-                <div className="font-semibold">{currentOrganizer.name}</div>
-              </div>
-              <button
-                onClick={handleSwitchOrganizer}
-                className="ml-2 p-1 rounded hover:bg-white/10 transition-colors"
-                title="Switch organizer"
-              >
-                <span className="text-lg">🔄</span>
-              </button>
+              {isSuperAdmin ? (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center text-white font-bold text-sm">
+                    S
+                  </div>
+                  <div>
+                    <div className="font-medium text-sm">Logged in as</div>
+                    <div className="font-semibold flex items-center gap-2">
+                      <span className="px-2 py-1 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-400/30 rounded-full text-xs text-yellow-400 font-bold">
+                        SUPERADMIN
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                    {currentOrganizer?.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="font-medium text-sm">Logged in as</div>
+                    <div className="font-semibold">{currentOrganizer?.name}</div>
+                  </div>
+                  <button
+                    onClick={handleSwitchOrganizer}
+                    className="ml-2 p-1 rounded hover:bg-white/10 transition-colors"
+                    title="Switch organizer"
+                  >
+                    <span className="text-lg">🔄</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

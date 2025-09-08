@@ -26,6 +26,7 @@ type AppStore = {
   createOrganizer: (name: string, email: string) => Promise<void>
   setCurrentOrganizer: (organizerId: string) => void
   updateOrganizer: (organizerId: string, updates: Partial<Organizer>) => Promise<void>
+  deleteOrganizer: (organizerId: string) => Promise<void>
   
   createTeam: (name: string, colors: string[], logo?: string) => Promise<void>
   updateTeam: (teamId: string, updates: Partial<Team>) => Promise<void>
@@ -89,6 +90,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
     } catch (error) {
       console.error('Error creating organizer:', error)
+      set(state => ({ loading: { ...state.loading, organizers: false } }))
+    }
+  },
+
+  deleteOrganizer: async (organizerId: string) => {
+    set(state => ({ loading: { ...state.loading, organizers: true } }))
+    
+    try {
+      await organizerService.delete(organizerId)
+      set(state => ({
+        organizers: state.organizers.filter(org => org.id !== organizerId),
+        loading: { ...state.loading, organizers: false }
+      }))
+      
+      // If this was the current organizer, clear it
+      if (get().currentOrganizerId === organizerId) {
+        get().setCurrentOrganizer('')
+      }
+    } catch (error) {
+      console.error('Error deleting organizer:', error)
       set(state => ({ loading: { ...state.loading, organizers: false } }))
     }
   },
