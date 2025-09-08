@@ -88,13 +88,27 @@ export default function AdminPage() {
   // Show loading state while redirecting
   if (currentOrganizer) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold mb-2">Welcome, {currentOrganizer.name}!</h1>
-            <p className="opacity-80">Redirecting to your latest tournament...</p>
+      <div className="min-h-[80vh] flex items-center justify-center relative overflow-hidden">
+        {/* Background decorative elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-32 h-32 bg-green-500/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute top-40 right-20 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl animate-pulse delay-1000"></div>
+          <div className="absolute bottom-20 left-1/4 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+        </div>
+        
+        <div className="glass rounded-2xl p-8 max-w-md w-full text-center relative z-10 shadow-2xl border border-white/20">
+          <div className="mb-8">
+            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-green-500/20 to-blue-500/20 rounded-2xl flex items-center justify-center border border-white/20 animate-pulse">
+              <span className="text-3xl">⚽</span>
+            </div>
+            <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+              Welcome, {currentOrganizer.name}!
+            </h1>
+            <p className="text-lg opacity-80 text-gray-300">Redirecting to your latest tournament...</p>
           </div>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-white/20 border-t-blue-400"></div>
+          </div>
         </div>
         <DebugInfo />
       </div>
@@ -102,25 +116,62 @@ export default function AdminPage() {
   }
   
   return (
-    <div className="min-h-[80vh] flex items-center justify-center">
-      <div className="glass rounded-xl p-8 max-w-md w-full">
+    <div className="min-h-[80vh] flex items-center justify-center relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-40 right-20 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl animate-pulse delay-1000"></div>
+        <div className="absolute bottom-20 left-1/4 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+        <div className="absolute bottom-32 right-1/3 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl animate-pulse delay-3000"></div>
+      </div>
+      
+      <div className="glass rounded-2xl p-8 max-w-lg w-full relative z-10 shadow-2xl border border-white/20">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">MFTournament Admin</h1>
-          <p className="opacity-80">Organizer Login</p>
+          <div className="mb-6">
+            <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-white/20">
+              <span className="text-3xl">⚽</span>
+            </div>
+            <h1 className="text-4xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+              MFTournament Admin
+            </h1>
+            <p className="text-lg opacity-80 text-gray-300">Organizer Login Portal</p>
+          </div>
         </div>
         
         {organizers.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-4 text-center">Select Organizer</h2>
-            <div className="grid gap-3">
-              {organizers.map((organizer) => (
+          <div className="mb-8">
+            <div className="text-center mb-6">
+              <h2 className="text-xl font-semibold mb-2 text-white">Select Organizer</h2>
+              <p className="text-sm text-gray-400">Choose your account to continue</p>
+            </div>
+            <div className="grid gap-4">
+              {organizers.map((organizer, index) => (
                 <button
                   key={organizer.id}
                   onClick={() => handleSelectOrganizer(organizer.id)}
-                  className="p-3 glass rounded-lg hover:bg-white/10 transition-all text-left"
+                  className="group p-4 glass rounded-xl hover:bg-white/10 transition-all duration-300 text-left border border-white/10 hover:border-white/20 hover:shadow-lg hover:shadow-white/5"
+                  style={{ animationDelay: `${index * 100}ms` }}
                 >
-                  <div className="font-medium">{organizer.name}</div>
-                  <div className="text-sm opacity-70">{organizer.email}</div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform duration-300">
+                      <span className="text-lg font-bold text-white">
+                        {organizer.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-white group-hover:text-blue-300 transition-colors">
+                        {organizer.name}
+                      </div>
+                      <div className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">
+                        {organizer.email}
+                      </div>
+                    </div>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
@@ -130,55 +181,83 @@ export default function AdminPage() {
         <div className="text-center">
           <button
             onClick={() => setShowCreateForm(true)}
-            className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-lg font-medium"
+            className="group relative px-8 py-4 rounded-xl glass hover:bg-white/10 transition-all duration-300 text-lg font-medium border border-white/20 hover:border-white/30 hover:shadow-lg hover:shadow-white/5 overflow-hidden"
           >
-            {organizers.length === 0 ? 'Create First Organizer' : 'Create New Organizer'}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="relative flex items-center justify-center gap-2">
+              <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span>{organizers.length === 0 ? 'Create First Organizer' : 'Create New Organizer'}</span>
+            </div>
           </button>
         </div>
         
         {showCreateForm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="glass rounded-xl p-6 max-w-md w-full">
-              <h2 className="text-xl font-semibold mb-4 text-center">Create Organizer</h2>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="glass rounded-2xl p-8 max-w-md w-full relative shadow-2xl border border-white/20 animate-in fade-in-0 zoom-in-95 duration-300">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl flex items-center justify-center border border-white/20">
+                  <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Create Organizer</h2>
+                <p className="text-gray-400">Set up your tournament management account</p>
+              </div>
               
-              <form onSubmit={handleCreateOrganizer} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Organizer Name</label>
-                  <input
-                    type="text"
-                    value={organizerName}
-                    onChange={(e) => setOrganizerName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                    placeholder="Enter organizer name"
-                    required
-                  />
+              <form onSubmit={handleCreateOrganizer} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-white mb-2">Organizer Name</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={organizerName}
+                      onChange={(e) => setOrganizerName(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all duration-300 text-white placeholder-gray-400"
+                      placeholder="Enter organizer name"
+                      required
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Email</label>
-                  <input
-                    type="email"
-                    value={organizerEmail}
-                    onChange={(e) => setOrganizerEmail(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                    placeholder="Enter email address"
-                    required
-                  />
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-white mb-2">Email Address</label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      value={organizerEmail}
+                      onChange={(e) => setOrganizerEmail(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all duration-300 text-white placeholder-gray-400"
+                      placeholder="Enter email address"
+                      required
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
                 
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-4 pt-4">
                   <button
                     type="button"
                     onClick={() => setShowCreateForm(false)}
-                    className="flex-1 px-4 py-2 rounded-md glass hover:bg-white/10 transition-all"
+                    className="flex-1 px-6 py-3 rounded-xl glass hover:bg-white/10 transition-all duration-300 border border-white/20 hover:border-white/30 text-white font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 rounded-md glass hover:bg-white/10 transition-all font-medium"
+                    className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500/20 to-purple-500/20 hover:from-blue-500/30 hover:to-purple-500/30 border border-blue-400/30 hover:border-blue-400/50 transition-all duration-300 text-white font-medium hover:shadow-lg hover:shadow-blue-500/20"
                   >
-                    Create
+                    Create Account
                   </button>
                 </div>
               </form>
@@ -188,9 +267,18 @@ export default function AdminPage() {
         
         {/* Settings Modal */}
         {showSettings && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="glass rounded-xl p-6 max-w-md w-full">
-              <h2 className="text-xl font-semibold mb-4 text-center">Settings</h2>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="glass rounded-2xl p-8 max-w-md w-full relative shadow-2xl border border-white/20 animate-in fade-in-0 zoom-in-95 duration-300">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-xl flex items-center justify-center border border-white/20">
+                  <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Settings</h2>
+                <p className="text-gray-400">Customize your tournament experience</p>
+              </div>
               
               <div className="space-y-6">
                 {/* Background Image Upload */}
