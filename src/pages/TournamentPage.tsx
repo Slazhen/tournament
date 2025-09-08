@@ -493,7 +493,13 @@ export default function TournamentPage() {
                           <div key={match.id} className="grid md:grid-cols-5 gap-2 items-center p-3 glass rounded-lg">
                                                              <div className="md:col-span-2 flex items-center gap-2">
                                    {(() => {
-                                     if (homeTeam?.logo) {
+                                     if (match.homeTeamId === 'BYE') {
+                                       return (
+                                         <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">
+                                           B
+                                         </div>
+                                       )
+                                     } else if (homeTeam?.logo) {
                                        return (
                                          <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                                            <img src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
@@ -501,20 +507,30 @@ export default function TournamentPage() {
                                        )
                                      } else if (homeTeam) {
                                        return (
-                                                                                   <span className="h-3 w-3 rounded-full inline-block" style={{ background: homeTeam.colors?.[0] || '#3B82F6' }} />
+                                         <span className="h-3 w-3 rounded-full inline-block" style={{ background: homeTeam.colors?.[0] || '#3B82F6' }} />
                                        )
                                      }
                                      return null
                                    })()}
-                                   <Link 
-                                     to={`/teams/${match.homeTeamId}`}
-                                     className="hover:opacity-80 transition-opacity"
-                                   >
-                                     {homeTeam?.name ?? 'TBD'}
-                                   </Link>
+                                   {match.homeTeamId === 'BYE' ? (
+                                     <span className="font-medium text-yellow-400">BYE</span>
+                                   ) : (
+                                     <Link 
+                                       to={`/teams/${match.homeTeamId}`}
+                                       className="hover:opacity-80 transition-opacity"
+                                     >
+                                       {homeTeam?.name ?? 'TBD'}
+                                     </Link>
+                                   )}
                                    {' vs '}
                                    {(() => {
-                                     if (awayTeam?.logo) {
+                                     if (match.awayTeamId === 'BYE') {
+                                       return (
+                                         <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">
+                                           B
+                                         </div>
+                                       )
+                                     } else if (awayTeam?.logo) {
                                        return (
                                          <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                                            <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
@@ -522,17 +538,21 @@ export default function TournamentPage() {
                                        )
                                      } else if (awayTeam) {
                                        return (
-                                                                                   <span className="h-3 w-3 rounded-full inline-block" style={{ background: awayTeam.colors?.[0] || '#3B82F6' }} />
+                                         <span className="h-3 w-3 rounded-full inline-block" style={{ background: awayTeam.colors?.[0] || '#3B82F6' }} />
                                        )
                                      }
                                      return null
                                    })()}
-                                   <Link 
-                                     to={`/teams/${match.awayTeamId}`}
-                                     className="hover:opacity-80 transition-opacity"
-                                   >
-                                     {awayTeam?.name ?? 'TBD'}
-                                   </Link>
+                                   {match.awayTeamId === 'BYE' ? (
+                                     <span className="font-medium text-yellow-400">BYE</span>
+                                   ) : (
+                                     <Link 
+                                       to={`/teams/${match.awayTeamId}`}
+                                       className="hover:opacity-80 transition-opacity"
+                                     >
+                                       {awayTeam?.name ?? 'TBD'}
+                                     </Link>
+                                   )}
                                  </div>
                             <div className="flex gap-2 items-center">
                               <input inputMode="numeric" pattern="[0-9]*" className="w-14 px-2 py-1 rounded-md bg-transparent border border-white/20" value={match.homeGoals ?? ''} onChange={(e) => setScore(match.id, e.target.value === '' ? NaN : Number(e.target.value), match.awayGoals ?? NaN)} />
@@ -788,6 +808,18 @@ function getPlayoffRoundName(roundIndex: number, totalRounds: number): string {
     if (roundIndex === 1) return '1/4 Final'
     if (roundIndex === 2) return '1/2 Final'
     return 'Final'
+  }
+  if (totalRounds === 6) {
+    // Custom Playoff Homebush format
+    const roundNames = [
+      'Round 1 - Qualifiers & Elimination',
+      'Round 2 - Elimination C',
+      'Round 3 - Semi (Upper)',
+      'Round 4 - Knockout',
+      'Round 5 - Preliminary Finals',
+      'Round 6 - Grand Final'
+    ]
+    return roundNames[roundIndex] || `Round ${roundIndex + 1}`
   }
   return `Round ${roundIndex + 1}`
 }

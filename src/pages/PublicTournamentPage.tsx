@@ -415,7 +415,13 @@ export default function PublicTournamentPage() {
                         <div key={match.id} className="grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg">
                           <div className="md:col-span-2 flex items-center gap-2">
                             {(() => {
-                              if (homeTeam?.logo) {
+                              if (match.homeTeamId === 'BYE') {
+                                return (
+                                  <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">
+                                    B
+                                  </div>
+                                )
+                              } else if (homeTeam?.logo) {
                                 return (
                                   <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                                     <img src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
@@ -428,12 +434,16 @@ export default function PublicTournamentPage() {
                               }
                               return null
                             })()}
-                            <Link 
-                              to={`/public/teams/${match.homeTeamId}`}
-                              className="hover:opacity-80 transition-opacity"
-                            >
-                              {homeTeam?.name ?? 'TBD'}
-                            </Link>
+                            {match.homeTeamId === 'BYE' ? (
+                              <span className="font-medium text-yellow-400">BYE</span>
+                            ) : (
+                              <Link 
+                                to={`/public/teams/${match.homeTeamId}`}
+                                className="hover:opacity-80 transition-opacity"
+                              >
+                                {homeTeam?.name ?? 'TBD'}
+                              </Link>
+                            )}
                             <Link 
                               to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
                               className="hover:opacity-80 transition-opacity font-semibold"
@@ -441,7 +451,13 @@ export default function PublicTournamentPage() {
                               {' vs '}
                             </Link>
                             {(() => {
-                              if (awayTeam?.logo) {
+                              if (match.awayTeamId === 'BYE') {
+                                return (
+                                  <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">
+                                    B
+                                  </div>
+                                )
+                              } else if (awayTeam?.logo) {
                                 return (
                                   <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                                     <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
@@ -454,12 +470,16 @@ export default function PublicTournamentPage() {
                               }
                               return null
                             })()}
-                            <Link 
-                              to={`/public/teams/${match.awayTeamId}`}
-                              className="hover:opacity-80 transition-opacity"
-                            >
-                              {awayTeam?.name ?? 'TBD'}
-                            </Link>
+                            {match.awayTeamId === 'BYE' ? (
+                              <span className="font-medium text-yellow-400">BYE</span>
+                            ) : (
+                              <Link 
+                                to={`/public/teams/${match.awayTeamId}`}
+                                className="hover:opacity-80 transition-opacity"
+                              >
+                                {awayTeam?.name ?? 'TBD'}
+                              </Link>
+                            )}
                           </div>
                           <div className="text-center">
                             {match.homeGoals != null && match.awayGoals != null ? (
