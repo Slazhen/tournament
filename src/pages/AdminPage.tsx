@@ -6,7 +6,7 @@ import { initializeSuperAdmin } from '../lib/auth'
 
 export default function AdminPage() {
   const { user, isSuperAdmin, isOrganizer, logout } = useAuth()
-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTournament } = useAppStore()
+  const { getOrganizerTeams, getOrganizerTournaments } = useAppStore()
   const [isInitialized, setIsInitialized] = useState(false)
 
   // Initialize super admin on first load
@@ -23,7 +23,6 @@ export default function AdminPage() {
     init()
   }, [])
 
-  const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
 

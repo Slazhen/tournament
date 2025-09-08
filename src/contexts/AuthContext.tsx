@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { AuthUser, AuthSession, authenticateUser, verifySession, deleteSession, canAccessOrganizer } from '../lib/auth'
+import React, { createContext, useContext, useState, useEffect } from 'react'
+import type { ReactNode } from 'react'
+import type { AuthUser, AuthSession } from '../lib/auth'
+import { authenticateUser, verifySession, deleteSession, canAccessOrganizer } from '../lib/auth'
 
 interface AuthContextType {
   user: AuthUser | null

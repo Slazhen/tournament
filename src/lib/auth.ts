@@ -1,6 +1,6 @@
 import { dynamoDB, TABLES } from './aws-config'
 import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
-import { randomBytes, createHash, pbkdf2Sync } from 'crypto'
+import { randomBytes, pbkdf2Sync } from 'crypto'
 
 // Types
 export type UserRole = 'super_admin' | 'organizer'
@@ -222,7 +222,17 @@ export const initializeSuperAdmin = async (): Promise<void> => {
     username: 'Slazhen',
     role: 'super_admin',
     isActive: true
-  }, 'qweRTY1')
+  }, '123')
+}
+
+// Create organizer account
+export const createOrganizerAccount = async (organizerName: string, organizerId: string): Promise<AuthUser> => {
+  return await createUser({
+    username: organizerName,
+    role: 'organizer',
+    organizerId: organizerId,
+    isActive: true
+  }, '123')
 }
 
 // Role-based access control

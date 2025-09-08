@@ -101,7 +101,7 @@ export default function AdminLoginPage() {
           {/* Footer */}
           <div className="mt-8 text-center">
             <p className="text-sm text-gray-400">
-              Super Admin: Slazhen / qweRTY1
+              Super Admin: Slazhen / 123
             </p>
           </div>
         </div>
