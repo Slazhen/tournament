@@ -31,7 +31,6 @@ export default function NewPublicTournament() {
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeStatsTab, setActiveStatsTab] = useState<'team' | 'player'>('player')
   const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
 
   useEffect(() => {
@@ -399,7 +398,7 @@ export default function NewPublicTournament() {
                       {(() => {
                         // Calculate team statistics
                         const teamStats = teams.map(team => {
-                          const teamMatches = tournament.matches?.filter(match => 
+                          const teamMatches = tournament?.matches?.filter(match => 
                             match.homeTeamId === team.id || match.awayTeamId === team.id
                           ) || []
                           
