@@ -336,7 +336,7 @@ export default function NewPublicTournament() {
                                 <img 
                                   src={teamData.logo} 
                                   alt={`${teamData.name} logo`}
-                                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-contain p-1 bg-white/5 border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
                                 />
                                 <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
                               </div>
@@ -476,7 +476,7 @@ export default function NewPublicTournament() {
                                   <img 
                                     src={stats.team.logo} 
                                     alt={`${stats.team.name} logo`}
-                                    className="w-10 h-10 rounded-full object-contain p-1 bg-white/5 border border-white/20"
+                                    className="w-10 h-10 rounded-full object-cover border border-white/20"
                                   />
                                 ) : (
                                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
@@ -638,7 +638,7 @@ export default function NewPublicTournament() {
                                   <img 
                                     src={stats.team.logo} 
                                     alt={`${stats.team.name} logo`}
-                                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-contain p-1 bg-white/5"
+                                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover"
                                   />
                                 ) : (
                                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
@@ -756,7 +756,7 @@ export default function NewPublicTournament() {
                                     <img 
                                       src={homeTeam.logo} 
                                       alt={`${homeTeam.name} logo`}
-                                      className="w-14 h-14 rounded-full object-contain p-1 bg-white/5 border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                                      className="w-14 h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
                                     />
                                     <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
                                   </div>
@@ -816,7 +816,7 @@ export default function NewPublicTournament() {
                                     <img 
                                       src={awayTeam.logo} 
                                       alt={`${awayTeam.name} logo`}
-                                      className="w-14 h-14 rounded-full object-contain p-1 bg-white/5 border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                                      className="w-14 h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
                                     />
                                     <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
                                   </div>
