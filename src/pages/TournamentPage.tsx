@@ -678,7 +678,7 @@ export default function TournamentPage() {
                         />
                         <input 
                           type="time" 
-                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-xs w-20" 
+                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-xs w-24" 
                           value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0,5) : '12:00'} 
                           onChange={(e) => {
                             const currentDate = m.dateISO ? new Date(m.dateISO) : new Date()
@@ -686,6 +686,7 @@ export default function TournamentPage() {
                             currentDate.setHours(hours || 12, minutes || 0)
                             setDate(mid, currentDate.toISOString())
                           }} 
+                          step="60"
                         />
                       </div>
                     </div>

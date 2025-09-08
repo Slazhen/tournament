@@ -805,7 +805,7 @@ export default function NewPublicTournament() {
                                       {new Date(match.dateISO).toLocaleTimeString('en-US', {
                                         hour: '2-digit',
                                         minute: '2-digit',
-                                        hour12: true
+                                        hour12: false
                                       })}
                                     </div>
                                   </div>
