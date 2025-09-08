@@ -154,7 +154,6 @@ export default function NewPublicTournament() {
 
     // Process matches
     tournament.matches?.forEach(match => {
-      console.log('Processing match:', match.id, 'homeGoals:', match.homeGoals, 'awayGoals:', match.awayGoals)
       // Only process matches that have been played (both scores are valid numbers)
       const hasValidScores = typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number' &&
                            !isNaN(match.homeGoals) && !isNaN(match.awayGoals) &&
@@ -190,12 +189,9 @@ export default function NewPublicTournament() {
       }
     })
 
-    const finalStandings = Object.entries(stats)
+    return Object.entries(stats)
       .map(([teamId, stats]) => ({ teamId, ...stats }))
       .sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf)
-    
-    console.log('Final standings:', finalStandings)
-    return finalStandings
   }
 
   const standings = calculateStandings()
