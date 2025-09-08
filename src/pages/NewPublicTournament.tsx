@@ -31,6 +31,8 @@ export default function NewPublicTournament() {
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeStatsTab, setActiveStatsTab] = useState<'team' | 'player'>('team')
+  const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('all')
 
   useEffect(() => {
     const loadData = async () => {
@@ -360,6 +362,328 @@ export default function NewPublicTournament() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        {/* Statistics */}
+        <div className="mb-12">
+          <div className="text-center mb-8">
+            <h2 className="text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Statistics</h2>
+            <p className="text-gray-400">Team and player performance analytics</p>
+          </div>
+          
+          {/* Statistics Tabs */}
+          <div className="glass rounded-2xl p-8 shadow-2xl border border-white/20">
+            <div className="flex flex-wrap gap-4 mb-8">
+              <button
+                onClick={() => setActiveStatsTab('team')}
+                className={`px-6 py-3 rounded-xl font-semibold transition-all ${
+                  activeStatsTab === 'team'
+                    ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                    : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                }`}
+              >
+                Team Statistics
+              </button>
+              <button
+                onClick={() => setActiveStatsTab('player')}
+                className={`px-6 py-3 rounded-xl font-semibold transition-all ${
+                  activeStatsTab === 'player'
+                    ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                    : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                }`}
+              >
+                Player Statistics
+              </button>
+            </div>
+
+            {/* Team Statistics Tab */}
+            {activeStatsTab === 'team' && (
+              <div className="space-y-6">
+                <h3 className="text-2xl font-bold text-white mb-6">Team Performance</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-white/20">
+                        <th className="text-left py-4 px-6 text-white font-semibold text-lg">#</th>
+                        <th className="text-left py-4 px-6 text-white font-semibold text-lg">Team</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">P</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">W</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">D</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">L</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">GF</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">GA</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">GD</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">Pts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        // Calculate team statistics
+                        const teamStats = teams.map(team => {
+                          const teamMatches = tournament.matches?.filter(match => 
+                            match.homeTeamId === team.id || match.awayTeamId === team.id
+                          ) || []
+                          
+                          let played = 0
+                          let won = 0
+                          let drawn = 0
+                          let lost = 0
+                          let goalsFor = 0
+                          let goalsAgainst = 0
+                          
+                          teamMatches.forEach(match => {
+                            if (match.homeGoals !== null && match.awayGoals !== null) {
+                              played++
+                              const isHome = match.homeTeamId === team.id
+                              const teamGoals = isHome ? match.homeGoals : match.awayGoals
+                              const opponentGoals = isHome ? match.awayGoals : match.homeGoals
+                              
+                              goalsFor += teamGoals
+                              goalsAgainst += opponentGoals
+                              
+                              if (teamGoals > opponentGoals) won++
+                              else if (teamGoals === opponentGoals) drawn++
+                              else lost++
+                            }
+                          })
+                          
+                          const goalDifference = goalsFor - goalsAgainst
+                          const points = won * 3 + drawn
+                          
+                          return {
+                            team,
+                            played,
+                            won,
+                            drawn,
+                            lost,
+                            goalsFor,
+                            goalsAgainst,
+                            goalDifference,
+                            points
+                          }
+                        })
+                        
+                        // Sort by points, then goal difference, then goals for
+                        teamStats.sort((a, b) => {
+                          if (b.points !== a.points) return b.points - a.points
+                          if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference
+                          return b.goalsFor - a.goalsFor
+                        })
+                        
+                        return teamStats.map((stats, index) => (
+                          <tr key={stats.team.id} className="border-b border-white/10 hover:bg-white/5 transition-colors">
+                            <td className="py-4 px-6 text-white font-bold text-lg">
+                              {index < 3 ? (
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
+                                    index === 0 ? 'bg-yellow-500 text-black' :
+                                    index === 1 ? 'bg-gray-400 text-black' :
+                                    'bg-orange-500 text-black'
+                                  }`}>
+                                    {index + 1}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-300">{index + 1}</span>
+                              )}
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-3">
+                                {stats.team.logo ? (
+                                  <img 
+                                    src={stats.team.logo} 
+                                    alt={`${stats.team.name} logo`}
+                                    className="w-10 h-10 rounded-full object-cover border border-white/20"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
+                                    <span className="text-sm font-bold text-white">
+                                      {stats.team.name.charAt(0)}
+                                    </span>
+                                  </div>
+                                )}
+                                <span className="text-white font-semibold text-lg">{stats.team.name}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">{stats.played}</td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">{stats.won}</td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">{stats.drawn}</td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">{stats.lost}</td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">{stats.goalsFor}</td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">{stats.goalsAgainst}</td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">
+                              <span className={stats.goalDifference > 0 ? 'text-green-400' : stats.goalDifference < 0 ? 'text-red-400' : 'text-gray-400'}>
+                                {stats.goalDifference > 0 ? '+' : ''}{stats.goalDifference}
+                              </span>
+                            </td>
+                            <td className="py-4 px-6 text-center text-white font-bold text-lg">{stats.points}</td>
+                          </tr>
+                        ))
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Player Statistics Tab */}
+            {activeStatsTab === 'player' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <h3 className="text-2xl font-bold text-white">Player Performance</h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPlayerStatsFilter('all')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        playerStatsFilter === 'all'
+                          ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                          : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                      }`}
+                    >
+                      All Players
+                    </button>
+                    <button
+                      onClick={() => setPlayerStatsFilter('scorers')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        playerStatsFilter === 'scorers'
+                          ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                          : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                      }`}
+                    >
+                      Top Scorers
+                    </button>
+                    <button
+                      onClick={() => setPlayerStatsFilter('assists')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        playerStatsFilter === 'assists'
+                          ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                          : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                      }`}
+                    >
+                      Top Assists
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-white/20">
+                        <th className="text-left py-4 px-6 text-white font-semibold text-lg">Player</th>
+                        <th className="text-left py-4 px-6 text-white font-semibold text-lg">Club</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">Games</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">Goals</th>
+                        <th className="text-center py-4 px-6 text-white font-semibold text-lg">Assists</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        // Calculate player statistics
+                        const playerStats = teams.flatMap(team => 
+                          (team.players || []).map(player => {
+                            const playerMatches = tournament.matches?.filter(match => {
+                              const isHome = match.homeTeamId === team.id
+                              const teamPlayers = isHome ? match.lineups?.home?.starting || [] : match.lineups?.away?.starting || []
+                              return teamPlayers.includes(player.id) && match.homeGoals !== null && match.awayGoals !== null
+                            }) || []
+                            
+                            let goals = 0
+                            let assists = 0
+                            
+                            tournament.matches?.forEach(match => {
+                              if (match.goals) {
+                                match.goals.forEach(goal => {
+                                  if (goal.playerId === player.id) goals++
+                                  if (goal.assistPlayerId === player.id) assists++
+                                })
+                              }
+                            })
+                            
+                            return {
+                              player,
+                              team,
+                              gamesPlayed: playerMatches.length,
+                              goals,
+                              assists
+                            }
+                          })
+                        )
+                        
+                        // Filter and sort based on selected filter
+                        let filteredStats = playerStats
+                        if (playerStatsFilter === 'scorers') {
+                          filteredStats = playerStats.filter(p => p.goals > 0).sort((a, b) => b.goals - a.goals)
+                        } else if (playerStatsFilter === 'assists') {
+                          filteredStats = playerStats.filter(p => p.assists > 0).sort((a, b) => b.assists - a.assists)
+                        } else {
+                          // Sort by goals first, then assists
+                          filteredStats = playerStats.sort((a, b) => {
+                            if (b.goals !== a.goals) return b.goals - a.goals
+                            return b.assists - a.assists
+                          })
+                        }
+                        
+                        return filteredStats.map((stats, index) => (
+                          <tr key={`${stats.team.id}-${stats.player.id}`} className="border-b border-white/10 hover:bg-white/5 transition-colors">
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-3">
+                                {stats.player.photo ? (
+                                  <img 
+                                    src={stats.player.photo} 
+                                    alt={`${stats.player.firstName} ${stats.player.lastName}`}
+                                    className="w-10 h-10 rounded-full object-cover border border-white/20"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
+                                    <span className="text-sm font-bold text-white">
+                                      {stats.player.firstName.charAt(0)}{stats.player.lastName.charAt(0)}
+                                    </span>
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="text-white font-semibold text-lg">
+                                    {stats.player.firstName} {stats.player.lastName}
+                                  </div>
+                                  {stats.player.number && (
+                                    <div className="text-sm text-gray-400">#{stats.player.number}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-2">
+                                {stats.team.logo ? (
+                                  <img 
+                                    src={stats.team.logo} 
+                                    alt={`${stats.team.name} logo`}
+                                    className="w-6 h-6 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
+                                    <span className="text-xs font-bold text-white">
+                                      {stats.team.name.charAt(0)}
+                                    </span>
+                                  </div>
+                                )}
+                                <span className="text-white font-medium">{stats.team.name}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">{stats.gamesPlayed}</td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">
+                              <span className="text-yellow-400 font-bold">{stats.goals}</span>
+                            </td>
+                            <td className="py-4 px-6 text-center text-white font-semibold">
+                              <span className="text-blue-400 font-bold">{stats.assists}</span>
+                            </td>
+                          </tr>
+                        ))
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
