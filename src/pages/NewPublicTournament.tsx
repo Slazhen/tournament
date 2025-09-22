@@ -712,14 +712,6 @@ export default function NewPublicTournament() {
                           <h3 className="text-lg sm:text-2xl font-bold text-white">Tour {roundNumber + 1}</h3>
                           <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-400">
                             <span>{roundMatches.length} matches</span>
-                            <span>•</span>
-                            <span className={`px-1 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium ${
-                              isFinished ? 'bg-green-500/20 text-green-400 border border-green-400/30' :
-                              isUpcoming ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30' :
-                              'bg-yellow-500/20 text-yellow-400 border border-yellow-400/30'
-                            }`}>
-                              {isFinished ? 'Finished' : isUpcoming ? 'Upcoming' : 'In Progress'}
-                            </span>
                           </div>
                         </div>
                       </div>
