@@ -1,247 +1,308 @@
 import { useState, useEffect } from 'react'
 import { useAppStore } from '../store'
-import { useNavigate } from 'react-router-dom'
-import DebugInfo from '../components/DebugInfo'
+import { useNavigate, Link } from 'react-router-dom'
+import { dynamoDB, TABLES } from '../lib/aws-config'
+import { ScanCommand } from '@aws-sdk/lib-dynamodb'
+
+interface Organizer {
+  id: string
+  name: string
+  email: string
+  createdAtISO: string
+  logo?: string
+  description?: string
+}
+
+interface Tournament {
+  id: string
+  name: string
+  organizerId: string
+  logo?: string
+  location?: string
+  createdAtISO: string
+}
 
 export default function HomePage() {
-  const [showCreateForm, setShowCreateForm] = useState(false)
-  const [organizerName, setOrganizerName] = useState('')
-  const [organizerEmail, setOrganizerEmail] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [allTournaments, setAllTournaments] = useState<Tournament[]>([])
+  const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
   
   const { 
-    organizers, 
-    // currentOrganizerId, 
-    createOrganizer, 
-    setCurrentOrganizer,
     getCurrentOrganizer,
-    getOrganizerTournaments
+    loadOrganizers
   } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   
-  // Redirect to last created tournament when organizer is logged in
+  // Redirect to admin if organizer is logged in
   useEffect(() => {
     if (currentOrganizer) {
-      console.log('HomePage: Organizer logged in, checking tournaments...')
-      const tournaments = getOrganizerTournaments()
-      console.log('HomePage: Found tournaments:', tournaments.length)
-      
-      if (tournaments.length > 0) {
-        // Sort tournaments by creation date (most recent first)
-        const sortedTournaments = [...tournaments].sort((a, b) => 
-          new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime()
-        )
-        const lastTournament = sortedTournaments[0]
-        console.log('HomePage: Redirecting to tournament:', lastTournament.id)
+      navigate('/admin')
+    }
+  }, [currentOrganizer, navigate])
+
+  // Load all organizers and tournaments for public display
+  useEffect(() => {
+    const loadPublicData = async () => {
+      try {
+        setLoading(true)
         
-        // Add a small delay to make the loading state visible
-        setTimeout(() => {
-          navigate(`/tournaments/${lastTournament.id}`)
-        }, 1000)
-      } else {
-        console.log('HomePage: No tournaments, redirecting to tournaments page')
-        // If no tournaments exist, go to tournaments page to create one
-        setTimeout(() => {
-          navigate('/tournaments')
-        }, 1000)
+        // Load organizers
+        const organizersResult = await dynamoDB.send(new ScanCommand({
+          TableName: TABLES.ORGANIZERS
+        }))
+        setAllOrganizers(organizersResult.Items as Organizer[] || [])
+        
+        // Load tournaments
+        const tournamentsResult = await dynamoDB.send(new ScanCommand({
+          TableName: TABLES.TOURNAMENTS
+        }))
+        setAllTournaments(tournamentsResult.Items as Tournament[] || [])
+        
+        // Also load local organizers
+        loadOrganizers()
+      } catch (error) {
+        console.error('Error loading public data:', error)
+      } finally {
+        setLoading(false)
       }
     }
-  }, [currentOrganizer, getOrganizerTournaments, navigate])
-  
-  const handleCreateOrganizer = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (organizerName.trim() && organizerEmail.trim()) {
-      createOrganizer(organizerName.trim(), organizerEmail.trim())
-      setOrganizerName('')
-      setOrganizerEmail('')
-      setShowCreateForm(false)
-    }
-  }
-  
-  const handleSelectOrganizer = (organizerId: string) => {
-    setCurrentOrganizer(organizerId)
+
+    loadPublicData()
+  }, [loadOrganizers])
+
+  // Filter organizers and tournaments based on search query
+  const filteredOrganizers = allOrganizers.filter(org =>
+    org.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  const filteredTournaments = allTournaments.filter(tournament => {
+    const organizer = allOrganizers.find(org => org.id === tournament.organizerId)
+    return (
+      tournament.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (organizer && organizer.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
+  })
+
+  const handleAdminLogin = () => {
+    navigate('/admin/login')
   }
 
-  
-  // Show loading state while redirecting
-  if (currentOrganizer) {
+  if (loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center">
+        <div className="glass rounded-2xl p-8 max-w-md w-full text-center">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold mb-2">Welcome, {currentOrganizer.name}!</h1>
-            <p className="opacity-80">Redirecting to your latest tournament...</p>
+            <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-white/20 animate-pulse">
+              <span className="text-2xl">🏆</span>
+            </div>
+            <h1 className="text-2xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+              Loading MFTournament
+            </h1>
+            <p className="text-lg opacity-80 text-gray-300">Please wait while we load the tournaments...</p>
           </div>
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-4 border-white/20 border-t-blue-400"></div>
+          </div>
         </div>
-        <DebugInfo />
       </div>
     )
   }
   
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Football Stadium Background */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1629217855633-79a6925d6c47?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OHx8Zm9vdGJhbGwlMjBzdGFkaXVtfGVufDB8fDB8fHww')`,
-          filter: 'brightness(0.4) saturate(1.2)',
-          backgroundAttachment: 'fixed',
-          backgroundSize: 'cover'
-        }}
-      />
-      
-      {/* Animated Gradient Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60" />
-      
-      {/* Glass Overlay with Enhanced Blur */}
-      <div className="absolute inset-0 backdrop-blur-md bg-black/30" />
-      
-      {/* Content */}
-      <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className="glass rounded-3xl p-12 max-w-4xl w-full text-center shadow-2xl border border-white/30 hover-lift backdrop-blur-xl bg-white/5">
-          {/* Logo/Title */}
-          <div className="mb-8">
-            <div className="text-8xl mb-6 animate-float">🏆</div>
-            <h1 className="text-6xl font-bold mb-6 text-gradient animate-pulse">
-              MFTournament
-            </h1>
-            <p className="text-2xl opacity-90 mb-8 font-light">
-              Football Tournament Management Platform
-            </p>
-          </div>
-          
-          {/* Description */}
-          <p className="text-lg opacity-80 mb-8 max-w-2xl mx-auto">
-            Welcome to MFTournament! Create and manage football tournaments, teams, players, and matches with ease. 
-            Get started by selecting or creating an organizer account.
-          </p>
-          
-          {/* Admin Access Button */}
-          <div className="mb-8">
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="px-8 py-4 rounded-xl glass hover:bg-white/10 transition-all text-xl font-semibold border border-white/30 hover:border-white/50"
-            >
-              ⚙️ Admin Access
-            </button>
-          </div>
-          
-          {/* Features Grid */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="glass rounded-2xl p-6 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-green-500/10 to-transparent">
-              <div className="text-4xl mb-3 animate-pulse">🏈</div>
-              <h3 className="text-lg font-bold mb-2 text-green-300">Tournament Management</h3>
-              <p className="text-sm opacity-80 leading-relaxed">Create and manage tournaments with ease</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-40 right-20 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl animate-pulse delay-1000"></div>
+        <div className="absolute bottom-20 left-1/4 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+        <div className="absolute bottom-32 right-1/3 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl animate-pulse delay-3000"></div>
+      </div>
+
+      {/* Header */}
+      <div className="relative z-10">
+        <div className="container mx-auto px-4 py-16 text-center">
+          <div className="glass rounded-2xl p-8 max-w-4xl mx-auto shadow-2xl border border-white/20">
+            {/* Logo/Title */}
+            <div className="mb-8">
+              <div className="text-6xl mb-6 animate-float">🏆</div>
+              <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                MFTournament
+              </h1>
+              <p className="text-lg sm:text-xl md:text-2xl opacity-90 mb-8 font-light text-gray-300">
+                Football Tournament Management Platform
+              </p>
             </div>
-            <div className="glass rounded-2xl p-6 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-blue-500/10 to-transparent">
-              <div className="text-4xl mb-3 animate-pulse">👥</div>
-              <h3 className="text-lg font-bold mb-2 text-blue-300">Team Management</h3>
-              <p className="text-sm opacity-80 leading-relaxed">Organize teams and track performance</p>
+            
+            {/* Search Section */}
+            <div className="mb-8">
+              <div className="max-w-2xl mx-auto">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-6 py-4 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-white placeholder-gray-400 text-lg"
+                    placeholder="Search organizers or tournaments..."
+                  />
+                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                    <span className="text-2xl opacity-60">🔍</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="glass rounded-2xl p-6 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-purple-500/10 to-transparent">
-              <div className="text-4xl mb-3 animate-pulse">⚽</div>
-              <h3 className="text-lg font-bold mb-2 text-purple-300">Match Tracking</h3>
-              <p className="text-sm opacity-80 leading-relaxed">Real-time match updates and statistics</p>
+
+            {/* Admin Access Button */}
+            <div className="mb-8">
+              <button
+                onClick={handleAdminLogin}
+                className="px-8 py-4 rounded-xl glass hover:bg-white/10 transition-all text-lg font-semibold border border-white/30 hover:border-white/50"
+              >
+                ⚙️ Admin Access
+              </button>
             </div>
-            <div className="glass rounded-2xl p-6 border border-white/30 hover:border-white/50 transition-all duration-500 hover:scale-110 hover-lift bg-gradient-to-br from-yellow-500/10 to-transparent">
-              <div className="text-4xl mb-3 animate-pulse">📊</div>
-              <h3 className="text-lg font-bold mb-2 text-yellow-300">Player Statistics</h3>
-              <p className="text-sm opacity-80 leading-relaxed">Detailed player performance analytics</p>
-            </div>
-          </div>
-          
-          {/* Public Access Info */}
-          <div className="border-t border-white/30 pt-6">
-            <p className="text-sm opacity-70 mb-2">Public tournament pages are available for viewing</p>
-            <p className="text-xs opacity-50">Contact organizers for public tournament links</p>
           </div>
         </div>
       </div>
-      
-      {/* Admin Panel Modal */}
-      {showCreateForm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="glass rounded-xl p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold mb-6 text-center">Admin Access</h2>
-            
-            {organizers.length > 0 ? (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold mb-4 text-center">Select Organizer</h3>
-                <div className="grid gap-3">
-                  {organizers.map((organizer) => (
-                    <button
-                      key={organizer.id}
-                      onClick={() => handleSelectOrganizer(organizer.id)}
-                      className="p-4 glass rounded-lg hover:bg-white/10 transition-all text-left"
-                    >
-                      <div className="font-medium">{organizer.name}</div>
-                      <div className="text-sm opacity-70">{organizer.email}</div>
-                    </button>
-                  ))}
+
+      {/* Search Results */}
+      <div className="container mx-auto px-4 py-8 relative z-10">
+        {/* Organizers Section */}
+        {searchQuery && filteredOrganizers.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 text-center">
+              Organizers
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredOrganizers.map((organizer) => (
+                <div key={organizer.id} className="glass rounded-2xl p-6 shadow-2xl border border-white/20 hover:border-white/40 transition-all">
+                  <div className="flex items-center gap-4 mb-4">
+                    {organizer.logo ? (
+                      <img 
+                        src={organizer.logo} 
+                        alt={`${organizer.name} logo`}
+                        className="w-16 h-16 rounded-full object-cover border border-white/20"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
+                        <span className="text-2xl font-bold text-white">
+                          {organizer.name.charAt(0)}
+                        </span>
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="text-xl font-bold text-white">{organizer.name}</h3>
+                      <p className="text-gray-400 text-sm">{organizer.email}</p>
+                    </div>
+                  </div>
+                  {organizer.description && (
+                    <p className="text-gray-300 text-sm mb-4">{organizer.description}</p>
+                  )}
+                  <div className="text-xs text-blue-400">
+                    Created: {new Date(organizer.createdAtISO).toLocaleDateString()}
+                  </div>
                 </div>
-                <div className="mt-4 pt-4 border-t border-white/20">
-                  <button
-                    onClick={() => {
-                      setShowCreateForm(false)
-                      // Show create form by setting organizers to empty temporarily
-                    }}
-                    className="w-full px-4 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Public Tournaments Section */}
+        {searchQuery && filteredTournaments.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 text-center">
+              Available Tournaments
+            </h2>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {filteredTournaments.map((tournament) => {
+                const organizer = allOrganizers.find(org => org.id === tournament.organizerId)
+                return (
+                  <Link
+                    key={tournament.id}
+                    to={`/${organizer?.name || 'unknown'}/${tournament.id}`}
+                    className="glass rounded-2xl p-6 shadow-2xl border border-white/20 hover:border-white/40 transition-all group"
                   >
-                    + Create New Organizer
-                  </button>
+                    <div className="flex items-center gap-4 mb-4">
+                      {tournament.logo ? (
+                        <img 
+                          src={tournament.logo} 
+                          alt={`${tournament.name} logo`}
+                          className="w-16 h-16 rounded-full object-cover border border-white/20 group-hover:border-blue-400/50 transition-colors"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20 group-hover:border-blue-400/50 transition-colors">
+                          <span className="text-2xl font-bold text-white">🏆</span>
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-xl font-bold text-white group-hover:text-blue-300 transition-colors">
+                          {tournament.name}
+                        </h3>
+                        <p className="text-gray-400 text-sm">by {organizer?.name || 'Unknown'}</p>
+                      </div>
+                    </div>
+                    {tournament.location && (
+                      <div className="flex items-center gap-2 text-gray-300 text-sm mb-4">
+                        <span>📍</span>
+                        <span>{tournament.location}</span>
+                      </div>
+                    )}
+                    <div className="text-xs text-blue-400">
+                      Created: {new Date(tournament.createdAtISO).toLocaleDateString()}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* No Results */}
+        {searchQuery && filteredOrganizers.length === 0 && filteredTournaments.length === 0 && (
+          <div className="text-center py-12">
+            <div className="glass rounded-2xl p-8 max-w-md mx-auto shadow-2xl border border-white/20">
+              <div className="text-4xl mb-4">🔍</div>
+              <h3 className="text-xl font-bold text-white mb-2">No Results Found</h3>
+              <p className="text-gray-400">Try searching for a different organizer or tournament name.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Welcome Message when no search */}
+        {!searchQuery && (
+          <div className="text-center py-12">
+            <div className="glass rounded-2xl p-8 max-w-2xl mx-auto shadow-2xl border border-white/20">
+              <div className="text-4xl mb-4">⚽</div>
+              <h3 className="text-2xl font-bold text-white mb-4">Welcome to MFTournament</h3>
+              <p className="text-gray-300 mb-6">
+                Search for organizers and discover available public tournaments. 
+                Use the search bar above to find tournaments by organizer name or tournament title.
+              </p>
+              <div className="flex flex-wrap justify-center gap-4 text-sm text-gray-400">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+                  <span>Search organizers</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
+                  <span>View public tournaments</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                  <span>Access admin panel</span>
                 </div>
               </div>
-            ) : (
-              <form onSubmit={handleCreateOrganizer} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Organizer Name</label>
-                  <input
-                    type="text"
-                    value={organizerName}
-                    onChange={(e) => setOrganizerName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                    placeholder="Enter organizer name"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Email</label>
-                  <input
-                    type="email"
-                    value={organizerEmail}
-                    onChange={(e) => setOrganizerEmail(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                    placeholder="Enter email address"
-                    required
-                  />
-                </div>
-                
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateForm(false)}
-                    className="flex-1 px-4 py-2 rounded-md glass hover:bg-white/10 transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 rounded-md glass hover:bg-white/10 transition-all font-medium"
-                  >
-                    Create
-                  </button>
-                </div>
-              </form>
-            )}
+            </div>
           </div>
-        </div>
-      )}
-      
-      <DebugInfo />
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="text-center text-gray-400 py-8 relative z-10">
+        <p>Powered by MFTournament - Football Tournament Management Platform</p>
+      </div>
     </div>
   )
 }
