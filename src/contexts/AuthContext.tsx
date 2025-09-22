@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import type { AuthUser, AuthSession } from '../lib/auth'
 import { authenticateUser, verifySession, deleteSession, canAccessOrganizer } from '../lib/auth'
+import { useAppStore } from '../store'
 
 interface AuthContextType {
   user: AuthUser | null
@@ -32,6 +33,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [session, setSession] = useState<AuthSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const setCurrentOrganizer = useAppStore((state) => state.setCurrentOrganizer)
 
   // Check for existing session on mount
   useEffect(() => {
@@ -43,6 +45,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (result) {
             setUser(result.user)
             setSession(result.session)
+            
+            // Set current organizer ID if user is an organizer
+            if (result.user.role === 'organizer' && result.user.organizerId) {
+              console.log('Restoring current organizer ID:', result.user.organizerId)
+              setCurrentOrganizer(result.user.organizerId)
+            } else if (result.user.role === 'super_admin') {
+              // Clear organizer ID for super admin
+              setCurrentOrganizer('')
+            }
           } else {
             localStorage.removeItem('auth_token')
           }
@@ -56,7 +67,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     checkExistingSession()
-  }, [])
+  }, [setCurrentOrganizer])
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
@@ -67,6 +78,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(result.user)
         setSession(result.session)
         localStorage.setItem('auth_token', result.session.token)
+        
+        // Set current organizer ID if user is an organizer
+        if (result.user.role === 'organizer' && result.user.organizerId) {
+          console.log('Setting current organizer ID:', result.user.organizerId)
+          setCurrentOrganizer(result.user.organizerId)
+        } else if (result.user.role === 'super_admin') {
+          // Clear organizer ID for super admin
+          setCurrentOrganizer('')
+        }
+        
         return true
       }
       
