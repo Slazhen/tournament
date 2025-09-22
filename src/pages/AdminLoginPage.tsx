@@ -98,12 +98,6 @@ export default function AdminLoginPage() {
             </button>
           </form>
 
-          {/* Footer */}
-          <div className="mt-8 text-center">
-            <p className="text-sm text-gray-400">
-              Super Admin: Slazhen / 123
-            </p>
-          </div>
         </div>
       </div>
     </div>
