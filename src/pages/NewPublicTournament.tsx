@@ -692,12 +692,6 @@ export default function NewPublicTournament() {
             
             return sortedRounds.map(roundNumber => {
               const roundMatches = matchesByRound[roundNumber]
-              const isFinished = roundMatches.every(match => 
-                match.homeGoals !== null && match.awayGoals !== null
-              )
-              const isUpcoming = roundMatches.every(match => 
-                match.homeGoals === null && match.awayGoals === null
-              )
               
               return (
                 <div key={roundNumber} className="mb-6 sm:mb-8">
