@@ -220,15 +220,11 @@ export default function TournamentPage() {
                    <section className="glass rounded-xl p-6 w-full max-w-6xl text-center">
                <div className="flex items-center justify-center gap-4 mb-4">
                  <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                   {tournament.logo ? (
-                     <img 
-                       src={tournament.logo} 
-                       alt={`${tournament.name} logo`} 
-                       className="w-full h-full object-cover" 
-                     />
-                   ) : (
-                     <div className="text-3xl opacity-50">🏆</div>
-                   )}
+                   <LogoUploader 
+                     onLogoUpload={(file) => uploadTournamentLogo(tournament.id, file)}
+                     currentLogo={tournament.logo}
+                     size={80}
+                   />
                  </div>
                  <div>
         <h1 className="text-xl font-semibold">{tournament.name}</h1>
@@ -274,34 +270,7 @@ export default function TournamentPage() {
                  </div>
                </div>
                
-               {/* Delete Tournament */}
-               <div className="mt-4 flex justify-center">
-                 <button
-                   onClick={() => {
-                     if (confirm(`Are you sure you want to delete the tournament "${tournament.name}"?\n\nThis will permanently remove:\n• All match results\n• Tournament standings\n• Playoff brackets\n• Tournament data\n\nThis action cannot be undone.`)) {
-                       deleteTournament(tournament.id)
-                       // Navigate back to tournaments page after deletion
-                       window.location.href = '/tournaments'
-                     }
-                   }}
-                   className="px-6 py-3 rounded-lg glass hover:bg-red-500/20 hover:text-red-300 transition-all font-medium border border-red-500/30 text-red-400"
-                   title="Delete tournament"
-                 >
-                   🗑️ Delete Tournament
-                 </button>
-               </div>
                
-               {/* Tournament Logo Upload Section */}
-               <div className="mt-4 flex justify-center">
-                 <div className="text-center">
-                   <label className="block text-sm font-medium mb-2">Tournament Logo</label>
-                   <LogoUploader 
-                     onLogoUpload={(file) => uploadTournamentLogo(tournament.id, file)}
-                     currentLogo={tournament.logo}
-                     size={80}
-                   />
-                 </div>
-               </div>
         
                                       {/* Tournament Info Editing */}
                <div className="flex items-center justify-center gap-4 text-sm mb-3">
