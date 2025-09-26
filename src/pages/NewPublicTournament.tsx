@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { dynamoDB, TABLES } from '../lib/aws-config'
 import { GetCommand } from '@aws-sdk/lib-dynamodb'
+import ErrorBoundary from '../components/ErrorBoundary'
 
 interface Tournament {
   id: string
@@ -199,7 +200,8 @@ export default function NewPublicTournament() {
   const standings = calculateStandings()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -241,9 +243,7 @@ export default function NewPublicTournament() {
               )}
               
               {/* Social Media Links */}
-              {(() => {
-                try {
-                  return tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
+              {tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
                 <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
                   {tournament.socialMedia.facebook && (
                     <a 
@@ -268,12 +268,7 @@ export default function NewPublicTournament() {
                     </a>
                   )}
                 </div>
-                  )
-                } catch (error) {
-                  console.error('Error rendering social media links:', error)
-                  return null
-                }
-              })()}
+              )}
             </div>
             
             <div className="flex justify-center gap-6 text-sm text-gray-300">
@@ -849,5 +844,6 @@ export default function NewPublicTournament() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   )
 }
