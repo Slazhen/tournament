@@ -119,17 +119,6 @@ export default function AdminPage() {
                 </Link>
               </div>
 
-              {/* User Management */}
-              <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
-                <h3 className="text-xl font-semibold text-white mb-4">User Management</h3>
-                <p className="text-gray-400 mb-4">Manage user accounts and permissions</p>
-                <Link
-                  to="/admin/users"
-                  className="inline-flex items-center px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 rounded-lg transition-all text-green-400"
-                >
-                  Manage Users
-                </Link>
-              </div>
             </div>
           </div>
         )}

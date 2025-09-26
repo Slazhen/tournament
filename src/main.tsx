@@ -45,13 +45,70 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ) 
       },
-      { path: 'tournaments', element: <TournamentsPage /> },
-      { path: 'tournaments/:id', element: <TournamentPage /> },
-      { path: 'tournaments/:tournamentId/matches/:matchId', element: <MatchPage /> },
-      { path: 'teams', element: <TeamsPage /> },
-      { path: 'teams/:teamId', element: <TeamPage /> },
-      { path: 'players/:playerId', element: <PlayerPage /> },
-      { path: 'calendar', element: <CalendarPage /> },
+      { 
+        path: 'admin/tournaments', 
+        element: (
+          <ProtectedRoute>
+            <TournamentsPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/tournaments/:id', 
+        element: (
+          <ProtectedRoute>
+            <TournamentPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/tournaments/:tournamentId/matches/:matchId', 
+        element: (
+          <ProtectedRoute>
+            <MatchPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/teams', 
+        element: (
+          <ProtectedRoute>
+            <TeamsPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/teams/:teamId', 
+        element: (
+          <ProtectedRoute>
+            <TeamPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/players/:playerId', 
+        element: (
+          <ProtectedRoute>
+            <PlayerPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/calendar', 
+        element: (
+          <ProtectedRoute>
+            <CalendarPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/tournaments/new', 
+        element: (
+          <ProtectedRoute>
+            <TournamentPage />
+          </ProtectedRoute>
+        ) 
+      },
     ],
   },
   {
