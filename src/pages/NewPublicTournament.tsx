@@ -230,12 +230,12 @@ export default function NewPublicTournament() {
             )}
             
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-              {tournament.name}
+              {typeof tournament.name === 'string' ? tournament.name : 'Tournament'}
             </h1>
             
             {/* Tournament Info */}
             <div className="space-y-4 mb-8">
-              {tournament.location && (
+              {tournament.location && typeof tournament.location === 'string' && (
                 <div className="flex items-center justify-center gap-2 text-lg sm:text-xl text-gray-300">
                   <span className="w-2 h-2 bg-green-400 rounded-full"></span>
                   <span>📍 {tournament.location}</span>
@@ -243,42 +243,57 @@ export default function NewPublicTournament() {
               )}
               
               {/* Social Media Links */}
-              {tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
-                <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
-                  {tournament.socialMedia.facebook && (
-                    <a 
-                      href={tournament.socialMedia.facebook} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
-                    >
-                      <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📘</span>
-                      <span className="text-white font-medium text-sm sm:text-base">Facebook</span>
-                    </a>
-                  )}
-                  {tournament.socialMedia.instagram && (
-                    <a 
-                      href={tournament.socialMedia.instagram} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
-                    >
-                      <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📷</span>
-                      <span className="text-white font-medium text-sm sm:text-base">Instagram</span>
-                    </a>
-                  )}
-                </div>
-              )}
+              {(() => {
+                try {
+                  const socialMedia = tournament.socialMedia
+                  if (!socialMedia) return null
+                  
+                  const facebook = typeof socialMedia.facebook === 'string' ? socialMedia.facebook : null
+                  const instagram = typeof socialMedia.instagram === 'string' ? socialMedia.instagram : null
+                  
+                  if (!facebook && !instagram) return null
+                  
+                  return (
+                    <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
+                      {facebook && (
+                        <a 
+                          href={facebook} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
+                        >
+                          <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📘</span>
+                          <span className="text-white font-medium text-sm sm:text-base">Facebook</span>
+                        </a>
+                      )}
+                      {instagram && (
+                        <a 
+                          href={instagram} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
+                        >
+                          <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📷</span>
+                          <span className="text-white font-medium text-sm sm:text-base">Instagram</span>
+                        </a>
+                      )}
+                    </div>
+                  )
+                } catch (error) {
+                  console.error('Error rendering social media links:', error)
+                  return null
+                }
+              })()}
             </div>
             
             <div className="flex justify-center gap-6 text-sm text-gray-300">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                <span>{teams.length} Teams</span>
+                <span>{Array.isArray(teams) ? teams.length : 0} Teams</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                <span>{tournament.matches?.length || 0} Matches</span>
+                <span>{Array.isArray(tournament.matches) ? tournament.matches.length : 0} Matches</span>
               </div>
             </div>
           </div>
