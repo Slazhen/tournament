@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { dynamoDB, TABLES } from '../lib/aws-config'
 import { GetCommand } from '@aws-sdk/lib-dynamodb'
 import ErrorBoundary from '../components/ErrorBoundary'
+import FacebookIcon from '../components/FacebookIcon'
+import InstagramIcon from '../components/InstagramIcon'
 
 interface Tournament {
   id: string
@@ -262,7 +264,7 @@ export default function NewPublicTournament() {
                           rel="noopener noreferrer"
                           className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
                         >
-                          <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📘</span>
+                          <FacebookIcon size={24} className="group-hover:scale-110 transition-transform" />
                           <span className="text-white font-medium text-sm sm:text-base">Facebook</span>
                         </a>
                       )}
@@ -273,7 +275,7 @@ export default function NewPublicTournament() {
                           rel="noopener noreferrer"
                           className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
                         >
-                          <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📷</span>
+                          <InstagramIcon size={24} className="group-hover:scale-110 transition-transform" />
                           <span className="text-white font-medium text-sm sm:text-base">Instagram</span>
                         </a>
                       )}
