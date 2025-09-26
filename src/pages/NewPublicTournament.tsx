@@ -51,6 +51,8 @@ export default function NewPublicTournament() {
         }
 
         const tournamentData = tournamentResponse.Item as Tournament
+        console.log('Tournament data loaded:', tournamentData)
+        console.log('Social media data:', tournamentData.socialMedia)
         setTournament(tournamentData)
 
         // Load teams
@@ -239,7 +241,9 @@ export default function NewPublicTournament() {
               )}
               
               {/* Social Media Links */}
-              {tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
+              {(() => {
+                try {
+                  return tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
                 <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
                   {tournament.socialMedia.facebook && (
                     <a 
@@ -264,7 +268,12 @@ export default function NewPublicTournament() {
                     </a>
                   )}
                 </div>
-              )}
+                  )
+                } catch (error) {
+                  console.error('Error rendering social media links:', error)
+                  return null
+                }
+              })()}
             </div>
             
             <div className="flex justify-center gap-6 text-sm text-gray-300">
