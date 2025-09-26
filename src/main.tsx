@@ -109,6 +109,14 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ) 
       },
+      // Original routes for top navigation
+      { path: 'tournaments', element: <TournamentsPage /> },
+      { path: 'tournaments/:id', element: <TournamentPage /> },
+      { path: 'tournaments/:tournamentId/matches/:matchId', element: <MatchPage /> },
+      { path: 'teams', element: <TeamsPage /> },
+      { path: 'teams/:teamId', element: <TeamPage /> },
+      { path: 'players/:playerId', element: <PlayerPage /> },
+      { path: 'calendar', element: <CalendarPage /> },
     ],
   },
   {
