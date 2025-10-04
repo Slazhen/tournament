@@ -722,6 +722,7 @@ export default function NewPublicTournament() {
             <div className="text-center mb-8">
               <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Playoff Bracket</h2>
               <p className="text-gray-400 text-sm sm:text-base">Tournament playoffs</p>
+              <p className="text-red-400 text-sm">DEBUG: Playoff section is rendering!</p>
             </div>
             
             <div className="space-y-6">
