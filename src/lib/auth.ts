@@ -6,7 +6,8 @@ import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand } fro
 export type UserRole = 'super_admin' | 'organizer'
 export type AuthUser = {
   id: string
-  email: string // Changed from username to email
+  email?: string // For new organizer accounts
+  username?: string // For backward compatibility and super admin
   role: UserRole
   passwordHash: string
   salt: string
@@ -118,6 +119,20 @@ export const getUserByEmail = async (email: string): Promise<AuthUser | null> =>
   return result.Items?.[0] as AuthUser || null
 }
 
+// Backward compatibility function for username-based login
+export const getUserByUsername = async (username: string): Promise<AuthUser | null> => {
+  const result = await dynamoDB.send(new ScanCommand({
+    TableName: TABLES.AUTH_USERS,
+    FilterExpression: 'username = :username AND isActive = :isActive',
+    ExpressionAttributeValues: {
+      ':username': username,
+      ':isActive': true
+    }
+  }))
+
+  return result.Items?.[0] as AuthUser || null
+}
+
 export const getUserById = async (id: string): Promise<AuthUser | null> => {
   const result = await dynamoDB.send(new GetCommand({
     TableName: TABLES.AUTH_USERS,
@@ -210,30 +225,36 @@ export const deleteAllUserSessions = async (userId: string): Promise<void> => {
 }
 
 // Authentication functions
-export const authenticateUser = async (email: string, password: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
+export const authenticateUser = async (loginCredential: string, password: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
   try {
-    console.log('Authenticating user:', email)
+    console.log('Authenticating user:', loginCredential)
     
     // Initialize super admin if it doesn't exist and this is the super admin login attempt
-    if (email === 'admin@myfootballtournament.com') {
+    if (loginCredential === 'Slazhen') {
       console.log('Checking/creating super admin...')
       await initializeSuperAdmin()
     }
     
-    const user = await getUserByEmail(email)
+    // Try to find user by email first, then by username (for backward compatibility)
+    let user = await getUserByEmail(loginCredential)
     if (!user) {
-      console.log('User not found:', email)
+      // For backward compatibility, also try to find by username
+      user = await getUserByUsername(loginCredential)
+    }
+    
+    if (!user) {
+      console.log('User not found:', loginCredential)
       return null
     }
     
     console.log('User found, verifying password...')
     const isValidPassword = await verifyPassword(password, user.passwordHash, user.salt)
     if (!isValidPassword) {
-      console.log('Invalid password for user:', email)
+      console.log('Invalid password for user:', loginCredential)
       return null
     }
     
-    console.log('Authentication successful for user:', email)
+    console.log('Authentication successful for user:', loginCredential)
 
     // Update last login
     await dynamoDB.send(new UpdateCommand({
@@ -273,7 +294,7 @@ export const verifySession = async (token: string): Promise<{ user: AuthUser; se
 export const initializeSuperAdmin = async (): Promise<void> => {
   try {
     console.log('Checking for existing super admin...')
-    const existingAdmin = await getUserByEmail('admin@myfootballtournament.com')
+    const existingAdmin = await getUserByUsername('Slazhen')
     if (existingAdmin) {
       console.log('Super admin already exists')
       return // Super admin already exists
@@ -281,7 +302,7 @@ export const initializeSuperAdmin = async (): Promise<void> => {
 
     console.log('Creating super admin account...')
     await createUser({
-      email: 'admin@myfootballtournament.com',
+      username: 'Slazhen',
       role: 'super_admin',
       isActive: true
     }, '123')

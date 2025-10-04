@@ -8,7 +8,7 @@ interface AuthContextType {
   user: AuthUser | null
   session: AuthSession | null
   isLoading: boolean
-  login: (email: string, password: string) => Promise<boolean>
+  login: (loginCredential: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
   canAccess: (organizerId: string) => boolean
   isSuperAdmin: boolean
@@ -69,10 +69,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkExistingSession()
   }, [setCurrentOrganizer])
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (loginCredential: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true)
-      const result = await authenticateUser(email, password)
+      const result = await authenticateUser(loginCredential, password)
       
       if (result) {
         setUser(result.user)

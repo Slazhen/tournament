@@ -29,6 +29,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'admin/login', element: <AdminLoginPage /> },
+      { path: 'adminslazhen', element: <AdminLoginPage /> }, // Special route for super admin
       { 
         path: 'admin', 
         element: (
