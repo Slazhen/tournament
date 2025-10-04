@@ -412,7 +412,12 @@ export default function PublicTournamentPage() {
                       const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
                       
                       return (
-                        <div key={match.id} className="grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg">
+                        <div key={match.id} className={`relative grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
+                          {match.isElimination && (
+                            <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
+                              🔥 ELIMINATION
+                            </div>
+                          )}
                           <div className="md:col-span-2 flex items-center gap-2">
                             {(() => {
                               if (match.homeTeamId === 'BYE') {
@@ -612,7 +617,12 @@ export default function PublicTournamentPage() {
           <div className="glass rounded-xl p-4 grid gap-2">
             <div className="font-medium">Playoff Matches</div>
             {playoffMatches.map((m: any) => (
-              <div key={m.id} className="grid md:grid-cols-4 gap-2 items-center">
+              <div key={m.id} className={`relative grid md:grid-cols-4 gap-2 items-center p-3 rounded-lg ${m.isElimination ? 'border-2 border-red-500 bg-red-500/10' : 'glass'}`}>
+                {m.isElimination && (
+                  <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
+                    🔥 ELIMINATION
+                  </div>
+                )}
                 <div className="md:col-span-2">
                   <Link 
                     to={`/public/teams/${m.homeTeamId}`}

@@ -77,7 +77,7 @@ export default function PublicMatchPage() {
   return (
     <div className="grid gap-6 place-items-center">
       {/* Header */}
-      <section className="glass rounded-xl p-6 w-full max-w-6xl">
+      <section className={`glass rounded-xl p-6 w-full max-w-6xl ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
         <div className="flex items-center justify-between mb-6">
           <Link to={`/public/tournaments/${tournament.id}`} className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2">
             ← Back to {tournament.name}
@@ -89,6 +89,11 @@ export default function PublicMatchPage() {
           <div className="text-sm opacity-70 mb-2">
             {tournament.name} • Round {match.round || 1}
             {match.isPlayoff && ` • Playoff Round ${match.playoffRound}`}
+            {match.isElimination && (
+              <span className="ml-2 inline-block bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                🔥 ELIMINATION MATCH
+              </span>
+            )}
           </div>
           
           {/* Teams and Score */}

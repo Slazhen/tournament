@@ -50,6 +50,7 @@ export type Match = {
   isPlayoff?: boolean
   playoffRound?: number
   playoffMatch?: number
+  isElimination?: boolean // Mark individual matches as elimination for public display
   // Match details
   venue?: string
   referee?: string
@@ -144,8 +145,19 @@ export type TeamStanding = {
 export type CustomPlayoffRoundConfig = {
   roundNumber: number
   name: string
-  type: 'knockout' | 'league' // knockout = elimination, league = points count toward table
+  quantityOfGames: number // Number of games in this round
   description?: string
+  matches: CustomPlayoffMatchConfig[] // Individual match configurations
+}
+
+export type CustomPlayoffMatchConfig = {
+  id: string
+  homeTeamId?: string
+  awayTeamId?: string
+  dateISO?: string
+  time?: string
+  isElimination: boolean // Mark individual matches as elimination
+  notes?: string
 }
 
 export type Tournament = {
