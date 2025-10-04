@@ -2,6 +2,9 @@ import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { dynamoDB, TABLES } from '../lib/aws-config'
 import { GetCommand } from '@aws-sdk/lib-dynamodb'
+import ErrorBoundary from '../components/ErrorBoundary'
+import FacebookIcon from '../components/FacebookIcon'
+import InstagramIcon from '../components/InstagramIcon'
 
 interface Tournament {
   id: string
@@ -51,6 +54,8 @@ export default function NewPublicTournament() {
         }
 
         const tournamentData = tournamentResponse.Item as Tournament
+        console.log('Tournament data loaded:', tournamentData)
+        console.log('Social media data:', tournamentData.socialMedia)
         setTournament(tournamentData)
 
         // Load teams
@@ -197,7 +202,8 @@ export default function NewPublicTournament() {
   const standings = calculateStandings()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -226,12 +232,12 @@ export default function NewPublicTournament() {
             )}
             
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-              {tournament.name}
+              {typeof tournament.name === 'string' ? tournament.name : 'Tournament'}
             </h1>
             
             {/* Tournament Info */}
             <div className="space-y-4 mb-8">
-              {tournament.location && (
+              {tournament.location && typeof tournament.location === 'string' && (
                 <div className="flex items-center justify-center gap-2 text-lg sm:text-xl text-gray-300">
                   <span className="w-2 h-2 bg-green-400 rounded-full"></span>
                   <span>📍 {tournament.location}</span>
@@ -239,42 +245,57 @@ export default function NewPublicTournament() {
               )}
               
               {/* Social Media Links */}
-              {tournament.socialMedia && (tournament.socialMedia.facebook || tournament.socialMedia.instagram) && (
-                <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
-                  {tournament.socialMedia.facebook && (
-                    <a 
-                      href={tournament.socialMedia.facebook} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
-                    >
-                      <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📘</span>
-                      <span className="text-white font-medium text-sm sm:text-base">Facebook</span>
-                    </a>
-                  )}
-                  {tournament.socialMedia.instagram && (
-                    <a 
-                      href={tournament.socialMedia.instagram} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
-                    >
-                      <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">📷</span>
-                      <span className="text-white font-medium text-sm sm:text-base">Instagram</span>
-                    </a>
-                  )}
-                </div>
-              )}
+              {(() => {
+                try {
+                  const socialMedia = tournament.socialMedia
+                  if (!socialMedia) return null
+                  
+                  const facebook = typeof socialMedia.facebook === 'string' ? socialMedia.facebook : null
+                  const instagram = typeof socialMedia.instagram === 'string' ? socialMedia.instagram : null
+                  
+                  if (!facebook && !instagram) return null
+                  
+                  return (
+                    <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
+                      {facebook && (
+                        <a 
+                          href={facebook} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
+                        >
+                          <FacebookIcon size={24} className="group-hover:scale-110 transition-transform" />
+                          <span className="text-white font-medium text-sm sm:text-base">Facebook</span>
+                        </a>
+                      )}
+                      {instagram && (
+                        <a 
+                          href={instagram} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
+                        >
+                          <InstagramIcon size={24} className="group-hover:scale-110 transition-transform" />
+                          <span className="text-white font-medium text-sm sm:text-base">Instagram</span>
+                        </a>
+                      )}
+                    </div>
+                  )
+                } catch (error) {
+                  console.error('Error rendering social media links:', error)
+                  return null
+                }
+              })()}
             </div>
             
             <div className="flex justify-center gap-6 text-sm text-gray-300">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                <span>{teams.length} Teams</span>
+                <span>{Array.isArray(teams) ? teams.length : 0} Teams</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                <span>{tournament.matches?.length || 0} Matches</span>
+                <span>{Array.isArray(tournament.matches) ? tournament.matches.length : 0} Matches</span>
               </div>
             </div>
           </div>
@@ -692,12 +713,6 @@ export default function NewPublicTournament() {
             
             return sortedRounds.map(roundNumber => {
               const roundMatches = matchesByRound[roundNumber]
-              const isFinished = roundMatches.every(match => 
-                match.homeGoals !== null && match.awayGoals !== null
-              )
-              const isUpcoming = roundMatches.every(match => 
-                match.homeGoals === null && match.awayGoals === null
-              )
               
               return (
                 <div key={roundNumber} className="mb-6 sm:mb-8">
@@ -712,14 +727,6 @@ export default function NewPublicTournament() {
                           <h3 className="text-lg sm:text-2xl font-bold text-white">Tour {roundNumber + 1}</h3>
                           <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-400">
                             <span>{roundMatches.length} matches</span>
-                            <span>•</span>
-                            <span className={`px-1 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium ${
-                              isFinished ? 'bg-green-500/20 text-green-400 border border-green-400/30' :
-                              isUpcoming ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30' :
-                              'bg-yellow-500/20 text-yellow-400 border border-yellow-400/30'
-                            }`}>
-                              {isFinished ? 'Finished' : isUpcoming ? 'Upcoming' : 'In Progress'}
-                            </span>
                           </div>
                         </div>
                       </div>
@@ -854,5 +861,6 @@ export default function NewPublicTournament() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   )
 }

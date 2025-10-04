@@ -24,11 +24,6 @@ export default function InstagramIcon({ size = 16, className = '' }: InstagramIc
           <stop offset="75%" stopColor="#C13584" />
           <stop offset="100%" stopColor="#E1306C" />
         </linearGradient>
-        <linearGradient id="instagramGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FD1D1D" />
-          <stop offset="50%" stopColor="#F77737" />
-          <stop offset="100%" stopColor="#FCAF45" />
-        </linearGradient>
       </defs>
       
       {/* Instagram rounded square background */}
@@ -43,8 +38,8 @@ export default function InstagramIcon({ size = 16, className = '' }: InstagramIc
       />
       
       {/* Instagram camera icon */}
-      <circle cx="12" cy="12" r="3.5" fill="white" />
-      <circle cx="12" cy="12" r="2.5" fill="url(#instagramGradient2)" />
+      <circle cx="12" cy="12" r="4" fill="white" />
+      <circle cx="12" cy="12" r="2.5" fill="url(#instagramGradient)" />
       
       {/* Camera top dot */}
       <circle cx="16" cy="8" r="1.5" fill="white" />

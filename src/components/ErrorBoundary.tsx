@@ -3,6 +3,7 @@ import type { ErrorInfo, ReactNode } from 'react'
 
 interface Props {
   children: ReactNode
+  fallback?: ReactNode
 }
 
 interface State {
@@ -11,44 +12,36 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props)
-    this.state = { hasError: false }
+  public state: State = {
+    hasError: false
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error }
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo)
-    console.error('Error stack:', error.stack)
-    console.error('Error info:', errorInfo.componentStack)
   }
 
-  render() {
+  public render() {
     if (this.state.hasError) {
-      return (
-        <div className="min-h-[80vh] flex items-center justify-center">
-          <div className="glass rounded-xl p-8 max-w-md w-full text-center">
-            <h1 className="text-xl font-semibold mb-4">Something went wrong</h1>
-            <p className="opacity-80 mb-6">
-              We're sorry, but something unexpected happened. Please try refreshing the page.
+      return this.props.fallback || (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center">
+          <div className="glass rounded-2xl p-8 max-w-md w-full text-center shadow-2xl border border-white/20">
+            <div className="w-16 h-16 mx-auto mb-4 bg-red-500/20 rounded-2xl flex items-center justify-center border border-red-400/30">
+              <span className="text-2xl">⚠️</span>
+            </div>
+            <h1 className="text-xl font-bold text-white mb-4">Something went wrong</h1>
+            <p className="text-gray-400 mb-6">
+              We're sorry, but something unexpected happened while loading this page.
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all"
+              className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-white"
             >
-              Refresh Page
+              Reload Page
             </button>
-            {process.env.NODE_ENV === 'development' && this.state.error && (
-              <details className="mt-4 text-left">
-                <summary className="cursor-pointer text-sm opacity-60">Error Details</summary>
-                <pre className="mt-2 text-xs opacity-60 overflow-auto">
-                  {this.state.error.toString()}
-                </pre>
-              </details>
-            )}
           </div>
         </div>
       )

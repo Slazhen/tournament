@@ -75,14 +75,14 @@ export default function HomePage() {
 
   // Filter organizers and tournaments based on search query
   const filteredOrganizers = allOrganizers.filter(org =>
-    org.name.toLowerCase().includes(searchQuery.toLowerCase())
+    typeof org.name === 'string' && org.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   const filteredTournaments = allTournaments.filter(tournament => {
     const organizer = allOrganizers.find(org => org.id === tournament.organizerId)
     return (
-      tournament.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (organizer && organizer.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      (typeof tournament.name === 'string' && tournament.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (organizer && typeof organizer.name === 'string' && organizer.name.toLowerCase().includes(searchQuery.toLowerCase()))
     )
   })
 
@@ -182,22 +182,22 @@ export default function HomePage() {
                     {organizer.logo ? (
                       <img 
                         src={organizer.logo} 
-                        alt={`${organizer.name} logo`}
+                        alt={`${typeof organizer.name === 'string' ? organizer.name : 'Organizer'} logo`}
                         className="w-16 h-16 rounded-full object-cover border border-white/20"
                       />
                     ) : (
                       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
                         <span className="text-2xl font-bold text-white">
-                          {organizer.name.charAt(0)}
+                          {typeof organizer.name === 'string' ? organizer.name.charAt(0) : 'O'}
                         </span>
                       </div>
                     )}
                     <div>
-                      <h3 className="text-xl font-bold text-white">{organizer.name}</h3>
-                      <p className="text-gray-400 text-sm">{organizer.email}</p>
+                      <h3 className="text-xl font-bold text-white">{typeof organizer.name === 'string' ? organizer.name : 'Organizer'}</h3>
+                      <p className="text-gray-400 text-sm">{typeof organizer.email === 'string' ? organizer.email : 'No email'}</p>
                     </div>
                   </div>
-                  {organizer.description && (
+                  {organizer.description && typeof organizer.description === 'string' && (
                     <p className="text-gray-300 text-sm mb-4">{organizer.description}</p>
                   )}
                   <div className="text-xs text-blue-400">
@@ -221,7 +221,7 @@ export default function HomePage() {
                 return (
                   <Link
                     key={tournament.id}
-                    to={`/${organizer?.name || 'unknown'}/${tournament.id}`}
+                    to={`/public/tournaments/${tournament.id}`}
                     className="glass rounded-2xl p-6 shadow-2xl border border-white/20 hover:border-white/40 transition-all group"
                   >
                     <div className="flex items-center gap-4 mb-4">
@@ -238,12 +238,12 @@ export default function HomePage() {
                       )}
                       <div>
                         <h3 className="text-xl font-bold text-white group-hover:text-blue-300 transition-colors">
-                          {tournament.name}
+                          {typeof tournament.name === 'string' ? tournament.name : 'Tournament'}
                         </h3>
-                        <p className="text-gray-400 text-sm">by {organizer?.name || 'Unknown'}</p>
+                        <p className="text-gray-400 text-sm">by {typeof organizer?.name === 'string' ? organizer.name : 'Unknown'}</p>
                       </div>
                     </div>
-                    {tournament.location && (
+                    {tournament.location && typeof tournament.location === 'string' && (
                       <div className="flex items-center gap-2 text-gray-300 text-sm mb-4">
                         <span>📍</span>
                         <span>{tournament.location}</span>
