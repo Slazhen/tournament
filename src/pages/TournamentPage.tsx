@@ -962,7 +962,7 @@ export default function TournamentPage() {
                         <div className="grid gap-3">
                           {roundWithQuantity.matches.map((match, matchIndex) => (
                             <div key={match.id} className="p-4 bg-white/5 rounded-lg border border-white/10">
-                              <div className="grid md:grid-cols-6 gap-4 items-center">
+                              <div className="grid md:grid-cols-8 gap-4 items-center">
                                 <div className="md:col-span-2">
                                   <label className="block text-sm font-medium mb-1">Home Team</label>
                                   <select
@@ -1049,6 +1049,32 @@ export default function TournamentPage() {
                                     className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                                   />
                                 </div>
+                                <div>
+                                  <label className="block text-sm font-medium mb-1">Time</label>
+                                  <input
+                                    type="time"
+                                    value={match.time || ''}
+                                    onChange={(e) => {
+                                      const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
+                                      const updatedMatches = [...(roundWithQuantity.matches || [])]
+                                      updatedMatches[matchIndex] = { ...match, time: e.target.value }
+                                      updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
+                                      updateTournament(tournament.id, {
+                                        format: {
+                                          rounds: tournament.format?.rounds || 1,
+                                          mode: tournament.format?.mode || 'league',
+                                          playoffQualifiers: tournament.format?.playoffQualifiers,
+                                          customPlayoffConfig: {
+                                            playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
+                                            enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                            playoffRounds: updatedRounds
+                                          }
+                                        }
+                                      })
+                                    }}
+                                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                                  />
+                                </div>
                                 <div className="flex flex-col gap-2">
                                   <label className="flex items-center space-x-2">
                                     <input
@@ -1076,6 +1102,19 @@ export default function TournamentPage() {
                                     />
                                     <span className="text-sm text-red-400">🔥 Elimination</span>
                                   </label>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                  <button
+                                    onClick={() => {
+                                      // Navigate to match page for stats
+                                      window.open(`/public/tournaments/${tournament.id}/matches/${match.id}`, '_blank')
+                                    }}
+                                    className="px-3 py-2 rounded-md bg-blue-500/20 hover:bg-blue-500/30 transition-all text-blue-400 text-sm"
+                                    disabled={!match.homeTeamId || !match.awayTeamId}
+                                    title={!match.homeTeamId || !match.awayTeamId ? 'Select teams first' : 'View match stats'}
+                                  >
+                                    📊 Stats
+                                  </button>
                                 </div>
                               </div>
                             </div>

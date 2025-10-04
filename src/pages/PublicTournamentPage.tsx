@@ -186,15 +186,28 @@ export default function PublicTournamentPage() {
 
   // Get playoff structure based on tournament format
   const playoffStructure = useMemo(() => {
-    if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination')) return null
+    if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination' && tournament.format.mode !== 'league_custom_playoff')) return null
     
-    const qualifiers = tournament.format.playoffQualifiers || 4
-    const rounds = Math.ceil(Math.log2(qualifiers))
-    
-    return {
-      qualifiers,
-      rounds,
-      structure: generatePlayoffBrackets([...Array(qualifiers)].map((_, i) => `team_${i}`))
+    if (tournament.format.mode === 'league_custom_playoff') {
+      // League + Custom Playoff format
+      const playoffTeams = tournament.format.customPlayoffConfig?.playoffTeams || 4
+      const playoffRounds = tournament.format.customPlayoffConfig?.playoffRounds || []
+      return {
+        qualifiers: playoffTeams,
+        rounds: playoffRounds.length, // Number of configured playoff rounds
+        structure: [], // Custom playoff doesn't use standard bracket structure
+        customRounds: playoffRounds // Custom round configurations
+      }
+    } else {
+      // Standard playoff formats
+      const qualifiers = tournament.format.playoffQualifiers || 4
+      const rounds = Math.ceil(Math.log2(qualifiers))
+      
+      return {
+        qualifiers,
+        rounds,
+        structure: generatePlayoffBrackets([...Array(qualifiers)].map((_, i) => `team_${i}`))
+      }
     }
   }, [tournament])
 
@@ -391,7 +404,7 @@ export default function PublicTournamentPage() {
       </section>
 
       {/* Playoff Bracket Section */}
-              {(tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination') && playoffMatches.length > 0 && (
+              {(tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination' || tournament.format?.mode === 'league_custom_playoff') && (playoffMatches.length > 0 || (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0)) && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <div className="text-center mb-6">
             <h2 className="text-lg font-semibold tracking-wide">Playoff Bracket</h2>
@@ -399,126 +412,189 @@ export default function PublicTournamentPage() {
 
           <div className="grid gap-6">
             {/* Playoff Rounds */}
-            {Array.from({ length: playoffStructure?.rounds || 0 }, (_, roundIndex) => {
-              const roundMatches = playoffMatches.filter((m: any) => m.playoffRound === roundIndex)
-              const roundName = getPlayoffRoundName(roundIndex, playoffStructure?.rounds || 0)
-              
-              return (
+            {tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds ? (
+              // Custom Playoff Rounds
+              tournament.format.customPlayoffConfig.playoffRounds.map((round: any, roundIndex: number) => (
                 <div key={roundIndex} className="glass rounded-lg p-4">
-                  <h3 className="text-lg font-semibold mb-4 text-center">{roundName}</h3>
+                  <h3 className="text-lg font-semibold mb-4 text-center">
+                    {round.name}
+                    {round.description && (
+                      <span className="block text-sm font-normal opacity-70 mt-1">{round.description}</span>
+                    )}
+                  </h3>
                   <div className="grid gap-3">
-                    {roundMatches.map((match: any) => {
-                      const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
-                      const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
-                      
-                      return (
-                        <div key={match.id} className={`relative grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
-                          {match.isElimination && (
-                            <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
-                              🔥 ELIMINATION
-                            </div>
-                          )}
-                          <div className="md:col-span-2 flex items-center gap-2">
-                            {(() => {
-                              if (match.homeTeamId === 'BYE') {
-                                return (
-                                  <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">
-                                    B
-                                  </div>
-                                )
-                              } else if (homeTeam?.logo) {
-                                return (
-                                  <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                                    <img src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
-                                  </div>
-                                )
-                              } else if (homeTeam) {
-                                return (
-                                  <span className="h-3 w-3 rounded-full inline-block" style={{ background: homeTeam.colors?.[0] || '#3B82F6' }} />
-                                )
-                              }
-                              return null
-                            })()}
-                            {match.homeTeamId === 'BYE' ? (
-                              <span className="font-medium text-yellow-400">BYE</span>
-                            ) : (
-                              <Link 
-                                to={`/public/teams/${match.homeTeamId}`}
-                                className="hover:opacity-80 transition-opacity"
-                              >
-                                {homeTeam?.name ?? 'TBD'}
-                              </Link>
+                    {round.matches && round.matches.length > 0 ? (
+                      round.matches.map((match: any) => {
+                        const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
+                        const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
+                        
+                        return (
+                          <div key={match.id} className={`relative grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
+                            {match.isElimination && (
+                              <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
+                                🔥 ELIMINATION
+                              </div>
                             )}
-                            <Link 
-                              to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
-                              className="hover:opacity-80 transition-opacity font-semibold"
-                            >
-                              {' vs '}
-                            </Link>
-                            {(() => {
-                              if (match.awayTeamId === 'BYE') {
-                                return (
-                                  <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">
-                                    B
-                                  </div>
-                                )
-                              } else if (awayTeam?.logo) {
-                                return (
-                                  <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                                    <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
-                                  </div>
-                                )
-                              } else if (awayTeam) {
-                                return (
-                                  <span className="h-3 w-3 rounded-full inline-block" style={{ background: awayTeam.colors?.[0] || '#3B82F6' }} />
-                                )
-                              }
-                              return null
-                            })()}
-                            {match.awayTeamId === 'BYE' ? (
-                              <span className="font-medium text-yellow-400">BYE</span>
-                            ) : (
-                              <Link 
-                                to={`/public/teams/${match.awayTeamId}`}
-                                className="hover:opacity-80 transition-opacity"
-                              >
-                                {awayTeam?.name ?? 'TBD'}
-                              </Link>
-                            )}
-                          </div>
-                          <div className="text-center">
-                            {match.homeGoals != null && match.awayGoals != null ? (
-                              <Link 
-                                to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
-                                className="text-lg font-semibold hover:opacity-80 transition-opacity"
-                              >
-                                {match.homeGoals} : {match.awayGoals}
-                              </Link>
-                            ) : (
-                              <Link 
-                                to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
-                                className="text-sm opacity-70 hover:opacity-100 transition-opacity"
-                              >
-                                TBD
-                              </Link>
-                            )}
-                          </div>
-                          <div className="text-center">
-                            {match.dateISO ? (
-                              <span className="text-sm">
-                                {new Date(match.dateISO).toLocaleDateString()}
+                            <div className="md:col-span-2 flex items-center gap-2">
+                              <span className="font-medium">
+                                {homeTeam?.name || 'Home'}
                               </span>
-                            ) : (
+                              <span className="font-semibold">vs</span>
+                              <span className="font-medium">
+                                {awayTeam?.name || 'Away'}
+                              </span>
+                            </div>
+                            <div className="text-center">
                               <span className="text-sm opacity-70">TBD</span>
-                            )}
+                            </div>
+                            <div className="text-center">
+                              {match.dateISO ? (
+                                <span className="text-sm">
+                                  {new Date(match.dateISO).toLocaleDateString()}
+                                  {match.time && (
+                                    <span className="block text-xs opacity-70">
+                                      {match.time}
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-sm opacity-70">TBD</span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })
+                    ) : (
+                      <div className="text-center py-4 text-sm opacity-70">
+                        No matches configured for this round
+                      </div>
+                    )}
                   </div>
                 </div>
-              )
-            })}
+              ))
+            ) : (
+              // Standard Playoff Rounds
+              Array.from({ length: playoffStructure?.rounds || 0 }, (_, roundIndex) => {
+                const roundMatches = playoffMatches.filter((m: any) => m.playoffRound === roundIndex)
+                const roundName = getPlayoffRoundName(roundIndex, playoffStructure?.rounds || 0)
+                
+                return (
+                  <div key={roundIndex} className="glass rounded-lg p-4">
+                    <h3 className="text-lg font-semibold mb-4 text-center">{roundName}</h3>
+                    <div className="grid gap-3">
+                      {roundMatches.map((match: any) => {
+                        const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
+                        const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
+                        
+                        return (
+                          <div key={match.id} className={`relative grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
+                            {match.isElimination && (
+                              <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
+                                🔥 ELIMINATION
+                              </div>
+                            )}
+                            <div className="md:col-span-2 flex items-center gap-2">
+                              {(() => {
+                                if (match.homeTeamId === 'BYE') {
+                                  return (
+                                    <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">
+                                      B
+                                    </div>
+                                  )
+                                } else if (homeTeam?.logo) {
+                                  return (
+                                    <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                                      <img src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
+                                    </div>
+                                  )
+                                } else if (homeTeam) {
+                                  return (
+                                    <span className="h-3 w-3 rounded-full inline-block" style={{ background: homeTeam.colors?.[0] || '#3B82F6' }} />
+                                  )
+                                }
+                                return null
+                              })()}
+                              {match.homeTeamId === 'BYE' ? (
+                                <span className="font-medium text-yellow-400">BYE</span>
+                              ) : (
+                                <Link 
+                                  to={`/public/teams/${match.homeTeamId}`}
+                                  className="hover:opacity-80 transition-opacity"
+                                >
+                                  {homeTeam?.name ?? 'TBD'}
+                                </Link>
+                              )}
+                              <Link 
+                                to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
+                                className="hover:opacity-80 transition-opacity font-semibold"
+                              >
+                                {' vs '}
+                              </Link>
+                              {(() => {
+                                if (match.awayTeamId === 'BYE') {
+                                  return (
+                                    <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold">
+                                      B
+                                    </div>
+                                  )
+                                } else if (awayTeam?.logo) {
+                                  return (
+                                    <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                                      <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
+                                    </div>
+                                  )
+                                } else if (awayTeam) {
+                                  return (
+                                    <span className="h-3 w-3 rounded-full inline-block" style={{ background: awayTeam.colors?.[0] || '#3B82F6' }} />
+                                  )
+                                }
+                                return null
+                              })()}
+                              {match.awayTeamId === 'BYE' ? (
+                                <span className="font-medium text-yellow-400">BYE</span>
+                              ) : (
+                                <Link 
+                                  to={`/public/teams/${match.awayTeamId}`}
+                                  className="hover:opacity-80 transition-opacity"
+                                >
+                                  {awayTeam?.name ?? 'TBD'}
+                                </Link>
+                              )}
+                            </div>
+                            <div className="text-center">
+                              {match.homeGoals != null && match.awayGoals != null ? (
+                                <Link 
+                                  to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
+                                  className="text-lg font-semibold hover:opacity-80 transition-opacity"
+                                >
+                                  {match.homeGoals} : {match.awayGoals}
+                                </Link>
+                              ) : (
+                                <Link 
+                                  to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
+                                  className="text-sm opacity-70 hover:opacity-100 transition-opacity"
+                                >
+                                  TBD
+                                </Link>
+                              )}
+                            </div>
+                            <div className="text-center">
+                              {match.dateISO ? (
+                                <span className="text-sm">
+                                  {new Date(match.dateISO).toLocaleDateString()}
+                                </span>
+                              ) : (
+                                <span className="text-sm opacity-70">TBD</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
         </section>
       )}
