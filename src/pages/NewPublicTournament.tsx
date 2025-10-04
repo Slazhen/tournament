@@ -893,12 +893,6 @@ export default function NewPublicTournament() {
                           <div key={match.id} className={`relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
                             match.isElimination ? 'border-red-500/30 bg-red-500/5' : 'border-white/20'
                           }`}>
-                            {match.isElimination && (
-                              <div className="absolute top-2 left-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-xs px-3 py-1 rounded-full font-bold shadow-lg border border-red-400/50">
-                                ⚡ ELIMINATION
-                              </div>
-                            )}
-                            
                             <div className="flex items-center justify-between">
                               {/* Home Team */}
                               <div className="flex items-center gap-2 sm:gap-4 flex-1">
@@ -940,6 +934,13 @@ export default function NewPublicTournament() {
                                     {match.time && (
                                       <div>{match.time}</div>
                                     )}
+                                  </div>
+                                )}
+                                
+                                {/* Elimination Text */}
+                                {match.isElimination && (
+                                  <div className="text-xs text-red-400 font-medium mt-1">
+                                    ELIMINATION
                                   </div>
                                 )}
                               </div>
