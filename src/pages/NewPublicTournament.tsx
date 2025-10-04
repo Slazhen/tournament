@@ -696,11 +696,14 @@ export default function NewPublicTournament() {
           const hasCustomPlayoff = tournament.format?.mode === 'league_custom_playoff' && 
                                   tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0
           
-          console.log('NewPublicTournament: Playoff check:', {
-            mode: tournament.format?.mode,
-            hasCustomPlayoff,
-            playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds?.length
-          })
+        console.log('NewPublicTournament: Playoff check:', {
+          mode: tournament.format?.mode,
+          hasCustomPlayoff,
+          playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds?.length
+        })
+        
+        console.log('NewPublicTournament: Full custom playoff config:', tournament.format?.customPlayoffConfig)
+        console.log('NewPublicTournament: Playoff rounds data:', tournament.format?.customPlayoffConfig?.playoffRounds)
           
           return hasCustomPlayoff
         })() && (
