@@ -423,6 +423,147 @@ export const migrateOrganizerToEmail = async (organizerEmail: string, organizerI
   }
 }
 
+// Diagnostic function to check organizer and auth data
+export const diagnoseOrganizerAuth = async (organizerEmail: string): Promise<void> => {
+  try {
+    console.log('=== DIAGNOSTIC REPORT ===')
+    console.log('Looking for organizer with email:', organizerEmail)
+    
+    // Check organizers table
+    const organizersResult = await dynamoDB.send(new ScanCommand({
+      TableName: TABLES.ORGANIZERS,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': organizerEmail
+      }
+    }))
+    
+    console.log('Organizers found:', organizersResult.Items?.length || 0)
+    if (organizersResult.Items && organizersResult.Items.length > 0) {
+      const organizer = organizersResult.Items[0]
+      console.log('Organizer data:', {
+        id: organizer.id,
+        name: organizer.name,
+        email: organizer.email
+      })
+      
+      // Check auth users table
+      const authResult = await dynamoDB.send(new ScanCommand({
+        TableName: TABLES.AUTH_USERS,
+        FilterExpression: 'organizerId = :organizerId',
+        ExpressionAttributeValues: {
+          ':organizerId': organizer.id
+        }
+      }))
+      
+      console.log('Auth users found:', authResult.Items?.length || 0)
+      if (authResult.Items && authResult.Items.length > 0) {
+        const authUser = authResult.Items[0]
+        console.log('Auth user data:', {
+          id: authUser.id,
+          username: authUser.username,
+          email: authUser.email,
+          role: authUser.role,
+          organizerId: authUser.organizerId
+        })
+      } else {
+        console.log('❌ No auth account found for this organizer')
+      }
+    } else {
+      console.log('❌ No organizer found with this email')
+      
+      // Let's also search by name in case the email is different
+      const nameSearchResult = await dynamoDB.send(new ScanCommand({
+        TableName: TABLES.ORGANIZERS,
+        FilterExpression: 'contains(#name, :name)',
+        ExpressionAttributeNames: {
+          '#name': 'name'
+        },
+        ExpressionAttributeValues: {
+          ':name': 'Homebush'
+        }
+      }))
+      
+      console.log('Organizers with "Homebush" in name:', nameSearchResult.Items?.length || 0)
+      if (nameSearchResult.Items && nameSearchResult.Items.length > 0) {
+        nameSearchResult.Items.forEach((org, index) => {
+          console.log(`Organizer ${index + 1}:`, {
+            id: org.id,
+            name: org.name,
+            email: org.email
+          })
+        })
+      }
+    }
+    
+    console.log('=== END DIAGNOSTIC ===')
+  } catch (error) {
+    console.error('Error in diagnostic:', error)
+  }
+}
+
+// Function to manually fix a specific organizer's auth account
+export const fixOrganizerAuth = async (organizerEmail: string): Promise<boolean> => {
+  try {
+    console.log('Fixing auth account for organizer:', organizerEmail)
+    
+    // Find organizer by email
+    const organizersResult = await dynamoDB.send(new ScanCommand({
+      TableName: TABLES.ORGANIZERS,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': organizerEmail
+      }
+    }))
+    
+    if (!organizersResult.Items || organizersResult.Items.length === 0) {
+      console.log('❌ No organizer found with email:', organizerEmail)
+      return false
+    }
+    
+    const organizer = organizersResult.Items[0]
+    console.log('Found organizer:', organizer.name, 'with ID:', organizer.id)
+    
+    // Find auth account for this organizer
+    const authResult = await dynamoDB.send(new ScanCommand({
+      TableName: TABLES.AUTH_USERS,
+      FilterExpression: 'organizerId = :organizerId',
+      ExpressionAttributeValues: {
+        ':organizerId': organizer.id
+      }
+    }))
+    
+    if (!authResult.Items || authResult.Items.length === 0) {
+      console.log('❌ No auth account found for organizer')
+      return false
+    }
+    
+    const authUser = authResult.Items[0]
+    console.log('Found auth account:', {
+      id: authUser.id,
+      username: authUser.username,
+      email: authUser.email,
+      role: authUser.role
+    })
+    
+    // Update the auth account with the email
+    await dynamoDB.send(new UpdateCommand({
+      TableName: TABLES.AUTH_USERS,
+      Key: { id: authUser.id },
+      UpdateExpression: 'SET email = :email',
+      ExpressionAttributeValues: {
+        ':email': organizerEmail
+      }
+    }))
+    
+    console.log('✅ Successfully updated auth account with email:', organizerEmail)
+    return true
+  } catch (error) {
+    console.error('Error fixing organizer auth:', error)
+    return false
+  }
+}
+
 // Function to sync organizer emails with auth accounts
 export const syncOrganizerEmails = async (): Promise<void> => {
   try {
