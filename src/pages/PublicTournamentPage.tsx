@@ -1,7 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useMemo, useEffect, useState } from 'react'
-import { generatePlayoffBrackets } from '../utils/schedule'
 import LocationIcon from '../components/LocationIcon'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -165,12 +164,38 @@ export default function PublicTournamentPage() {
 
   // Separate playoff matches
   const playoffMatches = useMemo(() => {
-    if (!tournament || !tournament.matches || !Array.isArray(tournament.matches)) {
+    if (!tournament) {
       return []
     }
     
     try {
-      return tournament.matches.filter((m: any) => m && m.isPlayoff)
+      let matches = []
+      
+      // Get playoff matches from tournament.matches
+      if (tournament.matches && Array.isArray(tournament.matches)) {
+        matches = tournament.matches.filter((m: any) => m && m.isPlayoff)
+      }
+      
+      // For custom playoff format, also include matches from custom playoff configuration
+      if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
+        const customPlayoffMatches: any[] = []
+        tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any, roundIndex: number) => {
+          if (round.matches && Array.isArray(round.matches)) {
+            round.matches.forEach((match: any) => {
+              customPlayoffMatches.push({
+                ...match,
+                playoffRound: roundIndex,
+                isPlayoff: true,
+                roundName: round.name,
+                roundDescription: round.description
+              })
+            })
+          }
+        })
+        matches = [...matches, ...customPlayoffMatches]
+      }
+      
+      return matches
     } catch (error) {
       console.error('Error calculating playoff matches:', error)
       return []
@@ -184,32 +209,6 @@ export default function PublicTournamentPage() {
   //   return leagueMatches.length > 0 && leagueMatches.every(m => m.homeGoals != null && m.awayGoals != null)
   // }, [tournament])
 
-  // Get playoff structure based on tournament format
-  const playoffStructure = useMemo(() => {
-    if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination' && tournament.format.mode !== 'league_custom_playoff')) return null
-    
-    if (tournament.format.mode === 'league_custom_playoff') {
-      // League + Custom Playoff format
-      const playoffTeams = tournament.format.customPlayoffConfig?.playoffTeams || 4
-      const playoffRounds = tournament.format.customPlayoffConfig?.playoffRounds || []
-      return {
-        qualifiers: playoffTeams,
-        rounds: playoffRounds.length, // Number of configured playoff rounds
-        structure: [], // Custom playoff doesn't use standard bracket structure
-        customRounds: playoffRounds // Custom round configurations
-      }
-    } else {
-      // Standard playoff formats
-      const qualifiers = tournament.format.playoffQualifiers || 4
-      const rounds = Math.ceil(Math.log2(qualifiers))
-      
-      return {
-        qualifiers,
-        rounds,
-        structure: generatePlayoffBrackets([...Array(qualifiers)].map((_, i) => `team_${i}`))
-      }
-    }
-  }, [tournament])
 
   const calculateTable = () => {
     if (!tournament || !tournament.teamIds || !Array.isArray(tournament.teamIds) || 
@@ -412,77 +411,33 @@ export default function PublicTournamentPage() {
 
           <div className="grid gap-6">
             {/* Playoff Rounds */}
-            {tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds ? (
-              // Custom Playoff Rounds
-              tournament.format.customPlayoffConfig.playoffRounds.map((round: any, roundIndex: number) => (
-                <div key={roundIndex} className="glass rounded-lg p-4">
-                  <h3 className="text-lg font-semibold mb-4 text-center">
-                    {round.name}
-                    {round.description && (
-                      <span className="block text-sm font-normal opacity-70 mt-1">{round.description}</span>
-                    )}
-                  </h3>
-                  <div className="grid gap-3">
-                    {round.matches && round.matches.length > 0 ? (
-                      round.matches.map((match: any) => {
-                        const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
-                        const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
-                        
-                        return (
-                          <div key={match.id} className={`relative grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
-                            {match.isElimination && (
-                              <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
-                                🔥 ELIMINATION
-                              </div>
-                            )}
-                            <div className="md:col-span-2 flex items-center gap-2">
-                              <span className="font-medium">
-                                {homeTeam?.name || 'Home'}
-                              </span>
-                              <span className="font-semibold">vs</span>
-                              <span className="font-medium">
-                                {awayTeam?.name || 'Away'}
-                              </span>
-                            </div>
-                            <div className="text-center">
-                              <span className="text-sm opacity-70">TBD</span>
-                            </div>
-                            <div className="text-center">
-                              {match.dateISO ? (
-                                <span className="text-sm">
-                                  {new Date(match.dateISO).toLocaleDateString()}
-                                  {match.time && (
-                                    <span className="block text-xs opacity-70">
-                                      {match.time}
-                                    </span>
-                                  )}
-                                </span>
-                              ) : (
-                                <span className="text-sm opacity-70">TBD</span>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <div className="text-center py-4 text-sm opacity-70">
-                        No matches configured for this round
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              // Standard Playoff Rounds
-              Array.from({ length: playoffStructure?.rounds || 0 }, (_, roundIndex) => {
-                const roundMatches = playoffMatches.filter((m: any) => m.playoffRound === roundIndex)
-                const roundName = getPlayoffRoundName(roundIndex, playoffStructure?.rounds || 0)
+            {playoffMatches.length > 0 && (
+              // Group matches by round and display them
+              (() => {
+                const roundsMap = new Map()
                 
-                return (
+                playoffMatches.forEach((match: any) => {
+                  const roundKey = match.roundName || `Round ${(match.playoffRound || 0) + 1}`
+                  if (!roundsMap.has(roundKey)) {
+                    roundsMap.set(roundKey, {
+                      name: roundKey,
+                      description: match.roundDescription,
+                      matches: []
+                    })
+                  }
+                  roundsMap.get(roundKey).matches.push(match)
+                })
+                
+                return Array.from(roundsMap.values()).map((round: any, roundIndex: number) => (
                   <div key={roundIndex} className="glass rounded-lg p-4">
-                    <h3 className="text-lg font-semibold mb-4 text-center">{roundName}</h3>
+                    <h3 className="text-lg font-semibold mb-4 text-center">
+                      {round.name}
+                      {round.description && (
+                        <span className="block text-sm font-normal opacity-70 mt-1">{round.description}</span>
+                      )}
+                    </h3>
                     <div className="grid gap-3">
-                      {roundMatches.map((match: any) => {
+                      {round.matches.map((match: any) => {
                         const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
                         const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
                         
@@ -521,7 +476,7 @@ export default function PublicTournamentPage() {
                                   to={`/public/teams/${match.homeTeamId}`}
                                   className="hover:opacity-80 transition-opacity"
                                 >
-                                  {homeTeam?.name ?? 'TBD'}
+                                  {homeTeam?.name || 'Home'}
                                 </Link>
                               )}
                               <Link 
@@ -557,7 +512,7 @@ export default function PublicTournamentPage() {
                                   to={`/public/teams/${match.awayTeamId}`}
                                   className="hover:opacity-80 transition-opacity"
                                 >
-                                  {awayTeam?.name ?? 'TBD'}
+                                  {awayTeam?.name || 'Away'}
                                 </Link>
                               )}
                             </div>
@@ -582,6 +537,11 @@ export default function PublicTournamentPage() {
                               {match.dateISO ? (
                                 <span className="text-sm">
                                   {new Date(match.dateISO).toLocaleDateString()}
+                                  {match.time && (
+                                    <span className="block text-xs opacity-70">
+                                      {match.time}
+                                    </span>
+                                  )}
                                 </span>
                               ) : (
                                 <span className="text-sm opacity-70">TBD</span>
@@ -592,8 +552,8 @@ export default function PublicTournamentPage() {
                       })}
                     </div>
                   </div>
-                )
-              })
+                ))
+              })()
             )}
           </div>
         </section>
@@ -741,20 +701,3 @@ export default function PublicTournamentPage() {
   )
 }
 
-// Helper function to get playoff round names
-function getPlayoffRoundName(roundIndex: number, totalRounds: number): string {
-  if (totalRounds === 1) return 'Final'
-  if (totalRounds === 2) return roundIndex === 0 ? '1/2 Final' : 'Final'
-  if (totalRounds === 3) {
-    if (roundIndex === 0) return '1/4 Final'
-    if (roundIndex === 1) return '1/2 Final'
-    return 'Final'
-  }
-  if (totalRounds === 4) {
-    if (roundIndex === 0) return '1/8 Final'
-    if (roundIndex === 1) return '1/4 Final'
-    if (roundIndex === 2) return '1/2 Final'
-    return 'Final'
-  }
-  return `Round ${roundIndex + 1}`
-}
