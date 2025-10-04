@@ -704,6 +704,17 @@ export default function NewPublicTournament() {
         
         console.log('NewPublicTournament: Full custom playoff config:', tournament.format?.customPlayoffConfig)
         console.log('NewPublicTournament: Playoff rounds data:', tournament.format?.customPlayoffConfig?.playoffRounds)
+        
+        // Log each playoff round in detail
+        tournament.format?.customPlayoffConfig?.playoffRounds?.forEach((round: any, index: number) => {
+          console.log(`NewPublicTournament: Playoff round ${index}:`, {
+            name: round.name,
+            description: round.description,
+            quantityOfGames: round.quantityOfGames,
+            matches: round.matches,
+            matchesLength: round.matches?.length
+          })
+        })
           
           return hasCustomPlayoff
         })() && (
