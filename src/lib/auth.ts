@@ -6,7 +6,7 @@ import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand } fro
 export type UserRole = 'super_admin' | 'organizer'
 export type AuthUser = {
   id: string
-  username: string
+  email: string // Changed from username to email
   role: UserRole
   passwordHash: string
   salt: string
@@ -105,12 +105,12 @@ export const createUser = async (userData: Omit<AuthUser, 'id' | 'passwordHash' 
   return user
 }
 
-export const getUserByUsername = async (username: string): Promise<AuthUser | null> => {
+export const getUserByEmail = async (email: string): Promise<AuthUser | null> => {
   const result = await dynamoDB.send(new ScanCommand({
     TableName: TABLES.AUTH_USERS,
-    FilterExpression: 'username = :username AND isActive = :isActive',
+    FilterExpression: 'email = :email AND isActive = :isActive',
     ExpressionAttributeValues: {
-      ':username': username,
+      ':email': email,
       ':isActive': true
     }
   }))
@@ -210,30 +210,30 @@ export const deleteAllUserSessions = async (userId: string): Promise<void> => {
 }
 
 // Authentication functions
-export const authenticateUser = async (username: string, password: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
+export const authenticateUser = async (email: string, password: string): Promise<{ user: AuthUser; session: AuthSession } | null> => {
   try {
-    console.log('Authenticating user:', username)
+    console.log('Authenticating user:', email)
     
     // Initialize super admin if it doesn't exist and this is the super admin login attempt
-    if (username === 'Slazhen') {
+    if (email === 'admin@myfootballtournament.com') {
       console.log('Checking/creating super admin...')
       await initializeSuperAdmin()
     }
     
-    const user = await getUserByUsername(username)
+    const user = await getUserByEmail(email)
     if (!user) {
-      console.log('User not found:', username)
+      console.log('User not found:', email)
       return null
     }
     
     console.log('User found, verifying password...')
     const isValidPassword = await verifyPassword(password, user.passwordHash, user.salt)
     if (!isValidPassword) {
-      console.log('Invalid password for user:', username)
+      console.log('Invalid password for user:', email)
       return null
     }
     
-    console.log('Authentication successful for user:', username)
+    console.log('Authentication successful for user:', email)
 
     // Update last login
     await dynamoDB.send(new UpdateCommand({
@@ -273,7 +273,7 @@ export const verifySession = async (token: string): Promise<{ user: AuthUser; se
 export const initializeSuperAdmin = async (): Promise<void> => {
   try {
     console.log('Checking for existing super admin...')
-    const existingAdmin = await getUserByUsername('Slazhen')
+    const existingAdmin = await getUserByEmail('admin@myfootballtournament.com')
     if (existingAdmin) {
       console.log('Super admin already exists')
       return // Super admin already exists
@@ -281,7 +281,7 @@ export const initializeSuperAdmin = async (): Promise<void> => {
 
     console.log('Creating super admin account...')
     await createUser({
-      username: 'Slazhen',
+      email: 'admin@myfootballtournament.com',
       role: 'super_admin',
       isActive: true
     }, '123')
@@ -293,9 +293,9 @@ export const initializeSuperAdmin = async (): Promise<void> => {
 }
 
 // Create organizer account
-export const createOrganizerAccount = async (organizerName: string, organizerId: string, password?: string): Promise<AuthUser> => {
+export const createOrganizerAccount = async (organizerEmail: string, organizerId: string, password?: string): Promise<AuthUser> => {
   return await createUser({
-    username: organizerName,
+    email: organizerEmail,
     role: 'organizer',
     organizerId: organizerId,
     isActive: true
@@ -303,8 +303,8 @@ export const createOrganizerAccount = async (organizerName: string, organizerId:
 }
 
 // Delete organizer account
-export const deleteOrganizerAccount = async (organizerName: string): Promise<void> => {
-  const user = await getUserByUsername(organizerName)
+export const deleteOrganizerAccount = async (organizerEmail: string): Promise<void> => {
+  const user = await getUserByEmail(organizerEmail)
   if (user) {
     // Delete all sessions for this user
     await deleteAllUserSessions(user.id)
@@ -318,13 +318,13 @@ export const deleteOrganizerAccount = async (organizerName: string): Promise<voi
 }
 
 // Reset organizer password
-export const resetOrganizerPassword = async (organizerName: string, newPassword: string): Promise<void> => {
-  console.log('Looking for organizer with username:', organizerName)
-  const user = await getUserByUsername(organizerName)
+export const resetOrganizerPassword = async (organizerEmail: string, newPassword: string): Promise<void> => {
+  console.log('Looking for organizer with email:', organizerEmail)
+  const user = await getUserByEmail(organizerEmail)
   console.log('Found user:', user)
   
   if (!user) {
-    // Let's also check if there are any users with similar names
+    // Let's also check if there are any users with similar emails
     const allUsers = await dynamoDB.send(new ScanCommand({
       TableName: TABLES.AUTH_USERS,
       FilterExpression: 'role = :role',
@@ -332,8 +332,8 @@ export const resetOrganizerPassword = async (organizerName: string, newPassword:
         ':role': 'organizer'
       }
     }))
-    console.log('All organizer users:', allUsers.Items?.map(u => ({ username: u.username, id: u.id })))
-    throw new Error(`Organizer not found: ${organizerName}`)
+    console.log('All organizer users:', allUsers.Items?.map(u => ({ email: u.email, id: u.id })))
+    throw new Error(`Organizer not found: ${organizerEmail}`)
   }
   
   await updateUserPassword(user.id, newPassword)

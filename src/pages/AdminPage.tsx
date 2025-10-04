@@ -79,7 +79,7 @@ export default function AdminPage() {
               )}
             </div>
             <p className="text-gray-400">
-              Welcome, {user.username} {isSuperAdmin ? '- Full System Access' : '- Organizer Access'}
+              Welcome, {user.email} {isSuperAdmin ? '- Full System Access' : '- Organizer Access'}
             </p>
           </div>
           <button

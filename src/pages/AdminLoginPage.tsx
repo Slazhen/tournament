@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
 export default function AdminLoginPage() {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -16,11 +16,11 @@ export default function AdminLoginPage() {
     setIsLoading(true)
 
     try {
-      const success = await login(username, password)
+      const success = await login(email, password)
       if (success) {
         navigate('/admin')
       } else {
-        setError('Invalid username or password')
+        setError('Invalid email or password')
       }
     } catch (err) {
       setError('Login failed. Please try again.')
@@ -52,16 +52,16 @@ export default function AdminLoginPage() {
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
-                Username
+              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+                Email Address
               </label>
               <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-white placeholder-gray-400"
-                placeholder="Enter your username"
+                placeholder="Enter your email address"
                 required
                 disabled={isLoading}
               />

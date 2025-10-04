@@ -91,8 +91,8 @@ export default function OrganizersPage() {
       console.log('Found organizer:', organizer)
       if (organizer) {
         // Create auth account for organizer with custom password
-        console.log('Creating auth account for:', newOrganizer.name, 'with ID:', organizer.id)
-        await createOrganizerAccount(newOrganizer.name, organizer.id, newOrganizer.password)
+        console.log('Creating auth account for:', newOrganizer.email, 'with ID:', organizer.id)
+        await createOrganizerAccount(newOrganizer.email, organizer.id, newOrganizer.password)
         console.log('Auth account created successfully')
       } else {
         console.error('No organizer found after creation')
@@ -108,8 +108,8 @@ export default function OrganizersPage() {
     }
   }
 
-  const handleDeleteOrganizer = async (organizerId: string, organizerName: string) => {
-    if (!confirm(`Are you sure you want to delete organizer "${organizerName}"? This will also delete their authentication account and cannot be undone.`)) {
+  const handleDeleteOrganizer = async (organizerId: string, organizerEmail: string) => {
+    if (!confirm(`Are you sure you want to delete organizer with email "${organizerEmail}"? This will also delete their authentication account and cannot be undone.`)) {
       return
     }
 
@@ -118,7 +118,7 @@ export default function OrganizersPage() {
       await deleteOrganizer(organizerId)
       
       // Delete authentication account
-      await deleteOrganizerAccount(organizerName)
+      await deleteOrganizerAccount(organizerEmail)
       
       // Reload organizers
       loadOrganizers()
@@ -128,14 +128,14 @@ export default function OrganizersPage() {
     }
   }
 
-  const handlePasswordReset = async (organizerName: string) => {
+  const handlePasswordReset = async (organizerEmail: string) => {
     if (!newPassword || newPassword.length < 6) {
       setPasswordError('Password must be at least 6 characters long.')
       return
     }
 
     try {
-      await resetOrganizerPassword(organizerName, newPassword)
+      await resetOrganizerPassword(organizerEmail, newPassword)
       setShowPasswordReset(null)
       setNewPassword('')
       setPasswordError('')
@@ -342,7 +342,7 @@ export default function OrganizersPage() {
                           🔑 Reset
                         </button>
                         <button
-                          onClick={() => handleDeleteOrganizer(organizer.id, organizer.name)}
+                          onClick={() => handleDeleteOrganizer(organizer.id, organizer.email)}
                           className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg transition-all text-red-400 text-sm"
                           title="Delete Organizer"
                         >
@@ -364,7 +364,7 @@ export default function OrganizersPage() {
                           className="flex-1 px-4 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-yellow-400/50 focus:outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all text-white placeholder-gray-400"
                         />
                         <button
-                          onClick={() => handlePasswordReset(organizer.name)}
+                          onClick={() => handlePasswordReset(organizer.email)}
                           className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 rounded-lg transition-all text-green-400 text-sm"
                         >
                           Update
