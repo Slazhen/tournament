@@ -176,6 +176,11 @@ export default function PublicTournamentPage() {
       playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds
     })
     
+    console.log('PublicTournamentPage: Full tournament object:', tournament)
+    console.log('PublicTournamentPage: Tournament format mode:', tournament.format?.mode)
+    console.log('PublicTournamentPage: Has custom playoff config:', !!tournament.format?.customPlayoffConfig)
+    console.log('PublicTournamentPage: Custom playoff rounds:', tournament.format?.customPlayoffConfig?.playoffRounds)
+    
     try {
       let matches = []
       
@@ -417,13 +422,18 @@ export default function PublicTournamentPage() {
 
       {/* Playoff Bracket Section */}
               {(() => {
-                const shouldShowPlayoff = (tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination' || tournament.format?.mode === 'league_custom_playoff') && 
-                  (playoffMatches.length > 0 || (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0))
+                const modeCheck = tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination' || tournament.format?.mode === 'league_custom_playoff'
+                const playoffMatchesCheck = playoffMatches.length > 0
+                const customPlayoffCheck = tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0
+                const shouldShowPlayoff = modeCheck && (playoffMatchesCheck || customPlayoffCheck)
                 
                 console.log('PublicTournamentPage: Playoff bracket visibility check:', {
                   mode: tournament.format?.mode,
+                  modeCheck,
                   playoffMatchesLength: playoffMatches.length,
+                  playoffMatchesCheck,
                   customPlayoffRoundsLength: tournament.format?.customPlayoffConfig?.playoffRounds?.length,
+                  customPlayoffCheck,
                   shouldShowPlayoff
                 })
                 
