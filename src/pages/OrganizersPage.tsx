@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
-import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword, syncOrganizerEmails, diagnoseOrganizerAuth, fixOrganizerAuth } from '../lib/auth'
+import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword, syncOrganizerEmails } from '../lib/auth'
 import { dynamoDB, TABLES } from '../lib/aws-config'
 import { ScanCommand } from '@aws-sdk/lib-dynamodb'
 
@@ -288,62 +288,24 @@ export default function OrganizersPage() {
         <div className="glass rounded-2xl p-8 shadow-2xl border border-white/20">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-white">All Organizers</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={async () => {
+            <button
+              onClick={async () => {
+                if (confirm('This will sync all organizer emails with their auth accounts. Continue?')) {
                   try {
-                    await diagnoseOrganizerAuth('siysa@iinet.net.au')
-                    alert('Diagnostic completed! Check browser console for details.')
+                    await syncOrganizerEmails()
+                    alert('Organizer emails synced successfully!')
+                    loadOrganizers() // Reload to show updated data
                   } catch (error) {
-                    console.error('Error running diagnostic:', error)
-                    alert('Failed to run diagnostic. Please try again.')
+                    console.error('Error syncing emails:', error)
+                    alert('Failed to sync emails. Please try again.')
                   }
-                }}
-                className="px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 rounded-lg transition-all text-yellow-400 text-sm"
-                title="Diagnose Homebush Futsal login issue"
-              >
-                🔍 Diagnose
-              </button>
-              <button
-                onClick={async () => {
-                  if (confirm('This will fix the auth account for Homebush Futsal specifically. Continue?')) {
-                    try {
-                      const success = await fixOrganizerAuth('siysa@iinet.net.au')
-                      if (success) {
-                        alert('Homebush Futsal auth account fixed successfully!')
-                      } else {
-                        alert('Failed to fix auth account. Check console for details.')
-                      }
-                    } catch (error) {
-                      console.error('Error fixing auth:', error)
-                      alert('Failed to fix auth account. Please try again.')
-                    }
-                  }
-                }}
-                className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 rounded-lg transition-all text-green-400 text-sm"
-                title="Fix Homebush Futsal auth account"
-              >
-                🔧 Fix Homebush
-              </button>
-              <button
-                onClick={async () => {
-                  if (confirm('This will sync all organizer emails with their auth accounts. Continue?')) {
-                    try {
-                      await syncOrganizerEmails()
-                      alert('Organizer emails synced successfully!')
-                      loadOrganizers() // Reload to show updated data
-                    } catch (error) {
-                      console.error('Error syncing emails:', error)
-                      alert('Failed to sync emails. Please try again.')
-                    }
-                  }
-                }}
-                className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg transition-all text-blue-400 text-sm"
-                title="Sync organizer emails with auth accounts"
-              >
-                🔄 Sync Emails
-              </button>
-            </div>
+                }
+              }}
+              className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg transition-all text-blue-400 text-sm"
+              title="Sync organizer emails with auth accounts"
+            >
+              🔄 Sync Emails
+            </button>
           </div>
           
           {loading ? (
