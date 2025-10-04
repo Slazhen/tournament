@@ -41,6 +41,8 @@ export default function NewPublicTournament() {
       try {
         setLoading(true)
         setError(null)
+        
+        console.log('NewPublicTournament: Loading data for tournament ID:', id)
 
         // Load tournament
         const tournamentResponse = await dynamoDB.send(new GetCommand({

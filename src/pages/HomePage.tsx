@@ -223,6 +223,7 @@ export default function HomePage() {
                     key={tournament.id}
                     to={`/public/tournaments/${tournament.id}`}
                     className="glass rounded-2xl p-6 shadow-2xl border border-white/20 hover:border-white/40 transition-all group"
+                    onClick={() => console.log('Tournament link clicked:', tournament.id, `/public/tournaments/${tournament.id}`)}
                   >
                     <div className="flex items-center gap-4 mb-4">
                       {tournament.logo ? (
