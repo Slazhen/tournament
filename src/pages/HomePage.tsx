@@ -20,6 +20,7 @@ interface Tournament {
   logo?: string
   location?: string
   createdAtISO: string
+  visibility?: 'public' | 'private'
 }
 
 export default function HomePage() {
@@ -79,6 +80,11 @@ export default function HomePage() {
   )
 
   const filteredTournaments = allTournaments.filter(tournament => {
+    // Only show public tournaments
+    if (tournament.visibility === 'private') {
+      return false
+    }
+    
     const organizer = allOrganizers.find(org => org.id === tournament.organizerId)
     return (
       (typeof tournament.name === 'string' && tournament.name.toLowerCase().includes(searchQuery.toLowerCase())) ||

@@ -176,6 +176,7 @@ export type Tournament = {
     facebook?: string
     instagram?: string
   }
+  visibility?: 'public' | 'private' // Tournament visibility: public (visible to everyone) or private (admin/organizer only)
 }
 
 export type AppSettings = {

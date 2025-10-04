@@ -224,6 +224,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         teamIds,
         organizerId: currentOrganizerId,
         matches: [],
+        visibility: 'private', // Default to private, organizer can make it public later
       })
       
       if (tournament) {

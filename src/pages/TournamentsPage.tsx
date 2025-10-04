@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useAppStore } from "../store"
 import { Link } from "react-router-dom"
 import LogoUploader from "../components/LogoUploader"
+import { CompactVisibilityToggle } from "../components/VisibilityToggle"
 
 export default function TournamentsPage() {
   const [tournamentName, setTournamentName] = useState("")
@@ -18,6 +19,7 @@ export default function TournamentsPage() {
     getOrganizerTeams, 
     getOrganizerTournaments, 
     createTournament,
+    updateTournament,
     deleteTournament,
     uploadTournamentLogo
   } = useAppStore()
@@ -292,6 +294,23 @@ export default function TournamentsPage() {
                       )}
                       <div>Created: {new Date(tournament.createdAtISO).toLocaleDateString()}</div>
                     </div>
+                  </div>
+
+                  {/* Visibility Toggle */}
+                  <div className="flex flex-col items-center gap-2">
+                    <CompactVisibilityToggle
+                      isPublic={tournament.visibility !== 'private'}
+                      onToggle={async (isPublic) => {
+                        try {
+                          await updateTournament(tournament.id, { 
+                            visibility: isPublic ? 'public' : 'private' 
+                          })
+                        } catch (error) {
+                          console.error('Failed to update tournament visibility:', error)
+                          alert('Failed to update tournament visibility. Please try again.')
+                        }
+                      }}
+                    />
                   </div>
                   
                   {/* Actions */}

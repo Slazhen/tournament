@@ -6,6 +6,7 @@ import LocationIcon from '../components/LocationIcon'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import LogoUploader from '../components/LogoUploader'
+import VisibilityToggle from '../components/VisibilityToggle'
 
 export default function TournamentPage() {
   const { id } = useParams()
@@ -229,6 +230,27 @@ export default function TournamentPage() {
                  <div>
         <h1 className="text-xl font-semibold">{tournament.name}</h1>
         <div className="text-sm opacity-70">{tournament.teamIds.length} teams • {tournament.matches.length} matches</div>
+                 </div>
+               </div>
+
+               {/* Tournament Visibility */}
+               <div className="mt-6 flex justify-center">
+                 <div className="text-center">
+                   <label className="block text-sm font-medium mb-3">Tournament Visibility</label>
+                   <VisibilityToggle
+                     isPublic={tournament.visibility !== 'private'}
+                     onToggle={async (isPublic) => {
+                       try {
+                         await updateTournament(tournament.id, { 
+                           visibility: isPublic ? 'public' : 'private' 
+                         })
+                       } catch (error) {
+                         console.error('Failed to update tournament visibility:', error)
+                         alert('Failed to update tournament visibility. Please try again.')
+                       }
+                     }}
+                     size="medium"
+                   />
                  </div>
                </div>
                
