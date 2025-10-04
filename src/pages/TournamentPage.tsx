@@ -745,7 +745,15 @@ export default function TournamentPage() {
               </div>
 
               {/* Configured Rounds */}
-              {tournament.format?.customPlayoffConfig?.playoffRounds?.map((round, roundIndex) => (
+              {tournament.format?.customPlayoffConfig?.playoffRounds?.map((round, roundIndex) => {
+                // Ensure round has quantityOfGames property for backward compatibility
+                const roundWithQuantity = {
+                  ...round,
+                  quantityOfGames: round.quantityOfGames ?? (round.matches?.length || 1),
+                  matches: round.matches || []
+                }
+                
+                return (
                 <div key={roundIndex} className="p-6 glass rounded-lg border border-white/10">
                   <div className="space-y-4">
                     {/* Round Header */}
@@ -754,10 +762,10 @@ export default function TournamentPage() {
                         <label className="block text-sm font-medium mb-1">Round Name</label>
                         <input
                           type="text"
-                          value={round.name}
+                          value={roundWithQuantity.name}
                           onChange={(e) => {
                             const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                            updatedRounds[roundIndex] = { ...round, name: e.target.value }
+                            updatedRounds[roundIndex] = { ...roundWithQuantity, name: e.target.value }
                             updateTournament(tournament.id, {
                               format: {
                                 rounds: tournament.format?.rounds || 1,
@@ -780,14 +788,15 @@ export default function TournamentPage() {
                           type="number"
                           min="1"
                           max="20"
-                          value={round.quantityOfGames || 1}
+                          value={roundWithQuantity.quantityOfGames ?? 1}
                           onChange={(e) => {
-                            const quantity = Math.max(1, Math.min(20, parseInt(e.target.value) || 1))
+                            const inputValue = e.target.value
+                            const quantity = inputValue === '' ? 1 : Math.max(1, Math.min(20, parseInt(inputValue) || 1))
                             const { generateMatchUID } = require('../utils/uid')
                             const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
                             
                             // Generate or remove matches based on quantity
-                            let matches = [...(round.matches || [])]
+                            let matches = [...(roundWithQuantity.matches || [])]
                             if (quantity > matches.length) {
                               // Add new matches
                               for (let i = matches.length; i < quantity; i++) {
@@ -801,7 +810,7 @@ export default function TournamentPage() {
                               matches = matches.slice(0, quantity)
                             }
                             
-                            updatedRounds[roundIndex] = { ...round, quantityOfGames: quantity, matches }
+                            updatedRounds[roundIndex] = { ...roundWithQuantity, quantityOfGames: quantity, matches }
                             updateTournament(tournament.id, {
                               format: {
                                 rounds: tournament.format?.rounds || 1,
@@ -822,10 +831,10 @@ export default function TournamentPage() {
                         <label className="block text-sm font-medium mb-1">Description (Optional)</label>
                         <input
                           type="text"
-                          value={round.description || ''}
+                          value={roundWithQuantity.description || ''}
                           onChange={(e) => {
                             const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                            updatedRounds[roundIndex] = { ...round, description: e.target.value }
+                            updatedRounds[roundIndex] = { ...roundWithQuantity, description: e.target.value }
                             updateTournament(tournament.id, {
                               format: {
                                 rounds: tournament.format?.rounds || 1,
@@ -868,11 +877,11 @@ export default function TournamentPage() {
                     </div>
 
                     {/* Individual Matches */}
-                    {round.matches && round.matches.length > 0 && (
+                    {roundWithQuantity.matches && roundWithQuantity.matches.length > 0 && (
                       <div className="mt-4">
                         <h4 className="text-md font-medium mb-3">Matches in this Round:</h4>
                         <div className="grid gap-3">
-                          {round.matches.map((match, matchIndex) => (
+                          {roundWithQuantity.matches.map((match, matchIndex) => (
                             <div key={match.id} className="p-4 bg-white/5 rounded-lg border border-white/10">
                               <div className="grid md:grid-cols-6 gap-4 items-center">
                                 <div className="md:col-span-2">
@@ -881,9 +890,9 @@ export default function TournamentPage() {
                                     value={match.homeTeamId || ''}
                                     onChange={(e) => {
                                       const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                      const updatedMatches = [...(round.matches || [])]
+                                      const updatedMatches = [...(roundWithQuantity.matches || [])]
                                       updatedMatches[matchIndex] = { ...match, homeTeamId: e.target.value }
-                                      updatedRounds[roundIndex] = { ...round, matches: updatedMatches }
+                                      updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
                                       updateTournament(tournament.id, {
                                         format: {
                                           rounds: tournament.format?.rounds || 1,
@@ -911,9 +920,9 @@ export default function TournamentPage() {
                                     value={match.awayTeamId || ''}
                                     onChange={(e) => {
                                       const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                      const updatedMatches = [...(round.matches || [])]
+                                      const updatedMatches = [...(roundWithQuantity.matches || [])]
                                       updatedMatches[matchIndex] = { ...match, awayTeamId: e.target.value }
-                                      updatedRounds[roundIndex] = { ...round, matches: updatedMatches }
+                                      updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
                                       updateTournament(tournament.id, {
                                         format: {
                                           rounds: tournament.format?.rounds || 1,
@@ -942,9 +951,9 @@ export default function TournamentPage() {
                                     value={match.dateISO ? match.dateISO.split('T')[0] : ''}
                                     onChange={(e) => {
                                       const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                      const updatedMatches = [...(round.matches || [])]
+                                      const updatedMatches = [...(roundWithQuantity.matches || [])]
                                       updatedMatches[matchIndex] = { ...match, dateISO: e.target.value ? `${e.target.value}T00:00:00.000Z` : undefined }
-                                      updatedRounds[roundIndex] = { ...round, matches: updatedMatches }
+                                      updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
                                       updateTournament(tournament.id, {
                                         format: {
                                           rounds: tournament.format?.rounds || 1,
@@ -968,9 +977,9 @@ export default function TournamentPage() {
                                       checked={match.isElimination}
                                       onChange={(e) => {
                                         const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                        const updatedMatches = [...(round.matches || [])]
+                                        const updatedMatches = [...(roundWithQuantity.matches || [])]
                                         updatedMatches[matchIndex] = { ...match, isElimination: e.target.checked }
-                                        updatedRounds[roundIndex] = { ...round, matches: updatedMatches }
+                                        updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
                                         updateTournament(tournament.id, {
                                           format: {
                                             rounds: tournament.format?.rounds || 1,
@@ -997,7 +1006,8 @@ export default function TournamentPage() {
                     )}
                   </div>
                 </div>
-              )) || []}
+                )
+              }) || []}
 
               {/* Generate Matches Button */}
               {(tournament.format?.customPlayoffConfig?.playoffRounds?.length || 0) > 0 && (
