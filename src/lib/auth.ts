@@ -382,3 +382,94 @@ export const canAccessOrganizer = (user: AuthUser, organizerId: string): boolean
   }
   return user.role === 'organizer' && user.organizerId === organizerId
 }
+
+// Migration function to add email to existing auth accounts
+export const migrateOrganizerToEmail = async (organizerEmail: string, organizerId: string): Promise<boolean> => {
+  try {
+    console.log('Migrating organizer to email-based auth:', organizerEmail)
+    
+    // First, check if there's already an auth account for this organizer
+    const existingUser = await dynamoDB.send(new ScanCommand({
+      TableName: TABLES.AUTH_USERS,
+      FilterExpression: 'organizerId = :organizerId',
+      ExpressionAttributeValues: {
+        ':organizerId': organizerId
+      }
+    }))
+    
+    if (existingUser.Items && existingUser.Items.length > 0) {
+      const user = existingUser.Items[0] as AuthUser
+      console.log('Found existing auth account:', user)
+      
+      // Update the existing account to include email
+      await dynamoDB.send(new UpdateCommand({
+        TableName: TABLES.AUTH_USERS,
+        Key: { id: user.id },
+        UpdateExpression: 'SET email = :email',
+        ExpressionAttributeValues: {
+          ':email': organizerEmail
+        }
+      }))
+      
+      console.log('Successfully migrated organizer to email-based auth')
+      return true
+    } else {
+      console.log('No existing auth account found for organizer:', organizerId)
+      return false
+    }
+  } catch (error) {
+    console.error('Error migrating organizer to email-based auth:', error)
+    return false
+  }
+}
+
+// Function to sync organizer emails with auth accounts
+export const syncOrganizerEmails = async (): Promise<void> => {
+  try {
+    console.log('Starting organizer email sync...')
+    
+    // Get all organizers
+    const organizersResult = await dynamoDB.send(new ScanCommand({
+      TableName: TABLES.ORGANIZERS
+    }))
+    
+    const organizers = organizersResult.Items || []
+    console.log('Found organizers:', organizers.length)
+    
+    // Get all auth users
+    const authUsersResult = await dynamoDB.send(new ScanCommand({
+      TableName: TABLES.AUTH_USERS,
+      FilterExpression: 'role = :role',
+      ExpressionAttributeValues: {
+        ':role': 'organizer'
+      }
+    }))
+    
+    const authUsers = authUsersResult.Items || []
+    console.log('Found auth users:', authUsers.length)
+    
+    // Match organizers with auth users and sync emails
+    for (const organizer of organizers) {
+      const matchingAuthUser = authUsers.find(authUser => authUser.organizerId === organizer.id)
+      
+      if (matchingAuthUser && organizer.email && !matchingAuthUser.email) {
+        console.log(`Syncing email for organizer ${organizer.name}: ${organizer.email}`)
+        
+        await dynamoDB.send(new UpdateCommand({
+          TableName: TABLES.AUTH_USERS,
+          Key: { id: matchingAuthUser.id },
+          UpdateExpression: 'SET email = :email',
+          ExpressionAttributeValues: {
+            ':email': organizer.email
+          }
+        }))
+        
+        console.log(`Successfully synced email for ${organizer.name}`)
+      }
+    }
+    
+    console.log('Organizer email sync completed')
+  } catch (error) {
+    console.error('Error syncing organizer emails:', error)
+  }
+}
