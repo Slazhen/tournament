@@ -165,8 +165,16 @@ export default function PublicTournamentPage() {
   // Separate playoff matches
   const playoffMatches = useMemo(() => {
     if (!tournament) {
+      console.log('PublicTournamentPage: No tournament found')
       return []
     }
+    
+    console.log('PublicTournamentPage: Tournament found:', {
+      id: tournament.id,
+      format: tournament.format,
+      customPlayoffConfig: tournament.format?.customPlayoffConfig,
+      playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds
+    })
     
     try {
       let matches = []
@@ -174,12 +182,15 @@ export default function PublicTournamentPage() {
       // Get playoff matches from tournament.matches
       if (tournament.matches && Array.isArray(tournament.matches)) {
         matches = tournament.matches.filter((m: any) => m && m.isPlayoff)
+        console.log('PublicTournamentPage: Regular playoff matches found:', matches.length)
       }
       
       // For custom playoff format, also include matches from custom playoff configuration
       if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
+        console.log('PublicTournamentPage: Processing custom playoff rounds:', tournament.format.customPlayoffConfig.playoffRounds.length)
         const customPlayoffMatches: any[] = []
         tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any, roundIndex: number) => {
+          console.log(`PublicTournamentPage: Processing round ${roundIndex}:`, round)
           if (round.matches && Array.isArray(round.matches)) {
             round.matches.forEach((match: any) => {
               customPlayoffMatches.push({
@@ -192,9 +203,11 @@ export default function PublicTournamentPage() {
             })
           }
         })
+        console.log('PublicTournamentPage: Custom playoff matches created:', customPlayoffMatches.length)
         matches = [...matches, ...customPlayoffMatches]
       }
       
+      console.log('PublicTournamentPage: Total playoff matches:', matches.length)
       return matches
     } catch (error) {
       console.error('Error calculating playoff matches:', error)
@@ -403,7 +416,19 @@ export default function PublicTournamentPage() {
       </section>
 
       {/* Playoff Bracket Section */}
-              {(tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination' || tournament.format?.mode === 'league_custom_playoff') && (playoffMatches.length > 0 || (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0)) && (
+              {(() => {
+                const shouldShowPlayoff = (tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination' || tournament.format?.mode === 'league_custom_playoff') && 
+                  (playoffMatches.length > 0 || (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0))
+                
+                console.log('PublicTournamentPage: Playoff bracket visibility check:', {
+                  mode: tournament.format?.mode,
+                  playoffMatchesLength: playoffMatches.length,
+                  customPlayoffRoundsLength: tournament.format?.customPlayoffConfig?.playoffRounds?.length,
+                  shouldShowPlayoff
+                })
+                
+                return shouldShowPlayoff
+              })() && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <div className="text-center mb-6">
             <h2 className="text-lg font-semibold tracking-wide">Playoff Bracket</h2>
