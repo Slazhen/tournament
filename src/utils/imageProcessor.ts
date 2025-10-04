@@ -225,11 +225,12 @@ export async function processAllImages(options: {
     }
     
     // Process players (if you have a players table)
-    if (!options.skipPlayers && TABLES.PLAYERS) {
-      console.log('\n=== Processing Players ===')
-      const playerResults = await processEntityImages('player', TABLES.PLAYERS, 'photo', 'profile')
-      allResults.push(...playerResults)
-    }
+    // Note: PLAYERS table doesn't exist in current configuration
+    // if (!options.skipPlayers && TABLES.PLAYERS) {
+    //   console.log('\n=== Processing Players ===')
+    //   const playerResults = await processEntityImages('player', TABLES.PLAYERS, 'photo', 'profile')
+    //   allResults.push(...playerResults)
+    // }
     
     // Calculate statistics
     stats.totalImages = allResults.length

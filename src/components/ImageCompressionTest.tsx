@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { compressImage, formatFileSize, getCompressionOptions } from '../utils/imageCompression'
 
 export default function ImageCompressionTest() {

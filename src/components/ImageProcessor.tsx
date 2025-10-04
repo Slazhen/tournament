@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { processAllImages, getProcessingPreview, ImageProcessingStats } from '../utils/imageProcessor'
+import { useState } from 'react'
+import { processAllImages, getProcessingPreview } from '../utils/imageProcessor'
+import type { ImageProcessingStats } from '../utils/imageProcessor'
 import { formatFileSize } from '../utils/imageCompression'
 
 interface ProcessingPreview {
@@ -18,7 +19,7 @@ export default function ImageProcessor() {
     skipOrganizers: false,
     skipTournaments: false,
     skipTeams: false,
-    skipPlayers: true, // Skip players by default as they might not have a table
+    skipPlayers: true, // Skip players as PLAYERS table doesn't exist
     dryRun: false
   })
 
@@ -133,7 +134,8 @@ export default function ImageProcessor() {
               />
               <span className="text-white">Process Team Logos</span>
             </label>
-            <label className="flex items-center space-x-3">
+            {/* Players table doesn't exist in current configuration */}
+            {/* <label className="flex items-center space-x-3">
               <input
                 type="checkbox"
                 checked={!options.skipPlayers}
@@ -141,7 +143,7 @@ export default function ImageProcessor() {
                 className="rounded border-gray-300"
               />
               <span className="text-white">Process Player Photos</span>
-            </label>
+            </label> */}
           </div>
         </div>
       </div>
