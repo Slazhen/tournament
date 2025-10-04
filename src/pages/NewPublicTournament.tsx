@@ -690,151 +690,6 @@ export default function NewPublicTournament() {
           </div>
         </div>
 
-        {/* Playoff Bracket Section */}
-        {(() => {
-          // Check if tournament has custom playoff configuration
-          const hasCustomPlayoff = tournament.format?.mode === 'league_custom_playoff' && 
-                                  tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0
-          
-        console.log('NewPublicTournament: Playoff check:', {
-          mode: tournament.format?.mode,
-          hasCustomPlayoff,
-          playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds?.length
-        })
-        
-        console.log('NewPublicTournament: Full custom playoff config:', tournament.format?.customPlayoffConfig)
-        console.log('NewPublicTournament: Playoff rounds data:', tournament.format?.customPlayoffConfig?.playoffRounds)
-        
-        // Log each playoff round in detail
-        tournament.format?.customPlayoffConfig?.playoffRounds?.forEach((round: any, index: number) => {
-          console.log(`NewPublicTournament: Playoff round ${index}:`, {
-            name: round.name,
-            description: round.description,
-            quantityOfGames: round.quantityOfGames,
-            matches: round.matches,
-            matchesLength: round.matches?.length
-          })
-        })
-          
-          return hasCustomPlayoff
-        })() && (
-          <div className="mb-12">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Playoff Bracket</h2>
-              <p className="text-gray-400 text-sm sm:text-base">Tournament playoffs</p>
-              <p className="text-red-400 text-sm">DEBUG: Playoff section is rendering!</p>
-            </div>
-            
-            <div className="space-y-6">
-              {tournament.format.customPlayoffConfig.playoffRounds.map((round: any, roundIndex: number) => (
-                <div key={roundIndex} className="glass rounded-2xl p-4 sm:p-6 shadow-2xl border border-white/20">
-                  <div className="text-center mb-4 sm:mb-6">
-                    <h3 className="text-lg sm:text-2xl font-bold text-white mb-2">
-                      {round.name}
-                    </h3>
-                    {round.description && (
-                      <p className="text-sm sm:text-base text-gray-400">{round.description}</p>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {round.matches && round.matches.length > 0 ? (
-                      round.matches.map((match: any) => {
-                        const homeTeam = teams.find(t => t.id === match.homeTeamId)
-                        const awayTeam = teams.find(t => t.id === match.awayTeamId)
-                        
-                        return (
-                          <div key={match.id} className={`relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
-                            match.isElimination ? 'border-red-500/30 bg-red-500/5' : 'border-white/20'
-                          }`}>
-                            {match.isElimination && (
-                              <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
-                                🔥 ELIMINATION
-                              </div>
-                            )}
-                            
-                            <div className="flex items-center justify-between">
-                              {/* Home Team */}
-                              <div className="flex items-center gap-2 sm:gap-4 flex-1">
-                                {homeTeam?.logo ? (
-                                  <img 
-                                    src={homeTeam.logo} 
-                                    alt={`${homeTeam.name} logo`}
-                                    className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20">
-                                    <span className="text-sm sm:text-lg font-bold text-white">
-                                      {homeTeam?.name?.charAt(0) || 'H'}
-                                    </span>
-                                  </div>
-                                )}
-                                <div>
-                                  <span className="text-white font-semibold text-sm sm:text-lg">
-                                    {homeTeam?.name || 'Home'}
-                                  </span>
-                                </div>
-                              </div>
-                              
-                              {/* Score/VS */}
-                              <div className="text-center px-2 sm:px-6">
-                                <div className="text-sm sm:text-xl font-semibold text-gray-300">vs</div>
-                                <div className="text-xs text-blue-400 font-medium">TBD</div>
-                                
-                                {/* Match Date & Time */}
-                                {match.dateISO && (
-                                  <div className="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
-                                    <div>
-                                      {new Date(match.dateISO).toLocaleDateString('en-US', {
-                                        weekday: 'short',
-                                        month: 'short',
-                                        day: 'numeric'
-                                      })}
-                                    </div>
-                                    {match.time && (
-                                      <div>{match.time}</div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {/* Away Team */}
-                              <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
-                                <div className="text-right">
-                                  <span className="text-white font-semibold text-sm sm:text-lg">
-                                    {awayTeam?.name || 'Away'}
-                                  </span>
-                                </div>
-                                {awayTeam?.logo ? (
-                                  <img 
-                                    src={awayTeam.logo} 
-                                    alt={`${awayTeam.name} logo`}
-                                    className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20">
-                                    <span className="text-sm sm:text-lg font-bold text-white">
-                                      {awayTeam?.name?.charAt(0) || 'A'}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <div className="text-center py-4 text-sm text-gray-400">
-                        No matches configured for this round
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Matches by Rounds */}
         <div className="mb-12">
           <div className="text-center mb-8">
@@ -1001,6 +856,130 @@ export default function NewPublicTournament() {
             })
           })()}
         </div>
+
+        {/* Playoff Bracket Section */}
+        {(() => {
+          // Check if tournament has custom playoff configuration
+          const hasCustomPlayoff = tournament.format?.mode === 'league_custom_playoff' && 
+                                  tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0
+          
+          return hasCustomPlayoff
+        })() && (
+          <div className="mb-12">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Playoff Bracket</h2>
+              <p className="text-gray-400 text-sm sm:text-base">Tournament playoffs</p>
+            </div>
+            
+            <div className="space-y-6">
+              {tournament.format.customPlayoffConfig.playoffRounds.map((round: any, roundIndex: number) => (
+                <div key={roundIndex} className="glass rounded-2xl p-4 sm:p-6 shadow-2xl border border-white/20">
+                  <div className="text-center mb-4 sm:mb-6">
+                    <h3 className="text-lg sm:text-2xl font-bold text-white mb-2">
+                      {round.name}
+                    </h3>
+                    {round.description && (
+                      <p className="text-sm sm:text-base text-gray-400">{round.description}</p>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {round.matches && round.matches.length > 0 ? (
+                      round.matches.map((match: any) => {
+                        const homeTeam = teams.find(t => t.id === match.homeTeamId)
+                        const awayTeam = teams.find(t => t.id === match.awayTeamId)
+                        
+                        return (
+                          <div key={match.id} className={`relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
+                            match.isElimination ? 'border-red-500/30 bg-red-500/5' : 'border-white/20'
+                          }`}>
+                            {match.isElimination && (
+                              <div className="absolute top-2 left-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-xs px-3 py-1 rounded-full font-bold shadow-lg border border-red-400/50">
+                                ⚡ ELIMINATION
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center justify-between">
+                              {/* Home Team */}
+                              <div className="flex items-center gap-2 sm:gap-4 flex-1">
+                                {homeTeam?.logo ? (
+                                  <img 
+                                    src={homeTeam.logo} 
+                                    alt={`${homeTeam.name} logo`}
+                                    className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20">
+                                    <span className="text-sm sm:text-lg font-bold text-white">
+                                      {homeTeam?.name?.charAt(0) || 'H'}
+                                    </span>
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="text-white font-semibold text-sm sm:text-lg">
+                                    {homeTeam?.name || 'Home'}
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              {/* Score/VS */}
+                              <div className="text-center px-2 sm:px-6">
+                                <div className="text-sm sm:text-xl font-semibold text-gray-300">vs</div>
+                                <div className="text-xs text-blue-400 font-medium">TBD</div>
+                                
+                                {/* Match Date & Time */}
+                                {match.dateISO && (
+                                  <div className="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
+                                    <div>
+                                      {new Date(match.dateISO).toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric'
+                                      })}
+                                    </div>
+                                    {match.time && (
+                                      <div>{match.time}</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Away Team */}
+                              <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
+                                <div className="text-right">
+                                  <span className="text-white font-semibold text-sm sm:text-lg">
+                                    {awayTeam?.name || 'Away'}
+                                  </span>
+                                </div>
+                                {awayTeam?.logo ? (
+                                  <img 
+                                    src={awayTeam.logo} 
+                                    alt={`${awayTeam.name} logo`}
+                                    className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20">
+                                    <span className="text-sm sm:text-lg font-bold text-white">
+                                      {awayTeam?.name?.charAt(0) || 'A'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <div className="text-center py-4 text-sm text-gray-400">
+                        No matches configured for this round
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="text-center text-gray-400">
