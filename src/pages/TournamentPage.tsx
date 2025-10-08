@@ -8,6 +8,8 @@ import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import LogoUploader from '../components/LogoUploader'
 import VisibilityToggle from '../components/VisibilityToggle'
+import CustomDatePicker from '../components/CustomDatePicker'
+import CustomTimePicker from '../components/CustomTimePicker'
 
 export default function TournamentPage() {
   const { id } = useParams()
@@ -601,8 +603,25 @@ export default function TournamentPage() {
                               <span>:</span>
                               <input inputMode="numeric" pattern="[0-9]*" className="w-14 px-2 py-1 rounded-md bg-transparent border border-white/20" value={match.awayGoals ?? ''} onChange={(e) => setScore(match.id, match.homeGoals ?? NaN, e.target.value === '' ? NaN : Number(e.target.value))} />
                             </div>
-                            <div>
-                              <input type="datetime-local" className="px-2 py-1 rounded-md bg-transparent border border-white/20 w-full" value={match.dateISO ? new Date(match.dateISO).toISOString().slice(0,16) : ''} onChange={(e) => setDate(match.id, new Date(e.target.value).toISOString())} />
+                            <div className="flex gap-2">
+                              <CustomDatePicker
+                                value={match.dateISO ? match.dateISO.split('T')[0] : ''}
+                                onChange={(date) => {
+                                  const currentTime = match.dateISO ? new Date(match.dateISO).toTimeString().slice(0, 5) : '12:00'
+                                  setDate(match.id, new Date(`${date}T${currentTime}`).toISOString())
+                                }}
+                                className="flex-1"
+                                placeholder="Select Date"
+                              />
+                              <CustomTimePicker
+                                value={match.dateISO ? new Date(match.dateISO).toTimeString().slice(0, 5) : '12:00'}
+                                onChange={(time) => {
+                                  const currentDate = match.dateISO ? match.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
+                                  setDate(match.id, new Date(`${currentDate}T${time}`).toISOString())
+                                }}
+                                className="w-24"
+                                placeholder="Time"
+                              />
                             </div>
                             <div>
                               <Link 
@@ -700,12 +719,10 @@ export default function TournamentPage() {
                     <div className="flex flex-col gap-1">
                       <label className="text-xs opacity-70">Date & Time</label>
                       <div className="flex gap-2">
-                        <input 
-                          type="date" 
-                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-xs flex-1" 
-                          value={m.dateISO ? new Date(m.dateISO).toISOString().split('T')[0] : ''} 
-                          onChange={(e) => {
-                            const newDate = e.target.value ? new Date(e.target.value) : new Date()
+                        <CustomDatePicker
+                          value={m.dateISO ? new Date(m.dateISO).toISOString().split('T')[0] : ''}
+                          onChange={(date) => {
+                            const newDate = date ? new Date(date) : new Date()
                             // Preserve time if it exists, otherwise set to 12:00
                             if (m.dateISO) {
                               const time = new Date(m.dateISO)
@@ -714,19 +731,20 @@ export default function TournamentPage() {
                               newDate.setHours(12, 0)
                             }
                             setDate(mid, newDate.toISOString())
-                          }} 
+                          }}
+                          className="flex-1 text-xs"
+                          placeholder="Select Date"
                         />
-                        <input 
-                          type="time" 
-                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-xs w-24" 
-                          value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0,5) : '12:00'} 
-                          onChange={(e) => {
+                        <CustomTimePicker
+                          value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'}
+                          onChange={(time) => {
                             const currentDate = m.dateISO ? new Date(m.dateISO) : new Date()
-                            const [hours, minutes] = e.target.value.split(':').map(Number)
+                            const [hours, minutes] = time.split(':').map(Number)
                             currentDate.setHours(hours || 12, minutes || 0)
                             setDate(mid, currentDate.toISOString())
-                          }} 
-                          step="60"
+                          }}
+                          className="w-24 text-xs"
+                          placeholder="Time"
                         />
                       </div>
                     </div>
@@ -1025,13 +1043,12 @@ export default function TournamentPage() {
                                 </div>
                                 <div>
                                   <label className="block text-sm font-medium mb-1">Date</label>
-                                  <input
-                                    type="date"
+                                  <CustomDatePicker
                                     value={match.dateISO ? match.dateISO.split('T')[0] : ''}
-                                    onChange={(e) => {
+                                    onChange={(date) => {
                                       const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
                                       const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                      updatedMatches[matchIndex] = { ...match, dateISO: e.target.value ? `${e.target.value}T00:00:00.000Z` : undefined }
+                                      updatedMatches[matchIndex] = { ...match, dateISO: date ? `${date}T00:00:00.000Z` : undefined }
                                       updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
                                       updateTournament(tournament.id, {
                                         format: {
@@ -1046,18 +1063,17 @@ export default function TournamentPage() {
                                         }
                                       })
                                     }}
-                                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                                    className="w-full"
                                   />
                                 </div>
                                 <div>
                                   <label className="block text-sm font-medium mb-1">Time</label>
-                                  <input
-                                    type="time"
+                                  <CustomTimePicker
                                     value={match.time || ''}
-                                    onChange={(e) => {
+                                    onChange={(time) => {
                                       const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
                                       const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                      updatedMatches[matchIndex] = { ...match, time: e.target.value }
+                                      updatedMatches[matchIndex] = { ...match, time: time }
                                       updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
                                       updateTournament(tournament.id, {
                                         format: {
@@ -1072,7 +1088,7 @@ export default function TournamentPage() {
                                         }
                                       })
                                     }}
-                                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                                    className="w-full"
                                   />
                                 </div>
                                 <div className="flex flex-col gap-2">
@@ -1211,12 +1227,26 @@ export default function TournamentPage() {
                         {/* Date */}
                         <div className="flex flex-col gap-1">
                           <label className="text-xs opacity-70">Date & Time</label>
-                          <input 
-                            type="datetime-local" 
-                            className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-xs" 
-                            value={m.dateISO ? new Date(m.dateISO).toISOString().slice(0,16) : ''} 
-                            onChange={(e) => setDate(m.id, new Date(e.target.value).toISOString())} 
-                          />
+                          <div className="flex gap-2">
+                            <CustomDatePicker
+                              value={m.dateISO ? m.dateISO.split('T')[0] : ''}
+                              onChange={(date) => {
+                                const currentTime = m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'
+                                setDate(m.id, new Date(`${date}T${currentTime}`).toISOString())
+                              }}
+                              className="flex-1 text-xs"
+                              placeholder="Select Date"
+                            />
+                            <CustomTimePicker
+                              value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'}
+                              onChange={(time) => {
+                                const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
+                                setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
+                              }}
+                              className="w-24 text-xs"
+                              placeholder="Time"
+                            />
+                          </div>
                         </div>
 
                         {/* Actions */}

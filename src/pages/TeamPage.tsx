@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { uid } from '../utils/uid'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
+import CustomDatePicker from '../components/CustomDatePicker'
 
 export default function TeamPage() {
   const { teamId } = useParams()
@@ -241,11 +242,11 @@ export default function TeamPage() {
               <div>
                 <span className="opacity-70">Established:</span>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="date"
+                  <CustomDatePicker
                     value={team.establishedDate ? team.establishedDate.split('T')[0] : ''}
-                    onChange={(e) => updateTeam(team.id, { establishedDate: e.target.value })}
-                    className="px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
+                    onChange={(date) => updateTeam(team.id, { establishedDate: date })}
+                    className="text-xs"
+                    placeholder="Select Date"
                   />
                 </div>
               </div>

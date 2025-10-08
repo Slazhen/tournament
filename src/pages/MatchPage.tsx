@@ -2,6 +2,8 @@ import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useState } from 'react'
 import { uid } from '../utils/uid'
+import CustomDatePicker from '../components/CustomDatePicker'
+import CustomTimePicker from '../components/CustomTimePicker'
 
 export default function MatchPage() {
   const { tournamentId, matchId } = useParams()
@@ -196,12 +198,26 @@ export default function MatchPage() {
           <div className="flex items-center justify-center gap-6 text-sm">
             <div>
               <span className="opacity-70">Date:</span>
-          <input
-                type="datetime-local"
-                value={match.dateISO ? new Date(match.dateISO).toISOString().slice(0, 16) : ''}
-                onChange={(e) => updateMatch({ dateISO: e.target.value ? new Date(e.target.value).toISOString() : undefined })}
-                className="ml-2 px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
-              />
+              <div className="flex gap-2 ml-2">
+                <CustomDatePicker
+                  value={match.dateISO ? match.dateISO.split('T')[0] : ''}
+                  onChange={(date) => {
+                    const currentTime = match.dateISO ? new Date(match.dateISO).toTimeString().slice(0, 5) : '12:00'
+                    updateMatch({ dateISO: date ? new Date(`${date}T${currentTime}`).toISOString() : undefined })
+                  }}
+                  className="text-xs"
+                  placeholder="Select Date"
+                />
+                <CustomTimePicker
+                  value={match.dateISO ? new Date(match.dateISO).toTimeString().slice(0, 5) : '12:00'}
+                  onChange={(time) => {
+                    const currentDate = match.dateISO ? match.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
+                    updateMatch({ dateISO: time ? new Date(`${currentDate}T${time}`).toISOString() : undefined })
+                  }}
+                  className="text-xs"
+                  placeholder="Time"
+                />
+              </div>
             </div>
             <div>
               <span className="opacity-70">Venue:</span>

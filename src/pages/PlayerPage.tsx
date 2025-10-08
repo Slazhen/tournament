@@ -3,6 +3,7 @@ import { useAppStore } from '../store'
 import { useRef } from 'react'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
+import CustomDatePicker from '../components/CustomDatePicker'
 
 export default function PlayerPage() {
   const { playerId } = useParams()
@@ -222,11 +223,11 @@ export default function PlayerPage() {
               <div>
                 <span className="opacity-70">Date of Birth:</span>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="date"
+                  <CustomDatePicker
                     value={player.dateOfBirth ? player.dateOfBirth.split('T')[0] : ''}
-                    onChange={(e) => updatePlayer(player.id, { dateOfBirth: e.target.value })}
-                    className="px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
+                    onChange={(date) => updatePlayer(player.id, { dateOfBirth: date })}
+                    className="text-xs"
+                    placeholder="Select Date"
                   />
                 </div>
               </div>
