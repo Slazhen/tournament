@@ -150,6 +150,28 @@ export default function NewPublicTournament() {
     )
   }
 
+  // Helper function to get all matches including custom playoff matches
+  const getAllMatches = () => {
+    let allMatches = [...(tournament.matches || [])]
+    
+    // Add custom playoff matches if they exist
+    if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
+      tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
+        if (round.matches && Array.isArray(round.matches)) {
+          round.matches.forEach((match: any) => {
+            allMatches.push({
+              ...match,
+              isPlayoff: true,
+              playoffRound: round.name
+            })
+          })
+        }
+      })
+    }
+    
+    return allMatches
+  }
+
   // Calculate standings
   const calculateStandings = () => {
     const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
@@ -159,8 +181,9 @@ export default function NewPublicTournament() {
       stats[team.id] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
     })
 
-    // Process matches
-    tournament.matches?.forEach(match => {
+    // Process all matches (including custom playoff matches)
+    const allMatches = getAllMatches()
+    allMatches.forEach(match => {
       // Only process matches that have been played (both scores are valid numbers)
       const hasValidScores = typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number' &&
                            !isNaN(match.homeGoals) && !isNaN(match.awayGoals) &&
@@ -297,7 +320,7 @@ export default function NewPublicTournament() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                <span>{Array.isArray(tournament.matches) ? tournament.matches.length : 0} Matches</span>
+                <span>{getAllMatches().length} Matches</span>
               </div>
             </div>
           </div>
