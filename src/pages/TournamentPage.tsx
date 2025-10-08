@@ -30,36 +30,7 @@ export default function TournamentPage() {
     description: ''
   })
   
-  // Redirect if no organizer is selected
-  if (!currentOrganizer) {
-    return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
-          <h1 className="text-xl font-semibold mb-4">No Organizer Selected</h1>
-          <p className="opacity-80 mb-6">Please select an organizer first</p>
-          <Link to="/" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all">
-            Go to Home
-          </Link>
-        </div>
-      </div>
-    )
-  }
-  
-  // Show tournament not found if it doesn't exist
-  if (!tournament) {
-    return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
-          <h1 className="text-xl font-semibold mb-4">Tournament Not Found</h1>
-          <p className="opacity-80 mb-6">The tournament you're looking for doesn't exist or you don't have access to it.</p>
-          <Link to="/tournaments" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all">
-            Back to Tournaments
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
+  // All useMemo hooks must be called before any early returns
   const rounds = useMemo(() => {
     if (!tournament) return [] as { round: number; matchIds: string[] }[]
     
@@ -192,6 +163,8 @@ export default function TournamentPage() {
   }
 
   const calculateTable = () => {
+    if (!tournament) return []
+    
     const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
     for (const tid of tournament.teamIds) {
       stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
@@ -216,6 +189,36 @@ export default function TournamentPage() {
   }
 
   const table = useMemo(() => calculateTable(), [tournament])
+
+  // Redirect if no organizer is selected
+  if (!currentOrganizer) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <h1 className="text-xl font-semibold mb-4">No Organizer Selected</h1>
+          <p className="opacity-80 mb-6">Please select an organizer first</p>
+          <Link to="/" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all">
+            Go to Home
+          </Link>
+        </div>
+      </div>
+    )
+  }
+  
+  // Show tournament not found if it doesn't exist
+  if (!tournament) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <h1 className="text-xl font-semibold mb-4">Tournament Not Found</h1>
+          <p className="opacity-80 mb-6">The tournament you're looking for doesn't exist or you don't have access to it.</p>
+          <Link to="/tournaments" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all">
+            Back to Tournaments
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   // Helper function to create playoff matches
   const createPlayoffMatches = (qualifiedTeams: any[], tournamentId: string) => {
