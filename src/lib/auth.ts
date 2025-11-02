@@ -1,5 +1,5 @@
 import { dynamoDB, TABLES } from './aws-config'
-import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
 // Browser-compatible crypto utilities
 
 // Types
@@ -107,30 +107,74 @@ export const createUser = async (userData: Omit<AuthUser, 'id' | 'passwordHash' 
 }
 
 export const getUserByEmail = async (email: string): Promise<AuthUser | null> => {
-  const result = await dynamoDB.send(new ScanCommand({
-    TableName: TABLES.AUTH_USERS,
-    FilterExpression: 'email = :email AND isActive = :isActive',
-    ExpressionAttributeValues: {
-      ':email': email,
-      ':isActive': true
-    }
-  }))
+  try {
+    // Try using email-index GSI first (most efficient)
+    const result = await dynamoDB.send(new QueryCommand({
+      TableName: TABLES.AUTH_USERS,
+      IndexName: 'email-index',
+      KeyConditionExpression: 'email = :email',
+      FilterExpression: 'isActive = :isActive',
+      ExpressionAttributeValues: {
+        ':email': email,
+        ':isActive': true
+      },
+      Limit: 1
+    }))
 
-  return result.Items?.[0] as AuthUser || null
+    return result.Items?.[0] as AuthUser || null
+  } catch (error: any) {
+    // Fallback to scan if index doesn't exist yet (backward compatibility)
+    if (error.name === 'ValidationException' || error.name === 'ResourceNotFoundException') {
+      console.warn('Email index not found, falling back to scan. Run scripts/add-email-index.js to optimize.')
+      const result = await dynamoDB.send(new ScanCommand({
+        TableName: TABLES.AUTH_USERS,
+        FilterExpression: 'email = :email AND isActive = :isActive',
+        ExpressionAttributeValues: {
+          ':email': email,
+          ':isActive': true
+        },
+        Limit: 1
+      }))
+      return result.Items?.[0] as AuthUser || null
+    }
+    throw error
+  }
 }
 
 // Backward compatibility function for username-based login
 export const getUserByUsername = async (username: string): Promise<AuthUser | null> => {
-  const result = await dynamoDB.send(new ScanCommand({
-    TableName: TABLES.AUTH_USERS,
-    FilterExpression: 'username = :username AND isActive = :isActive',
-    ExpressionAttributeValues: {
-      ':username': username,
-      ':isActive': true
-    }
-  }))
+  try {
+    // Use username-index GSI (already exists)
+    const result = await dynamoDB.send(new QueryCommand({
+      TableName: TABLES.AUTH_USERS,
+      IndexName: 'username-index',
+      KeyConditionExpression: 'username = :username',
+      FilterExpression: 'isActive = :isActive',
+      ExpressionAttributeValues: {
+        ':username': username,
+        ':isActive': true
+      },
+      Limit: 1
+    }))
 
-  return result.Items?.[0] as AuthUser || null
+    return result.Items?.[0] as AuthUser || null
+  } catch (error: any) {
+    // Fallback to scan if index doesn't exist
+    if (error.name === 'ValidationException' || error.name === 'ResourceNotFoundException') {
+      console.warn('Username index not found, falling back to scan.')
+      const result = await dynamoDB.send(new ScanCommand({
+        TableName: TABLES.AUTH_USERS,
+        FilterExpression: 'username = :username AND isActive = :isActive',
+        ExpressionAttributeValues: {
+          ':username': username,
+          ':isActive': true
+        },
+        Limit: 1
+      }))
+      return result.Items?.[0] as AuthUser || null
+    }
+    throw error
+  }
 }
 
 export const getUserById = async (id: string): Promise<AuthUser | null> => {
@@ -179,20 +223,44 @@ export const createSession = async (userId: string, userAgent?: string, ipAddres
 }
 
 export const getSessionByToken = async (token: string): Promise<AuthSession | null> => {
-  const result = await dynamoDB.send(new ScanCommand({
-    TableName: TABLES.AUTH_SESSIONS,
-    FilterExpression: 'token = :token',
-    ExpressionAttributeValues: {
-      ':token': token
+  try {
+    // Use token-index GSI (already exists)
+    const result = await dynamoDB.send(new QueryCommand({
+      TableName: TABLES.AUTH_SESSIONS,
+      IndexName: 'token-index',
+      KeyConditionExpression: 'token = :token',
+      ExpressionAttributeValues: {
+        ':token': token
+      },
+      Limit: 1
+    }))
+
+    const session = result.Items?.[0] as AuthSession
+    if (!session || isSessionExpired(session.expiresAt)) {
+      return null
     }
-  }))
 
-  const session = result.Items?.[0] as AuthSession
-  if (!session || isSessionExpired(session.expiresAt)) {
-    return null
+    return session
+  } catch (error: any) {
+    // Fallback to scan if index doesn't exist
+    if (error.name === 'ValidationException' || error.name === 'ResourceNotFoundException') {
+      console.warn('Token index not found, falling back to scan.')
+      const result = await dynamoDB.send(new ScanCommand({
+        TableName: TABLES.AUTH_SESSIONS,
+        FilterExpression: 'token = :token',
+        ExpressionAttributeValues: {
+          ':token': token
+        },
+        Limit: 1
+      }))
+      const session = result.Items?.[0] as AuthSession
+      if (!session || isSessionExpired(session.expiresAt)) {
+        return null
+      }
+      return session
+    }
+    throw error
   }
-
-  return session
 }
 
 export const deleteSession = async (token: string): Promise<void> => {
@@ -206,22 +274,49 @@ export const deleteSession = async (token: string): Promise<void> => {
 }
 
 export const deleteAllUserSessions = async (userId: string): Promise<void> => {
-  const result = await dynamoDB.send(new ScanCommand({
-    TableName: TABLES.AUTH_SESSIONS,
-    FilterExpression: 'userId = :userId',
-    ExpressionAttributeValues: {
-      ':userId': userId
-    }
-  }))
-
-  const deletePromises = result.Items?.map(item => 
-    dynamoDB.send(new DeleteCommand({
+  try {
+    // Use user-sessions-index GSI (already exists)
+    const result = await dynamoDB.send(new QueryCommand({
       TableName: TABLES.AUTH_SESSIONS,
-      Key: { id: item.id }
+      IndexName: 'user-sessions-index',
+      KeyConditionExpression: 'userId = :userId',
+      ExpressionAttributeValues: {
+        ':userId': userId
+      }
     }))
-  ) || []
 
-  await Promise.all(deletePromises)
+    const deletePromises = result.Items?.map(item => 
+      dynamoDB.send(new DeleteCommand({
+        TableName: TABLES.AUTH_SESSIONS,
+        Key: { id: item.id }
+      }))
+    ) || []
+
+    await Promise.all(deletePromises)
+  } catch (error: any) {
+    // Fallback to scan if index doesn't exist
+    if (error.name === 'ValidationException' || error.name === 'ResourceNotFoundException') {
+      console.warn('User-sessions index not found, falling back to scan.')
+      const result = await dynamoDB.send(new ScanCommand({
+        TableName: TABLES.AUTH_SESSIONS,
+        FilterExpression: 'userId = :userId',
+        ExpressionAttributeValues: {
+          ':userId': userId
+        }
+      }))
+
+      const deletePromises = result.Items?.map(item => 
+        dynamoDB.send(new DeleteCommand({
+          TableName: TABLES.AUTH_SESSIONS,
+          Key: { id: item.id }
+        }))
+      ) || []
+
+      await Promise.all(deletePromises)
+    } else {
+      throw error
+    }
+  }
 }
 
 // Authentication functions
