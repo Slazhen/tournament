@@ -599,9 +599,7 @@ export default function NewPublicTournament() {
                       <tr className="border-b border-white/20">
                         <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Player</th>
                         <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Club</th>
-                        <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Games</th>
                         <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Goals</th>
-                        <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Assists</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -696,12 +694,8 @@ export default function NewPublicTournament() {
                                 <span className="text-white font-medium text-xs sm:text-lg">{stats.team.name}</span>
                               </div>
                             </td>
-                            <td className="py-2 px-1 sm:px-6 text-center text-white font-semibold text-xs sm:text-base">{stats.gamesPlayed}</td>
                             <td className="py-2 px-1 sm:px-6 text-center text-white font-semibold">
                               <span className="text-yellow-400 font-bold text-xs sm:text-base">{stats.goals}</span>
-                            </td>
-                            <td className="py-2 px-1 sm:px-6 text-center text-white font-semibold">
-                              <span className="text-blue-400 font-bold text-xs sm:text-base">{stats.assists}</span>
                             </td>
                           </tr>
                         ))
