@@ -2,6 +2,7 @@ import { PutCommand, GetCommand, UpdateCommand, DeleteCommand, ScanCommand, Quer
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { dynamoDB, s3Client, S3_BUCKET_NAME, getS3Url, getS3Key, TABLES } from './aws-config'
 import type { Team, Tournament, Organizer, Match } from '../types'
+import { cache, cacheKeys } from './cache'
 
 // Helper function to upload image to S3
 export const uploadImageToS3 = async (file: File, key: string): Promise<string> => {
@@ -31,12 +32,17 @@ export const deleteImageFromS3 = async (url: string): Promise<void> => {
 // Organizer operations
 export const organizerService = {
   async getAll(): Promise<Organizer[]> {
+    const cached = cache.get<Organizer[]>(cacheKeys.organizers.all)
+    if (cached) {
+      return cached
+    }
+
     try {
       const result = await dynamoDB.send(new ScanCommand({
         TableName: TABLES.ORGANIZERS,
       }))
       
-      return result.Items?.map(item => ({
+      const organizers = result.Items?.map(item => ({
         id: item.id,
         name: item.name,
         email: item.email,
@@ -44,6 +50,9 @@ export const organizerService = {
         logo: item.logo,
         description: item.description,
       })) || []
+
+      cache.set(cacheKeys.organizers.all, organizers)
+      return organizers
     } catch (error) {
       console.error('Error fetching organizers:', error)
       return []
@@ -64,6 +73,7 @@ export const organizerService = {
         Item: organizer,
       }))
       
+      cache.clear(cacheKeys.organizers.all)
       return organizer
     } catch (error) {
       console.error('Error creating organizer:', error)
@@ -95,6 +105,7 @@ export const organizerService = {
         ExpressionAttributeValues: expressionAttributeValues,
       }))
       
+      cache.clear(cacheKeys.organizers.all)
       return true
     } catch (error) {
       console.error('Error updating organizer:', error)
@@ -109,6 +120,7 @@ export const organizerService = {
         Key: { id },
       }))
       
+      cache.clear(cacheKeys.organizers.all)
       return true
     } catch (error) {
       console.error('Error deleting organizer:', error)
@@ -120,12 +132,17 @@ export const organizerService = {
 // Team operations
 export const teamService = {
   async getAll(): Promise<Team[]> {
+    const cached = cache.get<Team[]>(cacheKeys.teams.all)
+    if (cached) {
+      return cached
+    }
+
     try {
       const result = await dynamoDB.send(new ScanCommand({
         TableName: TABLES.TEAMS,
       }))
       
-      return result.Items?.map(item => ({
+      const teams = result.Items?.map(item => ({
         id: item.id,
         name: item.name,
         colors: item.colors || [],
@@ -137,6 +154,9 @@ export const teamService = {
         players: item.players || [],
         socialMedia: item.socialMedia,
       })) || []
+
+      cache.set(cacheKeys.teams.all, teams)
+      return teams
     } catch (error) {
       console.error('Error fetching teams:', error)
       return []
@@ -144,6 +164,12 @@ export const teamService = {
   },
 
   async getByOrganizer(organizerId: string): Promise<Team[]> {
+    const cacheKey = cacheKeys.teams.byOrganizer(organizerId)
+    const cached = cache.get<Team[]>(cacheKey)
+    if (cached) {
+      return cached
+    }
+
     try {
       const result = await dynamoDB.send(new QueryCommand({
         TableName: TABLES.TEAMS,
@@ -154,7 +180,7 @@ export const teamService = {
         },
       }))
       
-      return result.Items?.map(item => ({
+      const teams = result.Items?.map(item => ({
         id: item.id,
         name: item.name,
         colors: item.colors || [],
@@ -166,6 +192,9 @@ export const teamService = {
         players: item.players || [],
         socialMedia: item.socialMedia,
       })) || []
+
+      cache.set(cacheKey, teams)
+      return teams
     } catch (error) {
       console.error('Error fetching teams by organizer:', error)
       return []
@@ -185,6 +214,7 @@ export const teamService = {
         Item: newTeam,
       }))
       
+      cache.clearPattern('^teams:')
       return newTeam
     } catch (error) {
       console.error('Error creating team:', error)
@@ -216,6 +246,7 @@ export const teamService = {
         ExpressionAttributeValues: expressionAttributeValues,
       }))
       
+      cache.clearPattern('^teams:')
       return true
     } catch (error) {
       console.error('Error updating team:', error)
@@ -230,6 +261,7 @@ export const teamService = {
         Key: { id },
       }))
       
+      cache.clearPattern('^teams:')
       return true
     } catch (error) {
       console.error('Error deleting team:', error)
@@ -241,12 +273,17 @@ export const teamService = {
 // Tournament operations
 export const tournamentService = {
   async getAll(): Promise<Tournament[]> {
+    const cached = cache.get<Tournament[]>(cacheKeys.tournaments.all)
+    if (cached) {
+      return cached
+    }
+
     try {
       const result = await dynamoDB.send(new ScanCommand({
         TableName: TABLES.TOURNAMENTS,
       }))
       
-      return result.Items?.map(item => ({
+      const tournaments = result.Items?.map(item => ({
         id: item.id,
         name: item.name,
         format: item.format,
@@ -257,6 +294,9 @@ export const tournamentService = {
         playoffBracket: item.playoffBracket,
         settings: item.settings,
       })) || []
+
+      cache.set(cacheKeys.tournaments.all, tournaments)
+      return tournaments
     } catch (error) {
       console.error('Error fetching tournaments:', error)
       return []
@@ -264,6 +304,12 @@ export const tournamentService = {
   },
 
   async getByOrganizer(organizerId: string): Promise<Tournament[]> {
+    const cacheKey = cacheKeys.tournaments.byOrganizer(organizerId)
+    const cached = cache.get<Tournament[]>(cacheKey)
+    if (cached) {
+      return cached
+    }
+
     try {
       const result = await dynamoDB.send(new QueryCommand({
         TableName: TABLES.TOURNAMENTS,
@@ -274,7 +320,7 @@ export const tournamentService = {
         },
       }))
       
-      return result.Items?.map(item => ({
+      const tournaments = result.Items?.map(item => ({
         id: item.id,
         name: item.name,
         format: item.format,
@@ -285,6 +331,9 @@ export const tournamentService = {
         playoffBracket: item.playoffBracket,
         settings: item.settings,
       })) || []
+
+      cache.set(cacheKey, tournaments)
+      return tournaments
     } catch (error) {
       console.error('Error fetching tournaments by organizer:', error)
       return []
@@ -311,6 +360,7 @@ export const tournamentService = {
         Item: newTournament,
       }))
       
+      cache.clearPattern('^tournaments:')
       console.log('AWS: Tournament created successfully in DynamoDB:', newTournament.id)
       return newTournament
     } catch (error) {
@@ -343,6 +393,7 @@ export const tournamentService = {
         ExpressionAttributeValues: expressionAttributeValues,
       }))
       
+      cache.clearPattern('^tournaments:')
       return true
     } catch (error) {
       console.error('Error updating tournament:', error)
@@ -357,6 +408,7 @@ export const tournamentService = {
         Key: { id },
       }))
       
+      cache.clearPattern('^tournaments:')
       return true
     } catch (error) {
       console.error('Error deleting tournament:', error)
@@ -398,6 +450,7 @@ export const matchService = {
         },
       }))
       
+      cache.clearPattern('^tournaments:')
       return true
     } catch (error) {
       console.error('Error updating match in tournament:', error)
