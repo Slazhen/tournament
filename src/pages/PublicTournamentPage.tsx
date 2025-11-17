@@ -186,22 +186,26 @@ export default function PublicTournamentPage() {
 
   // Separate playoff matches
   const playoffMatches = useMemo(() => {
+    console.log('🔍 PublicTournamentPage: playoffMatches useMemo called')
+    
     if (!tournament) {
-      console.log('PublicTournamentPage: No tournament found')
+      console.log('❌ PublicTournamentPage: No tournament found')
       return []
     }
     
-    console.log('PublicTournamentPage: Tournament found:', {
+    console.log('✅ PublicTournamentPage: Tournament found:', {
       id: tournament.id,
       format: tournament.format,
+      formatMode: tournament.format?.mode,
       customPlayoffConfig: tournament.format?.customPlayoffConfig,
-      playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds
+      playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds,
+      playoffRoundsLength: tournament.format?.customPlayoffConfig?.playoffRounds?.length
     })
     
-    console.log('PublicTournamentPage: Full tournament object:', tournament)
-    console.log('PublicTournamentPage: Tournament format mode:', tournament.format?.mode)
-    console.log('PublicTournamentPage: Has custom playoff config:', !!tournament.format?.customPlayoffConfig)
-    console.log('PublicTournamentPage: Custom playoff rounds:', tournament.format?.customPlayoffConfig?.playoffRounds)
+    console.log('📊 PublicTournamentPage: Full tournament object:', tournament)
+    console.log('🎯 PublicTournamentPage: Tournament format mode:', tournament.format?.mode)
+    console.log('⚙️ PublicTournamentPage: Has custom playoff config:', !!tournament.format?.customPlayoffConfig)
+    console.log('📋 PublicTournamentPage: Custom playoff rounds:', tournament.format?.customPlayoffConfig?.playoffRounds)
     
     try {
       let matches = []
@@ -213,8 +217,16 @@ export default function PublicTournamentPage() {
       }
       
       // For custom playoff format, also include matches from custom playoff configuration
+      console.log('🔍 PublicTournamentPage: Checking custom playoff condition:', {
+        mode: tournament.format?.mode,
+        isLeagueCustomPlayoff: tournament.format?.mode === 'league_custom_playoff',
+        hasCustomPlayoffConfig: !!tournament.format?.customPlayoffConfig,
+        hasPlayoffRounds: !!tournament.format?.customPlayoffConfig?.playoffRounds,
+        playoffRoundsLength: tournament.format?.customPlayoffConfig?.playoffRounds?.length
+      })
+      
       if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
-        console.log('PublicTournamentPage: Processing custom playoff rounds:', tournament.format.customPlayoffConfig.playoffRounds.length)
+        console.log('✅ PublicTournamentPage: Processing custom playoff rounds:', tournament.format.customPlayoffConfig.playoffRounds.length)
         const customPlayoffMatches: any[] = []
         tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any, roundIndex: number) => {
           console.log(`PublicTournamentPage: Processing round ${roundIndex}:`, round)
@@ -262,12 +274,15 @@ export default function PublicTournamentPage() {
             })
           }
         })
-        console.log('PublicTournamentPage: Custom playoff matches created:', customPlayoffMatches.length)
-        console.log('PublicTournamentPage: Sample match with scores:', customPlayoffMatches.find(m => m.homeGoals != null || m.awayGoals != null))
+        console.log('✅ PublicTournamentPage: Custom playoff matches created:', customPlayoffMatches.length)
+        console.log('📊 PublicTournamentPage: Sample match with scores:', customPlayoffMatches.find(m => m.homeGoals != null || m.awayGoals != null))
         matches = [...matches, ...customPlayoffMatches]
+      } else {
+        console.log('❌ PublicTournamentPage: Custom playoff condition NOT met - matches not processed')
       }
       
-      console.log('PublicTournamentPage: Total playoff matches:', matches.length)
+      console.log('📈 PublicTournamentPage: Total playoff matches:', matches.length)
+      console.log('🎯 PublicTournamentPage: Returning playoff matches:', matches)
       return matches
     } catch (error) {
       console.error('Error calculating playoff matches:', error)
