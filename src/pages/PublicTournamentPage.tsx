@@ -46,12 +46,12 @@ export default function PublicTournamentPage() {
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
-    // Also set up periodic refresh every 30 seconds to catch updates
+    // Also set up periodic refresh every 10 seconds to catch updates quickly
     const refreshInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         loadData()
       }
-    }, 30000)
+    }, 10000)
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
@@ -220,8 +220,14 @@ export default function PublicTournamentPage() {
           console.log(`PublicTournamentPage: Processing round ${roundIndex}:`, round)
           if (round.matches && Array.isArray(round.matches)) {
             round.matches.forEach((match: any) => {
+              console.log(`PublicTournamentPage: Match ${match.id} - homeGoals: ${match.homeGoals} (type: ${typeof match.homeGoals}), awayGoals: ${match.awayGoals} (type: ${typeof match.awayGoals})`, match)
+              // Ensure scores are numbers if they exist
+              const homeGoals = match.homeGoals != null ? Number(match.homeGoals) : undefined
+              const awayGoals = match.awayGoals != null ? Number(match.awayGoals) : undefined
               customPlayoffMatches.push({
                 ...match,
+                homeGoals: isNaN(homeGoals as number) ? undefined : homeGoals,
+                awayGoals: isNaN(awayGoals as number) ? undefined : awayGoals,
                 playoffRound: roundIndex,
                 isPlayoff: true,
                 roundName: round.name,
