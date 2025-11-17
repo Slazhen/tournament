@@ -936,7 +936,14 @@ export default function NewPublicTournament() {
                               {/* Score/VS */}
                               <div className="text-center px-2 sm:px-6">
                                 <div className="text-sm sm:text-xl font-semibold text-gray-300">vs</div>
-                                <div className="text-xs text-blue-400 font-medium">TBD</div>
+                                {((match.homeGoals !== undefined && match.homeGoals !== null) && 
+                                  (match.awayGoals !== undefined && match.awayGoals !== null)) ? (
+                                  <div className="text-lg sm:text-2xl font-bold text-white">
+                                    {match.homeGoals} : {match.awayGoals}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-blue-400 font-medium">TBD</div>
+                                )}
                                 
                                 {/* Match Date & Time */}
                                 {match.dateISO && (
