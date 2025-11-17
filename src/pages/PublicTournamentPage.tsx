@@ -35,6 +35,28 @@ export default function PublicTournamentPage() {
       }
     }
     loadData()
+    
+    // Refresh data when page becomes visible (user switches back to tab)
+    // This ensures scores are updated after admin changes
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData()
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // Also set up periodic refresh every 30 seconds to catch updates
+    const refreshInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData()
+      }
+    }, 30000)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearInterval(refreshInterval)
+    }
   }, [loadTournaments, loadTeams])
 
   if (isLoading || !dataLoaded) {
@@ -552,7 +574,7 @@ export default function PublicTournamentPage() {
                               )}
                             </div>
                             <div className="text-center">
-                              {match.homeGoals != null && match.awayGoals != null ? (
+                              {(typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number') ? (
                                 <Link 
                                   to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
                                   className="text-lg font-semibold hover:opacity-80 transition-opacity"
@@ -652,7 +674,7 @@ export default function PublicTournamentPage() {
                     </Link>
                   </div>
                   <div className="text-center">
-                    {m.homeGoals != null && m.awayGoals != null ? (
+                    {(typeof m.homeGoals === 'number' && typeof m.awayGoals === 'number') ? (
                       <Link 
                         to={`/public/tournaments/${tournament.id}/matches/${m.id}`}
                         className="text-lg font-semibold hover:opacity-80 transition-opacity"
@@ -710,7 +732,7 @@ export default function PublicTournamentPage() {
                   </Link>
                 </div>
                 <div className="text-center">
-                  {m.homeGoals != null && m.awayGoals != null ? (
+                  {(typeof m.homeGoals === 'number' && typeof m.awayGoals === 'number') ? (
                     <span className="text-lg font-semibold">
                       {m.homeGoals} : {m.awayGoals}
                     </span>
