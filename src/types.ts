@@ -154,6 +154,8 @@ export type CustomPlayoffMatchConfig = {
   id: string
   homeTeamId?: string
   awayTeamId?: string
+  homeGoals?: number
+  awayGoals?: number
   dateISO?: string
   time?: string
   isElimination: boolean // Mark individual matches as elimination

@@ -983,7 +983,7 @@ export default function TournamentPage() {
                         <div className="grid gap-3">
                           {roundWithQuantity.matches.map((match, matchIndex) => (
                             <div key={match.id} className="p-4 bg-white/5 rounded-lg border border-white/10">
-                              <div className="grid md:grid-cols-8 gap-4 items-center">
+                              <div className="grid md:grid-cols-9 gap-4 items-center">
                                 <div className="md:col-span-2">
                                   <label className="block text-sm font-medium mb-1">Home Team</label>
                                   <select
@@ -1043,6 +1043,62 @@ export default function TournamentPage() {
                                       <option key={team.id} value={team.id}>{team.name}</option>
                                     ))}
                                   </select>
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium mb-1">Score</label>
+                                  <div className="flex gap-1 items-center">
+                                    <input 
+                                      inputMode="numeric" 
+                                      pattern="[0-9]*" 
+                                      className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
+                                      value={match.homeGoals ?? ''} 
+                                      onChange={(e) => {
+                                        const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
+                                        const updatedMatches = [...(roundWithQuantity.matches || [])]
+                                        const homeGoals = e.target.value === '' ? undefined : Number(e.target.value)
+                                        updatedMatches[matchIndex] = { ...match, homeGoals: isNaN(homeGoals as number) ? undefined : homeGoals }
+                                        updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
+                                        updateTournament(tournament.id, {
+                                          format: {
+                                            rounds: tournament.format?.rounds || 1,
+                                            mode: tournament.format?.mode || 'league',
+                                            playoffQualifiers: tournament.format?.playoffQualifiers,
+                                            customPlayoffConfig: {
+                                              playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
+                                              enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                              playoffRounds: updatedRounds
+                                            }
+                                          }
+                                        })
+                                      }}
+                                    />
+                                    <span className="text-sm">:</span>
+                                    <input 
+                                      inputMode="numeric" 
+                                      pattern="[0-9]*" 
+                                      className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
+                                      value={match.awayGoals ?? ''} 
+                                      onChange={(e) => {
+                                        const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
+                                        const updatedMatches = [...(roundWithQuantity.matches || [])]
+                                        const awayGoals = e.target.value === '' ? undefined : Number(e.target.value)
+                                        updatedMatches[matchIndex] = { ...match, awayGoals: isNaN(awayGoals as number) ? undefined : awayGoals }
+                                        updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
+                                        updateTournament(tournament.id, {
+                                          format: {
+                                            rounds: tournament.format?.rounds || 1,
+                                            mode: tournament.format?.mode || 'league',
+                                            playoffQualifiers: tournament.format?.playoffQualifiers,
+                                            customPlayoffConfig: {
+                                              playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
+                                              enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                              playoffRounds: updatedRounds
+                                            }
+                                          }
+                                        })
+                                      }}
+                                    />
+                                  </div>
                                 </div>
                                 <div>
                                   <label className="block text-sm font-medium mb-1">Date</label>
