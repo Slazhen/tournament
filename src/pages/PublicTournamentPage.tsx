@@ -225,25 +225,40 @@ export default function PublicTournamentPage() {
               let homeGoals: number | undefined = undefined
               let awayGoals: number | undefined = undefined
               
+              // Convert scores to numbers, handling all possible formats
               if (match.homeGoals != null && match.homeGoals !== '') {
                 const converted = Number(match.homeGoals)
-                homeGoals = isNaN(converted) ? undefined : converted
+                if (!isNaN(converted)) {
+                  homeGoals = converted
+                }
               }
               
               if (match.awayGoals != null && match.awayGoals !== '') {
                 const converted = Number(match.awayGoals)
-                awayGoals = isNaN(converted) ? undefined : converted
+                if (!isNaN(converted)) {
+                  awayGoals = converted
+                }
               }
               
-              customPlayoffMatches.push({
+              // Create match object with scores explicitly set (even if undefined)
+              const processedMatch = {
                 ...match,
-                homeGoals,
-                awayGoals,
+                homeGoals: homeGoals !== undefined ? homeGoals : match.homeGoals, // Fallback to original if conversion failed
+                awayGoals: awayGoals !== undefined ? awayGoals : match.awayGoals, // Fallback to original if conversion failed
                 playoffRound: roundIndex,
                 isPlayoff: true,
                 roundName: round.name,
                 roundDescription: round.description
+              }
+              
+              console.log(`PublicTournamentPage: Processed match ${processedMatch.id}:`, {
+                originalHomeGoals: match.homeGoals,
+                originalAwayGoals: match.awayGoals,
+                processedHomeGoals: processedMatch.homeGoals,
+                processedAwayGoals: processedMatch.awayGoals
               })
+              
+              customPlayoffMatches.push(processedMatch)
             })
           }
         })
@@ -516,6 +531,17 @@ export default function PublicTournamentPage() {
                         const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
                         const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
                         
+                        // Debug: Log match scores for this specific match
+                        console.log(`PublicTournamentPage: Displaying match ${match.id}:`, {
+                          homeGoals: match.homeGoals,
+                          awayGoals: match.awayGoals,
+                          homeGoalsType: typeof match.homeGoals,
+                          awayGoalsType: typeof match.awayGoals,
+                          hasHomeGoals: match.homeGoals !== undefined && match.homeGoals !== null,
+                          hasAwayGoals: match.awayGoals !== undefined && match.awayGoals !== null,
+                          fullMatch: match
+                        })
+                        
                         return (
                           <div key={match.id} className={`relative grid md:grid-cols-4 gap-2 items-center p-3 glass rounded-lg ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
                             {match.isElimination && (
@@ -592,22 +618,31 @@ export default function PublicTournamentPage() {
                               )}
                             </div>
                             <div className="text-center">
-                              {((match.homeGoals !== undefined && match.homeGoals !== null) && 
-                                (match.awayGoals !== undefined && match.awayGoals !== null)) ? (
-                                <Link 
-                                  to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
-                                  className="text-lg font-semibold hover:opacity-80 transition-opacity"
-                                >
-                                  {match.homeGoals} : {match.awayGoals}
-                                </Link>
-                              ) : (
-                                <Link 
-                                  to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
-                                  className="text-sm opacity-70 hover:opacity-100 transition-opacity"
-                                >
-                                  TBD
-                                </Link>
-                              )}
+                              {(() => {
+                                // More robust check: allow 0 as a valid score
+                                const hasHomeGoals = match.homeGoals !== undefined && match.homeGoals !== null && match.homeGoals !== ''
+                                const hasAwayGoals = match.awayGoals !== undefined && match.awayGoals !== null && match.awayGoals !== ''
+                                
+                                if (hasHomeGoals && hasAwayGoals) {
+                                  return (
+                                    <Link 
+                                      to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
+                                      className="text-lg font-semibold hover:opacity-80 transition-opacity"
+                                    >
+                                      {match.homeGoals} : {match.awayGoals}
+                                    </Link>
+                                  )
+                                } else {
+                                  return (
+                                    <Link 
+                                      to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
+                                      className="text-sm opacity-70 hover:opacity-100 transition-opacity"
+                                    >
+                                      TBD
+                                    </Link>
+                                  )
+                                }
+                              })()}
                             </div>
                             <div className="text-center">
                               {match.dateISO ? (
