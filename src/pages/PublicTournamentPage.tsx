@@ -90,7 +90,10 @@ export default function PublicTournamentPage() {
         name: t.name, 
         organizerId: t.organizerId,
         teamIds: t.teamIds?.length || 0,
-        matches: t.matches?.length || 0
+        matches: t.matches?.length || 0,
+        formatMode: t.format?.mode,
+        hasCustomPlayoff: !!t.format?.customPlayoffConfig,
+        playoffRoundsCount: t.format?.customPlayoffConfig?.playoffRounds?.length || 0
       } : null).filter(Boolean),
       teams: teams.map(t => t ? { id: t.id, name: t.name, organizerId: t.organizerId } : null).filter(Boolean),
       rawTournaments: tournaments,
@@ -104,6 +107,20 @@ export default function PublicTournamentPage() {
     
     // Find the specific tournament by ID
     tournament = tournaments.find(t => t && t.id === actualTournamentId)
+    
+    // Log the found tournament's format details
+    if (tournament) {
+      console.log('🎯 PublicTournamentPage: Found tournament format details:', {
+        id: tournament.id,
+        name: tournament.name,
+        formatMode: tournament.format?.mode,
+        hasFormat: !!tournament.format,
+        hasCustomPlayoffConfig: !!tournament.format?.customPlayoffConfig,
+        playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds,
+        playoffRoundsLength: tournament.format?.customPlayoffConfig?.playoffRounds?.length,
+        fullFormat: tournament.format
+      })
+    }
   } catch (error) {
     console.error('Error accessing data in PublicTournamentPage:', error)
     return (
