@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAppStore } from '../store'
 import { useNavigate, Link } from 'react-router-dom'
-import { dynamoDB, TABLES } from '../lib/aws-config'
-import { ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { organizerService, tournamentService } from '../lib/aws-database'
 
 interface Organizer {
   id: string
@@ -50,17 +49,15 @@ export default function HomePage() {
       try {
         setLoading(true)
         
-        // Load organizers
-        const organizersResult = await dynamoDB.send(new ScanCommand({
-          TableName: TABLES.ORGANIZERS
-        }))
-        setAllOrganizers(organizersResult.Items as Organizer[] || [])
+        // Use cached service methods instead of direct Scan operations
+        // This significantly reduces DynamoDB costs by leveraging cache
+        const [organizers, tournaments] = await Promise.all([
+          organizerService.getAll(),
+          tournamentService.getAll()
+        ])
         
-        // Load tournaments
-        const tournamentsResult = await dynamoDB.send(new ScanCommand({
-          TableName: TABLES.TOURNAMENTS
-        }))
-        setAllTournaments(tournamentsResult.Items as Tournament[] || [])
+        setAllOrganizers(organizers as Organizer[])
+        setAllTournaments(tournaments as Tournament[])
         
         // Also load local organizers
         loadOrganizers()

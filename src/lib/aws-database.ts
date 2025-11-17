@@ -214,7 +214,9 @@ export const teamService = {
         Item: newTeam,
       }))
       
-      cache.clearPattern('^teams:')
+      // Targeted cache invalidation
+      cache.clear(cacheKeys.teams.all)
+      cache.clear(cacheKeys.teams.byOrganizer(newTeam.organizerId))
       return newTeam
     } catch (error) {
       console.error('Error creating team:', error)
@@ -224,6 +226,16 @@ export const teamService = {
 
   async update(id: string, updates: Partial<Team>): Promise<boolean> {
     try {
+      // Get team to find organizerId for targeted cache clearing
+      const teamResult = await dynamoDB.send(new GetCommand({
+        TableName: TABLES.TEAMS,
+        Key: { id },
+      }))
+      
+      const organizerId = teamResult.Item?.organizerId
+      const oldOrganizerId = organizerId
+      const newOrganizerId = updates.organizerId
+      
       const updateExpression: string[] = []
       const expressionAttributeNames: Record<string, string> = {}
       const expressionAttributeValues: Record<string, any> = {}
@@ -246,7 +258,15 @@ export const teamService = {
         ExpressionAttributeValues: expressionAttributeValues,
       }))
       
-      cache.clearPattern('^teams:')
+      // Targeted cache invalidation
+      cache.clear(cacheKeys.teams.byId(id))
+      cache.clear(cacheKeys.teams.all)
+      if (oldOrganizerId) {
+        cache.clear(cacheKeys.teams.byOrganizer(oldOrganizerId))
+      }
+      if (newOrganizerId && newOrganizerId !== oldOrganizerId) {
+        cache.clear(cacheKeys.teams.byOrganizer(newOrganizerId))
+      }
       return true
     } catch (error) {
       console.error('Error updating team:', error)
@@ -256,12 +276,25 @@ export const teamService = {
 
   async delete(id: string): Promise<boolean> {
     try {
+      // Get team to find organizerId for targeted cache clearing
+      const teamResult = await dynamoDB.send(new GetCommand({
+        TableName: TABLES.TEAMS,
+        Key: { id },
+      }))
+      
+      const organizerId = teamResult.Item?.organizerId
+      
       await dynamoDB.send(new DeleteCommand({
         TableName: TABLES.TEAMS,
         Key: { id },
       }))
       
-      cache.clearPattern('^teams:')
+      // Targeted cache invalidation
+      cache.clear(cacheKeys.teams.byId(id))
+      cache.clear(cacheKeys.teams.all)
+      if (organizerId) {
+        cache.clear(cacheKeys.teams.byOrganizer(organizerId))
+      }
       return true
     } catch (error) {
       console.error('Error deleting team:', error)
@@ -360,7 +393,9 @@ export const tournamentService = {
         Item: newTournament,
       }))
       
-      cache.clearPattern('^tournaments:')
+      // Targeted cache invalidation - only clear relevant caches
+      cache.clear(cacheKeys.tournaments.all)
+      cache.clear(cacheKeys.tournaments.byOrganizer(newTournament.organizerId))
       console.log('AWS: Tournament created successfully in DynamoDB:', newTournament.id)
       return newTournament
     } catch (error) {
@@ -371,6 +406,14 @@ export const tournamentService = {
 
   async update(id: string, updates: Partial<Tournament>): Promise<boolean> {
     try {
+      // Get tournament to find organizerId for targeted cache clearing
+      const tournamentResult = await dynamoDB.send(new GetCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id },
+      }))
+      
+      const organizerId = tournamentResult.Item?.organizerId
+      
       const updateExpression: string[] = []
       const expressionAttributeNames: Record<string, string> = {}
       const expressionAttributeValues: Record<string, any> = {}
@@ -393,7 +436,12 @@ export const tournamentService = {
         ExpressionAttributeValues: expressionAttributeValues,
       }))
       
-      cache.clearPattern('^tournaments:')
+      // Targeted cache invalidation
+      cache.clear(cacheKeys.tournaments.byId(id))
+      cache.clear(cacheKeys.tournaments.all)
+      if (organizerId) {
+        cache.clear(cacheKeys.tournaments.byOrganizer(organizerId))
+      }
       return true
     } catch (error) {
       console.error('Error updating tournament:', error)
@@ -403,12 +451,25 @@ export const tournamentService = {
 
   async delete(id: string): Promise<boolean> {
     try {
+      // Get tournament to find organizerId for targeted cache clearing
+      const tournamentResult = await dynamoDB.send(new GetCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id },
+      }))
+      
+      const organizerId = tournamentResult.Item?.organizerId
+      
       await dynamoDB.send(new DeleteCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id },
       }))
       
-      cache.clearPattern('^tournaments:')
+      // Targeted cache invalidation
+      cache.clear(cacheKeys.tournaments.byId(id))
+      cache.clear(cacheKeys.tournaments.all)
+      if (organizerId) {
+        cache.clear(cacheKeys.tournaments.byOrganizer(organizerId))
+      }
       return true
     } catch (error) {
       console.error('Error deleting tournament:', error)
@@ -450,7 +511,10 @@ export const matchService = {
         },
       }))
       
-      cache.clearPattern('^tournaments:')
+      // Targeted cache invalidation - only clear relevant caches
+      cache.clear(cacheKeys.tournaments.byId(tournamentId))
+      cache.clear(cacheKeys.tournaments.all)
+      cache.clear(cacheKeys.tournaments.byOrganizer(tournament.organizerId))
       return true
     } catch (error) {
       console.error('Error updating match in tournament:', error)
