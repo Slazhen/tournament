@@ -244,10 +244,19 @@ export default function PublicTournamentPage() {
       
       if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
         console.log('✅ PublicTournamentPage: Processing custom playoff rounds:', tournament.format.customPlayoffConfig.playoffRounds.length)
+        console.log('📋 PublicTournamentPage: Full playoffRounds array:', tournament.format.customPlayoffConfig.playoffRounds)
         const customPlayoffMatches: any[] = []
         tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any, roundIndex: number) => {
-          console.log(`PublicTournamentPage: Processing round ${roundIndex}:`, round)
+          console.log(`🔍 PublicTournamentPage: Processing round ${roundIndex}:`, {
+            roundName: round.name,
+            roundDescription: round.description,
+            matches: round.matches,
+            matchesLength: round.matches?.length,
+            matchesIsArray: Array.isArray(round.matches),
+            fullRound: round
+          })
           if (round.matches && Array.isArray(round.matches)) {
+            console.log(`✅ PublicTournamentPage: Round ${roundIndex} has ${round.matches.length} matches`)
             round.matches.forEach((match: any) => {
               console.log(`PublicTournamentPage: Match ${match.id} - homeGoals: ${match.homeGoals} (type: ${typeof match.homeGoals}), awayGoals: ${match.awayGoals} (type: ${typeof match.awayGoals})`, match)
               // Ensure scores are numbers if they exist - convert strings to numbers
@@ -514,14 +523,15 @@ export default function PublicTournamentPage() {
                 const customPlayoffCheck = tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0
                 const shouldShowPlayoff = modeCheck && (playoffMatchesCheck || customPlayoffCheck)
                 
-                console.log('PublicTournamentPage: Playoff bracket visibility check:', {
+                console.log('🎯 PublicTournamentPage: Playoff bracket visibility check:', {
                   mode: tournament.format?.mode,
                   modeCheck,
                   playoffMatchesLength: playoffMatches.length,
                   playoffMatchesCheck,
                   customPlayoffRoundsLength: tournament.format?.customPlayoffConfig?.playoffRounds?.length,
                   customPlayoffCheck,
-                  shouldShowPlayoff
+                  shouldShowPlayoff,
+                  playoffMatches: playoffMatches
                 })
                 
                 return shouldShowPlayoff
