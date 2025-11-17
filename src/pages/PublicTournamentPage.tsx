@@ -221,13 +221,24 @@ export default function PublicTournamentPage() {
           if (round.matches && Array.isArray(round.matches)) {
             round.matches.forEach((match: any) => {
               console.log(`PublicTournamentPage: Match ${match.id} - homeGoals: ${match.homeGoals} (type: ${typeof match.homeGoals}), awayGoals: ${match.awayGoals} (type: ${typeof match.awayGoals})`, match)
-              // Ensure scores are numbers if they exist
-              const homeGoals = match.homeGoals != null ? Number(match.homeGoals) : undefined
-              const awayGoals = match.awayGoals != null ? Number(match.awayGoals) : undefined
+              // Ensure scores are numbers if they exist - convert strings to numbers
+              let homeGoals: number | undefined = undefined
+              let awayGoals: number | undefined = undefined
+              
+              if (match.homeGoals != null && match.homeGoals !== '') {
+                const converted = Number(match.homeGoals)
+                homeGoals = isNaN(converted) ? undefined : converted
+              }
+              
+              if (match.awayGoals != null && match.awayGoals !== '') {
+                const converted = Number(match.awayGoals)
+                awayGoals = isNaN(converted) ? undefined : converted
+              }
+              
               customPlayoffMatches.push({
                 ...match,
-                homeGoals: isNaN(homeGoals as number) ? undefined : homeGoals,
-                awayGoals: isNaN(awayGoals as number) ? undefined : awayGoals,
+                homeGoals,
+                awayGoals,
                 playoffRound: roundIndex,
                 isPlayoff: true,
                 roundName: round.name,
@@ -237,6 +248,7 @@ export default function PublicTournamentPage() {
           }
         })
         console.log('PublicTournamentPage: Custom playoff matches created:', customPlayoffMatches.length)
+        console.log('PublicTournamentPage: Sample match with scores:', customPlayoffMatches.find(m => m.homeGoals != null || m.awayGoals != null))
         matches = [...matches, ...customPlayoffMatches]
       }
       
@@ -580,7 +592,8 @@ export default function PublicTournamentPage() {
                               )}
                             </div>
                             <div className="text-center">
-                              {(typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number') ? (
+                              {((match.homeGoals !== undefined && match.homeGoals !== null) && 
+                                (match.awayGoals !== undefined && match.awayGoals !== null)) ? (
                                 <Link 
                                   to={`/public/tournaments/${tournament.id}/matches/${match.id}`}
                                   className="text-lg font-semibold hover:opacity-80 transition-opacity"
@@ -680,7 +693,8 @@ export default function PublicTournamentPage() {
                     </Link>
                   </div>
                   <div className="text-center">
-                    {(typeof m.homeGoals === 'number' && typeof m.awayGoals === 'number') ? (
+                    {((m.homeGoals !== undefined && m.homeGoals !== null) && 
+                      (m.awayGoals !== undefined && m.awayGoals !== null)) ? (
                       <Link 
                         to={`/public/tournaments/${tournament.id}/matches/${m.id}`}
                         className="text-lg font-semibold hover:opacity-80 transition-opacity"
@@ -738,7 +752,8 @@ export default function PublicTournamentPage() {
                   </Link>
                 </div>
                 <div className="text-center">
-                  {(typeof m.homeGoals === 'number' && typeof m.awayGoals === 'number') ? (
+                  {((m.homeGoals !== undefined && m.homeGoals !== null) && 
+                    (m.awayGoals !== undefined && m.awayGoals !== null)) ? (
                     <span className="text-lg font-semibold">
                       {m.homeGoals} : {m.awayGoals}
                     </span>
