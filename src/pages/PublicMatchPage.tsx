@@ -1,29 +1,87 @@
 import { useParams, Link } from 'react-router-dom'
-import { useAppStore } from '../store'
 import { useEffect, useState } from 'react'
+import { dynamoDB, TABLES } from '../lib/aws-config'
+import { GetCommand } from '@aws-sdk/lib-dynamodb'
+import type { Tournament, Team, Match } from '../types'
 
 export default function PublicMatchPage() {
   const { tournamentId, matchId } = useParams()
-  const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
+  const [tournament, setTournament] = useState<Tournament | null>(null)
+  const [homeTeam, setHomeTeam] = useState<Team | null>(null)
+  const [awayTeam, setAwayTeam] = useState<Team | null>(null)
+  const [match, setMatch] = useState<Match | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [dataLoaded, setDataLoaded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Load data from AWS when component mounts
+  // Load data directly from DynamoDB (no authentication required for public pages)
   useEffect(() => {
     const loadData = async () => {
+      if (!tournamentId || !matchId) {
+        setError('Missing tournament or match ID')
+        setIsLoading(false)
+        return
+      }
+
       try {
-        await Promise.all([loadTournaments(), loadTeams()])
-        setDataLoaded(true)
-      } catch (error) {
-        console.error('Error loading data for public match page:', error)
+        setIsLoading(true)
+        setError(null)
+
+        // Load tournament
+        const tournamentResponse = await dynamoDB.send(new GetCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id: tournamentId }
+        }))
+
+        if (!tournamentResponse.Item) {
+          setError('Tournament not found')
+          setIsLoading(false)
+          return
+        }
+
+        const tournamentData = tournamentResponse.Item as Tournament
+        setTournament(tournamentData)
+
+        // Find the match
+        const matchData = tournamentData.matches?.find(m => m.id === matchId)
+        if (!matchData) {
+          setError('Match not found')
+          setIsLoading(false)
+          return
+        }
+        setMatch(matchData)
+
+        // Load teams
+        if (matchData.homeTeamId && matchData.awayTeamId) {
+          const [homeTeamResponse, awayTeamResponse] = await Promise.all([
+            dynamoDB.send(new GetCommand({
+              TableName: TABLES.TEAMS,
+              Key: { id: matchData.homeTeamId }
+            })),
+            dynamoDB.send(new GetCommand({
+              TableName: TABLES.TEAMS,
+              Key: { id: matchData.awayTeamId }
+            }))
+          ])
+
+          if (homeTeamResponse.Item) {
+            setHomeTeam(homeTeamResponse.Item as Team)
+          }
+          if (awayTeamResponse.Item) {
+            setAwayTeam(awayTeamResponse.Item as Team)
+          }
+        }
+      } catch (err) {
+        console.error('Error loading match data:', err)
+        setError('Failed to load match data')
       } finally {
         setIsLoading(false)
       }
     }
-    loadData()
-  }, [loadTournaments, loadTeams])
 
-  if (isLoading || !dataLoaded) {
+    loadData()
+  }, [tournamentId, matchId])
+
+  if (isLoading) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -34,15 +92,21 @@ export default function PublicMatchPage() {
     )
   }
 
-  // Only access data after it's loaded
-  const tournaments = getAllTournaments() || []
-  const teams = getAllTeams() || []
-
-  const tournament = tournaments.find(t => t.id === tournamentId)
-  const match = tournament?.matches.find(m => m.id === matchId)
-  
-  const homeTeam = teams.find(t => t.id === match?.homeTeamId)
-  const awayTeam = teams.find(t => t.id === match?.awayTeamId)
+  if (error || !tournament || !match || !homeTeam || !awayTeam) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <h1 className="text-xl font-semibold mb-4">Match Not Found</h1>
+          <p className="opacity-80 mb-6">
+            {error || 'The match you\'re looking for doesn\'t exist or is not publicly visible.'}
+          </p>
+          <Link to="/" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all">
+            Go to Home
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (!tournament || !match || !homeTeam || !awayTeam) {
     return (

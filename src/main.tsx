@@ -20,6 +20,7 @@ import MatchPage from './pages/MatchPage.tsx'
 import NewPublicTournament from './pages/NewPublicTournament.tsx'
 import NewPublicTeam from './pages/NewPublicTeam.tsx'
 import NewPublicPlayer from './pages/NewPublicPlayer.tsx'
+import PublicMatchPage from './pages/PublicMatchPage.tsx'
 import NotFound from './components/NotFound.tsx'
 
 const router = createBrowserRouter([
@@ -123,6 +124,10 @@ const router = createBrowserRouter([
   {
     path: '/public',
     children: [
+      { 
+        path: 'tournaments/:tournamentId/matches/:matchId', 
+        element: <PublicMatchPage />
+      },
       { 
         path: 'tournaments/:id', 
         element: <NewPublicTournament />
