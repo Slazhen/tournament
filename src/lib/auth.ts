@@ -1,4 +1,4 @@
-import { dynamoDB, TABLES } from './aws-config'
+import { readOnlyDynamoDB, writeDynamoDB, TABLES } from './aws-config'
 import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
 // Browser-compatible crypto utilities
 
@@ -98,7 +98,7 @@ export const createUser = async (userData: Omit<AuthUser, 'id' | 'passwordHash' 
     isActive: true
   }
 
-  await dynamoDB.send(new PutCommand({
+  await writeDynamoDB.send(new PutCommand({
     TableName: TABLES.AUTH_USERS,
     Item: user
   }))
@@ -109,7 +109,7 @@ export const createUser = async (userData: Omit<AuthUser, 'id' | 'passwordHash' 
 export const getUserByEmail = async (email: string): Promise<AuthUser | null> => {
   try {
     // Try using email-index GSI first (most efficient)
-    const result = await dynamoDB.send(new QueryCommand({
+    const result = await writeDynamoDB.send(new QueryCommand({
       TableName: TABLES.AUTH_USERS,
       IndexName: 'email-index',
       KeyConditionExpression: 'email = :email',
@@ -126,7 +126,7 @@ export const getUserByEmail = async (email: string): Promise<AuthUser | null> =>
     // Fallback to scan if index doesn't exist yet (backward compatibility)
     if (error.name === 'ValidationException' || error.name === 'ResourceNotFoundException') {
       console.warn('Email index not found, falling back to scan. Run scripts/add-email-index.js to optimize.')
-      const result = await dynamoDB.send(new ScanCommand({
+      const result = await writeDynamoDB.send(new ScanCommand({
         TableName: TABLES.AUTH_USERS,
         FilterExpression: 'email = :email AND isActive = :isActive',
         ExpressionAttributeValues: {
@@ -145,7 +145,7 @@ export const getUserByEmail = async (email: string): Promise<AuthUser | null> =>
 export const getUserByUsername = async (username: string): Promise<AuthUser | null> => {
   try {
     // Use username-index GSI (already exists)
-    const result = await dynamoDB.send(new QueryCommand({
+    const result = await writeDynamoDB.send(new QueryCommand({
       TableName: TABLES.AUTH_USERS,
       IndexName: 'username-index',
       KeyConditionExpression: 'username = :username',
@@ -162,7 +162,7 @@ export const getUserByUsername = async (username: string): Promise<AuthUser | nu
     // Fallback to scan if index doesn't exist
     if (error.name === 'ValidationException' || error.name === 'ResourceNotFoundException') {
       console.warn('Username index not found, falling back to scan.')
-      const result = await dynamoDB.send(new ScanCommand({
+      const result = await writeDynamoDB.send(new ScanCommand({
         TableName: TABLES.AUTH_USERS,
         FilterExpression: 'username = :username AND isActive = :isActive',
         ExpressionAttributeValues: {
@@ -178,7 +178,7 @@ export const getUserByUsername = async (username: string): Promise<AuthUser | nu
 }
 
 export const getUserById = async (id: string): Promise<AuthUser | null> => {
-  const result = await dynamoDB.send(new GetCommand({
+  const result = await writeDynamoDB.send(new GetCommand({
     TableName: TABLES.AUTH_USERS,
     Key: { id }
   }))
@@ -190,7 +190,7 @@ export const updateUserPassword = async (userId: string, newPassword: string): P
   const salt = generateSalt()
   const passwordHash = await hashPassword(newPassword, salt)
 
-  await dynamoDB.send(new UpdateCommand({
+  await writeDynamoDB.send(new UpdateCommand({
     TableName: TABLES.AUTH_USERS,
     Key: { id: userId },
     UpdateExpression: 'SET passwordHash = :passwordHash, salt = :salt, lastLogin = :lastLogin',
@@ -214,7 +214,7 @@ export const createSession = async (userId: string, userAgent?: string, ipAddres
     ipAddress
   }
 
-  await dynamoDB.send(new PutCommand({
+  await writeDynamoDB.send(new PutCommand({
     TableName: TABLES.AUTH_SESSIONS,
     Item: session
   }))
@@ -225,7 +225,7 @@ export const createSession = async (userId: string, userAgent?: string, ipAddres
 export const getSessionByToken = async (token: string): Promise<AuthSession | null> => {
   try {
     // Use token-index GSI (already exists)
-    const result = await dynamoDB.send(new QueryCommand({
+    const result = await writeDynamoDB.send(new QueryCommand({
       TableName: TABLES.AUTH_SESSIONS,
       IndexName: 'token-index',
       KeyConditionExpression: 'token = :token',
@@ -245,7 +245,7 @@ export const getSessionByToken = async (token: string): Promise<AuthSession | nu
     // Fallback to scan if index doesn't exist
     if (error.name === 'ValidationException' || error.name === 'ResourceNotFoundException') {
       console.warn('Token index not found, falling back to scan.')
-      const result = await dynamoDB.send(new ScanCommand({
+      const result = await writeDynamoDB.send(new ScanCommand({
         TableName: TABLES.AUTH_SESSIONS,
         FilterExpression: 'token = :token',
         ExpressionAttributeValues: {
@@ -266,7 +266,7 @@ export const getSessionByToken = async (token: string): Promise<AuthSession | nu
 export const deleteSession = async (token: string): Promise<void> => {
   const session = await getSessionByToken(token)
   if (session) {
-    await dynamoDB.send(new DeleteCommand({
+    await writeDynamoDB.send(new DeleteCommand({
       TableName: TABLES.AUTH_SESSIONS,
       Key: { id: session.id }
     }))
@@ -276,7 +276,7 @@ export const deleteSession = async (token: string): Promise<void> => {
 export const deleteAllUserSessions = async (userId: string): Promise<void> => {
   try {
     // Use user-sessions-index GSI (already exists)
-    const result = await dynamoDB.send(new QueryCommand({
+    const result = await writeDynamoDB.send(new QueryCommand({
       TableName: TABLES.AUTH_SESSIONS,
       IndexName: 'user-sessions-index',
       KeyConditionExpression: 'userId = :userId',
@@ -286,7 +286,7 @@ export const deleteAllUserSessions = async (userId: string): Promise<void> => {
     }))
 
     const deletePromises = result.Items?.map(item => 
-      dynamoDB.send(new DeleteCommand({
+      writeDynamoDB.send(new DeleteCommand({
         TableName: TABLES.AUTH_SESSIONS,
         Key: { id: item.id }
       }))
@@ -297,7 +297,7 @@ export const deleteAllUserSessions = async (userId: string): Promise<void> => {
     // Fallback to scan if index doesn't exist
     if (error.name === 'ValidationException' || error.name === 'ResourceNotFoundException') {
       console.warn('User-sessions index not found, falling back to scan.')
-      const result = await dynamoDB.send(new ScanCommand({
+      const result = await writeDynamoDB.send(new ScanCommand({
         TableName: TABLES.AUTH_SESSIONS,
         FilterExpression: 'userId = :userId',
         ExpressionAttributeValues: {
@@ -306,7 +306,7 @@ export const deleteAllUserSessions = async (userId: string): Promise<void> => {
       }))
 
       const deletePromises = result.Items?.map(item => 
-        dynamoDB.send(new DeleteCommand({
+        writeDynamoDB.send(new DeleteCommand({
           TableName: TABLES.AUTH_SESSIONS,
           Key: { id: item.id }
         }))
@@ -352,7 +352,7 @@ export const authenticateUser = async (loginCredential: string, password: string
     console.log('Authentication successful for user:', loginCredential)
 
     // Update last login
-    await dynamoDB.send(new UpdateCommand({
+    await writeDynamoDB.send(new UpdateCommand({
       TableName: TABLES.AUTH_USERS,
       Key: { id: user.id },
       UpdateExpression: 'SET lastLogin = :lastLogin',
@@ -426,7 +426,7 @@ export const deleteOrganizerAccount = async (organizerEmail: string): Promise<vo
     await deleteAllUserSessions(user.id)
     
     // Delete the user account
-    await dynamoDB.send(new DeleteCommand({
+    await writeDynamoDB.send(new DeleteCommand({
       TableName: TABLES.AUTH_USERS,
       Key: { id: user.id }
     }))
@@ -441,7 +441,7 @@ export const resetOrganizerPassword = async (organizerEmail: string, newPassword
   
   if (!user) {
     // Let's also check if there are any users with similar emails
-    const allUsers = await dynamoDB.send(new ScanCommand({
+    const allUsers = await writeDynamoDB.send(new ScanCommand({
       TableName: TABLES.AUTH_USERS,
       FilterExpression: 'role = :role',
       ExpressionAttributeValues: {
@@ -484,7 +484,7 @@ export const migrateOrganizerToEmail = async (organizerEmail: string, organizerI
     console.log('Migrating organizer to email-based auth:', organizerEmail)
     
     // First, check if there's already an auth account for this organizer
-    const existingUser = await dynamoDB.send(new ScanCommand({
+    const existingUser = await writeDynamoDB.send(new ScanCommand({
       TableName: TABLES.AUTH_USERS,
       FilterExpression: 'organizerId = :organizerId',
       ExpressionAttributeValues: {
@@ -497,7 +497,7 @@ export const migrateOrganizerToEmail = async (organizerEmail: string, organizerI
       console.log('Found existing auth account:', user)
       
       // Update the existing account to include email
-      await dynamoDB.send(new UpdateCommand({
+      await writeDynamoDB.send(new UpdateCommand({
         TableName: TABLES.AUTH_USERS,
         Key: { id: user.id },
         UpdateExpression: 'SET email = :email',
@@ -524,7 +524,7 @@ export const syncOrganizerEmails = async (): Promise<void> => {
     console.log('Starting organizer email sync...')
     
     // Get all organizers
-    const organizersResult = await dynamoDB.send(new ScanCommand({
+    const organizersResult = await writeDynamoDB.send(new ScanCommand({
       TableName: TABLES.ORGANIZERS
     }))
     
@@ -532,7 +532,7 @@ export const syncOrganizerEmails = async (): Promise<void> => {
     console.log('Found organizers:', organizers.length)
     
     // Get all auth users
-    const authUsersResult = await dynamoDB.send(new ScanCommand({
+    const authUsersResult = await writeDynamoDB.send(new ScanCommand({
       TableName: TABLES.AUTH_USERS,
       FilterExpression: 'role = :role',
       ExpressionAttributeValues: {
@@ -550,7 +550,7 @@ export const syncOrganizerEmails = async (): Promise<void> => {
       if (matchingAuthUser && organizer.email && !matchingAuthUser.email) {
         console.log(`Syncing email for organizer ${organizer.name}: ${organizer.email}`)
         
-        await dynamoDB.send(new UpdateCommand({
+        await writeDynamoDB.send(new UpdateCommand({
           TableName: TABLES.AUTH_USERS,
           Key: { id: matchingAuthUser.id },
           UpdateExpression: 'SET email = :email',

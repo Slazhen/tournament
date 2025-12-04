@@ -8,13 +8,30 @@
 
 ## 2. Create IAM User
 
+> ⚠️ **SECURITY ALERT**: If you've exposed an access key, see **[AWS-SECURITY-GUIDE.md](./AWS-SECURITY-GUIDE.md)** for proper remediation steps with minimal permissions.
+
+### Option A: Secure Setup (Recommended - Minimal Permissions)
+
+**Follow the detailed guide**: See **[AWS-SECURITY-GUIDE.md](./AWS-SECURITY-GUIDE.md)** for step-by-step instructions on creating a user with a custom policy that grants only the minimum required permissions.
+
+**Quick summary:**
+1. Create a custom IAM policy with minimal DynamoDB and S3 permissions
+2. Create a new IAM user
+3. Attach the custom policy
+4. Create access key
+
+### Option B: Quick Setup (Less Secure - Full Access)
+
+> ⚠️ **WARNING**: This grants full access to all DynamoDB and S3 resources. Use only for development/testing.
+
 1. Go to **IAM** → **Users** → **Create user**
 2. Username: `football-tournaments-user`
-3. Select **Programmatic access**
+3. Select **Programmatic access** (do NOT enable console access)
 4. Attach policies:
    - `AmazonDynamoDBFullAccess`
    - `AmazonS3FullAccess`
 5. Download the **Access Key ID** and **Secret Access Key**
+6. **Store credentials securely** (password manager, never commit to git)
 
 ## 3. Create DynamoDB Tables
 
@@ -165,11 +182,15 @@ If you prefer using the AWS Console:
 
 ## 10. Security Best Practices
 
+> 📖 **For detailed security guidance, including access key rotation after exposure, see [AWS-SECURITY-GUIDE.md](./AWS-SECURITY-GUIDE.md)**
+
 1. **Never commit credentials** to version control
-2. **Use IAM roles** in production (EC2, Lambda, etc.)
-3. **Enable CloudTrail** for audit logging
-4. **Use VPC endpoints** for private access
-5. **Regularly rotate access keys**
+2. **Use minimal permissions** - Create custom IAM policies instead of full access policies
+3. **Use IAM roles** in production (EC2, Lambda, Amplify, etc.)
+4. **Enable CloudTrail** for audit logging
+5. **Regularly rotate access keys** (every 90 days recommended)
+6. **Enable MFA** on your root/admin AWS account
+7. **If access key is exposed**: Follow the remediation steps in [AWS-SECURITY-GUIDE.md](./AWS-SECURITY-GUIDE.md)
 
 ## 11. Migration from localStorage
 

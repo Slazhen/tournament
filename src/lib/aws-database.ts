@@ -1,15 +1,27 @@
 import { PutCommand, GetCommand, UpdateCommand, DeleteCommand, ScanCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
-import { dynamoDB, s3Client, S3_BUCKET_NAME, getS3Url, getS3Key, TABLES } from './aws-config'
+import { 
+  readOnlyDynamoDB, 
+  writeDynamoDB, 
+  readOnlyS3Client, 
+  writeS3Client, 
+  S3_BUCKET_NAME, 
+  getS3Url, 
+  getS3Key, 
+  TABLES,
+  // Backward compatibility - default to read-only
+  dynamoDB,
+  s3Client,
+} from './aws-config'
 import type { Team, Tournament, Organizer, Match } from '../types'
 import { cache, cacheKeys } from './cache'
 
-// Helper function to upload image to S3
+// Helper function to upload image to S3 (requires write permissions)
 export const uploadImageToS3 = async (file: File, key: string): Promise<string> => {
   const arrayBuffer = await file.arrayBuffer()
   const uint8Array = new Uint8Array(arrayBuffer)
   
-  await s3Client.send(new PutObjectCommand({
+  await writeS3Client.send(new PutObjectCommand({
     Bucket: S3_BUCKET_NAME,
     Key: key,
     Body: uint8Array,
@@ -20,10 +32,10 @@ export const uploadImageToS3 = async (file: File, key: string): Promise<string> 
   return getS3Url(key)
 }
 
-// Helper function to delete image from S3
+// Helper function to delete image from S3 (requires write permissions)
 export const deleteImageFromS3 = async (url: string): Promise<void> => {
   const key = getS3Key(url)
-  await s3Client.send(new DeleteObjectCommand({
+  await writeS3Client.send(new DeleteObjectCommand({
     Bucket: S3_BUCKET_NAME,
     Key: key,
   }))
@@ -38,7 +50,8 @@ export const organizerService = {
     }
 
     try {
-      const result = await dynamoDB.send(new ScanCommand({
+      // Read operation - use read-only client
+      const result = await readOnlyDynamoDB.send(new ScanCommand({
         TableName: TABLES.ORGANIZERS,
       }))
       
@@ -68,7 +81,8 @@ export const organizerService = {
         createdAtISO: new Date().toISOString(),
       }
       
-      await dynamoDB.send(new PutCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new PutCommand({
         TableName: TABLES.ORGANIZERS,
         Item: organizer,
       }))
@@ -97,7 +111,8 @@ export const organizerService = {
       
       if (updateExpression.length === 0) return true
       
-      await dynamoDB.send(new UpdateCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new UpdateCommand({
         TableName: TABLES.ORGANIZERS,
         Key: { id },
         UpdateExpression: `SET ${updateExpression.join(', ')}`,
@@ -115,7 +130,8 @@ export const organizerService = {
 
   async delete(id: string): Promise<boolean> {
     try {
-      await dynamoDB.send(new DeleteCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new DeleteCommand({
         TableName: TABLES.ORGANIZERS,
         Key: { id },
       }))
@@ -138,7 +154,8 @@ export const teamService = {
     }
 
     try {
-      const result = await dynamoDB.send(new ScanCommand({
+      // Read operation - use read-only client
+      const result = await readOnlyDynamoDB.send(new ScanCommand({
         TableName: TABLES.TEAMS,
       }))
       
@@ -171,7 +188,8 @@ export const teamService = {
     }
 
     try {
-      const result = await dynamoDB.send(new QueryCommand({
+      // Read operation - use read-only client
+      const result = await readOnlyDynamoDB.send(new QueryCommand({
         TableName: TABLES.TEAMS,
         IndexName: 'organizerId-index',
         KeyConditionExpression: 'organizerId = :organizerId',
@@ -209,7 +227,8 @@ export const teamService = {
         createdAtISO: new Date().toISOString(),
       }
       
-      await dynamoDB.send(new PutCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new PutCommand({
         TableName: TABLES.TEAMS,
         Item: newTeam,
       }))
@@ -226,8 +245,8 @@ export const teamService = {
 
   async update(id: string, updates: Partial<Team>): Promise<boolean> {
     try {
-      // Get team to find organizerId for targeted cache clearing
-      const teamResult = await dynamoDB.send(new GetCommand({
+      // Get team to find organizerId for targeted cache clearing (read operation)
+      const teamResult = await readOnlyDynamoDB.send(new GetCommand({
         TableName: TABLES.TEAMS,
         Key: { id },
       }))
@@ -250,7 +269,8 @@ export const teamService = {
       
       if (updateExpression.length === 0) return true
       
-      await dynamoDB.send(new UpdateCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new UpdateCommand({
         TableName: TABLES.TEAMS,
         Key: { id },
         UpdateExpression: `SET ${updateExpression.join(', ')}`,
@@ -276,15 +296,16 @@ export const teamService = {
 
   async delete(id: string): Promise<boolean> {
     try {
-      // Get team to find organizerId for targeted cache clearing
-      const teamResult = await dynamoDB.send(new GetCommand({
+      // Get team to find organizerId for targeted cache clearing (read operation)
+      const teamResult = await readOnlyDynamoDB.send(new GetCommand({
         TableName: TABLES.TEAMS,
         Key: { id },
       }))
       
       const organizerId = teamResult.Item?.organizerId
       
-      await dynamoDB.send(new DeleteCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new DeleteCommand({
         TableName: TABLES.TEAMS,
         Key: { id },
       }))
@@ -312,7 +333,8 @@ export const tournamentService = {
     }
 
     try {
-      const result = await dynamoDB.send(new ScanCommand({
+      // Read operation - use read-only client
+      const result = await readOnlyDynamoDB.send(new ScanCommand({
         TableName: TABLES.TOURNAMENTS,
       }))
       
@@ -344,7 +366,8 @@ export const tournamentService = {
     }
 
     try {
-      const result = await dynamoDB.send(new QueryCommand({
+      // Read operation - use read-only client
+      const result = await readOnlyDynamoDB.send(new QueryCommand({
         TableName: TABLES.TOURNAMENTS,
         IndexName: 'organizerId-index',
         KeyConditionExpression: 'organizerId = :organizerId',
@@ -388,7 +411,8 @@ export const tournamentService = {
         organizerId: newTournament.organizerId
       })
       
-      await dynamoDB.send(new PutCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new PutCommand({
         TableName: TABLES.TOURNAMENTS,
         Item: newTournament,
       }))
@@ -406,8 +430,8 @@ export const tournamentService = {
 
   async update(id: string, updates: Partial<Tournament>): Promise<boolean> {
     try {
-      // Get tournament to find organizerId for targeted cache clearing
-      const tournamentResult = await dynamoDB.send(new GetCommand({
+      // Get tournament to find organizerId for targeted cache clearing (read operation)
+      const tournamentResult = await readOnlyDynamoDB.send(new GetCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id },
       }))
@@ -428,7 +452,8 @@ export const tournamentService = {
       
       if (updateExpression.length === 0) return true
       
-      await dynamoDB.send(new UpdateCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new UpdateCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id },
         UpdateExpression: `SET ${updateExpression.join(', ')}`,
@@ -451,15 +476,16 @@ export const tournamentService = {
 
   async delete(id: string): Promise<boolean> {
     try {
-      // Get tournament to find organizerId for targeted cache clearing
-      const tournamentResult = await dynamoDB.send(new GetCommand({
+      // Get tournament to find organizerId for targeted cache clearing (read operation)
+      const tournamentResult = await readOnlyDynamoDB.send(new GetCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id },
       }))
       
       const organizerId = tournamentResult.Item?.organizerId
       
-      await dynamoDB.send(new DeleteCommand({
+      // Write operation - use write client
+      await writeDynamoDB.send(new DeleteCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id },
       }))
@@ -482,8 +508,8 @@ export const tournamentService = {
 export const matchService = {
   async updateMatchInTournament(tournamentId: string, matchId: string, updates: Partial<Match>): Promise<boolean> {
     try {
-      // Get the tournament first
-      const tournamentResult = await dynamoDB.send(new GetCommand({
+      // Get the tournament first (read operation)
+      const tournamentResult = await readOnlyDynamoDB.send(new GetCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id: tournamentId },
       }))
@@ -501,8 +527,8 @@ export const matchService = {
         match.id === matchId ? { ...match, ...updates } : match
       )
       
-      // Update the tournament with the new matches
-      await dynamoDB.send(new UpdateCommand({
+      // Update the tournament with the new matches (write operation)
+      await writeDynamoDB.send(new UpdateCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id: tournamentId },
         UpdateExpression: 'SET matches = :matches',
