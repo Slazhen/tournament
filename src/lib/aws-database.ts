@@ -3,15 +3,11 @@ import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { 
   readOnlyDynamoDB, 
   writeDynamoDB, 
-  readOnlyS3Client, 
   writeS3Client, 
   S3_BUCKET_NAME, 
   getS3Url, 
   getS3Key, 
   TABLES,
-  // Backward compatibility - default to read-only
-  dynamoDB,
-  s3Client,
 } from './aws-config'
 import type { Team, Tournament, Organizer, Match } from '../types'
 import { cache, cacheKeys } from './cache'

@@ -11,7 +11,7 @@
     "predeploy": "vite build",
     "deploy": "gh-pages -d dist",
     "setup-auth": "node scripts/setup-auth-tables.js",
-    "prebuild": "rm -rf node_modules package-lock.json && npm install --legacy-peer-deps"
+    "clean-install": "rm -rf node_modules package-lock.json && npm install --legacy-peer-deps"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.879.0",
