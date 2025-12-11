@@ -379,16 +379,26 @@ export default function PublicTournamentPage() {
         tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
           if (round.matches && Array.isArray(round.matches)) {
             round.matches.forEach((match: any) => {
+              // Check both match-level and round-level elimination flags
+              const isEliminationMatch = match.isElimination || round.isElimination || false
               const processedMatch = {
                 ...match,
                 isPlayoff: true,
-                isElimination: match.isElimination || false, // Preserve elimination flag
-                playoffRound: round.roundNumber || 0
+                isElimination: isEliminationMatch, // Use combined elimination flag
+                playoffRound: round.roundNumber || 0,
+                roundName: round.name || '',
+                roundDescription: round.description || ''
               }
               playoffMatchesList.push(processedMatch)
             })
           }
         })
+      }
+      
+      // Helper function to check if round should exclude points
+      const shouldExcludePoints = (roundName: string = '', roundDescription: string = '') => {
+        const text = `${roundName} ${roundDescription}`.toLowerCase()
+        return text.includes('semi final') || text.includes('grand final') || text.includes('final')
       }
       
       for (const m of playoffMatchesList) {
@@ -399,38 +409,48 @@ export default function PublicTournamentPage() {
         
         if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) continue // Skip BYE matches
         
+        // Check if this round should exclude points (Semi Final, Grand Final, Final)
+        const excludePoints = shouldExcludePoints((m as any).roundName, (m as any).roundDescription)
+        
         const a = stats[homeTeamId]
         const b = stats[awayTeamId]
         
         if (!a || !b) continue
         
-        a.p++; b.p++
-        a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
-        b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
-        
-        if ((m as any).homeGoals > (m as any).awayGoals) { 
-          a.w++; b.l++; a.pts += 3
-          // Check if this is an elimination match and mark loser as eliminated
-          if ((m as any).isElimination) {
-            eliminatedTeams.add(awayTeamId)
+        // Only count points if not excluded
+        if (!excludePoints) {
+          a.p++; b.p++
+          a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
+          b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
+          
+          if ((m as any).homeGoals > (m as any).awayGoals) { 
+            a.w++; b.l++; a.pts += 3
+          } else if ((m as any).homeGoals < (m as any).awayGoals) { 
+            b.w++; a.l++; b.pts += 3
+          } else { 
+            a.d++; b.d++; a.pts++; b.pts++ 
           }
-        } else if ((m as any).homeGoals < (m as any).awayGoals) { 
-          b.w++; a.l++; b.pts += 3
-          // Check if this is an elimination match and mark loser as eliminated
-          if ((m as any).isElimination) {
+        }
+        
+        // Always check for elimination (regardless of points exclusion)
+        if ((m as any).isElimination) {
+          if ((m as any).homeGoals > (m as any).awayGoals) {
+            eliminatedTeams.add(awayTeamId)
+          } else if ((m as any).homeGoals < (m as any).awayGoals) {
             eliminatedTeams.add(homeTeamId)
           }
-        } else { 
-          a.d++; b.d++; a.pts++; b.pts++ 
         }
       }
       
-      // For league_custom_playoff format, also check custom playoff rounds for elimination matches
+      // For league_custom_playoff format, also check custom playoff rounds for elimination matches (double-check)
       if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
         tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
+          // Check both match-level and round-level elimination flags
+          const roundIsElimination = round.isElimination || false
           if (round.matches && Array.isArray(round.matches)) {
             round.matches.forEach((match: any) => {
-              if (match.isElimination && match.homeGoals != null && match.awayGoals != null) {
+              const matchIsElimination = match.isElimination || roundIsElimination
+              if (matchIsElimination && match.homeGoals != null && match.awayGoals != null) {
                 const homeTeamId = match.homeTeamId
                 const awayTeamId = match.awayTeamId
                 
