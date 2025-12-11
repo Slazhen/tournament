@@ -327,18 +327,20 @@ export default function PublicTournamentPage() {
   const calculateTable = () => {
     if (!tournament || !tournament.teamIds || !Array.isArray(tournament.teamIds) || 
         !tournament.matches || !Array.isArray(tournament.matches)) {
-      return []
+      return { table: [], eliminatedTeams: new Set<string>() }
     }
     
     try {
       const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
+      const eliminatedTeams = new Set<string>()
+      
       for (const tid of tournament.teamIds) {
         if (tid) {
           stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
         }
       }
       
-      // Only count league matches for the table
+      // Count league matches for the table
       const leagueMatches = tournament.matches.filter((m: any) => m && !m.isPlayoff)
       
       for (const m of leagueMatches) {
@@ -363,15 +365,99 @@ export default function PublicTournamentPage() {
         else { a.d++; b.d++; a.pts++; b.pts++ }
       }
       
-      return Object.entries(stats).map(([id, s]) => ({ id, ...s }))
+      // Also count playoff matches for points (3 win, 1 draw, 0 loss)
+      // Get playoff matches from tournament.matches and custom playoff rounds
+      const playoffMatchesList: any[] = []
+      
+      // Get regular playoff matches
+      if (tournament.matches && Array.isArray(tournament.matches)) {
+        playoffMatchesList.push(...tournament.matches.filter((m: any) => m && m.isPlayoff))
+      }
+      
+      // For custom playoff format, also include matches from custom playoff configuration
+      if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
+        tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
+          if (round.matches && Array.isArray(round.matches)) {
+            round.matches.forEach((match: any) => {
+              const processedMatch = {
+                ...match,
+                isPlayoff: true,
+                playoffRound: round.roundNumber || 0
+              }
+              playoffMatchesList.push(processedMatch)
+            })
+          }
+        })
+      }
+      
+      for (const m of playoffMatchesList) {
+        if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
+        
+        const homeTeamId = (m as any).homeTeamId
+        const awayTeamId = (m as any).awayTeamId
+        
+        if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) continue // Skip BYE matches
+        
+        const a = stats[homeTeamId]
+        const b = stats[awayTeamId]
+        
+        if (!a || !b) continue
+        
+        a.p++; b.p++
+        a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
+        b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
+        
+        if ((m as any).homeGoals > (m as any).awayGoals) { 
+          a.w++; b.l++; a.pts += 3
+          // Check if this is an elimination match and mark loser as eliminated
+          if ((m as any).isElimination) {
+            eliminatedTeams.add(awayTeamId)
+          }
+        } else if ((m as any).homeGoals < (m as any).awayGoals) { 
+          b.w++; a.l++; b.pts += 3
+          // Check if this is an elimination match and mark loser as eliminated
+          if ((m as any).isElimination) {
+            eliminatedTeams.add(homeTeamId)
+          }
+        } else { 
+          a.d++; b.d++; a.pts++; b.pts++ 
+        }
+      }
+      
+      // For league_custom_playoff format, also check custom playoff rounds for elimination matches
+      if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
+        tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
+          if (round.matches && Array.isArray(round.matches)) {
+            round.matches.forEach((match: any) => {
+              if (match.isElimination && match.homeGoals != null && match.awayGoals != null) {
+                const homeTeamId = match.homeTeamId
+                const awayTeamId = match.awayTeamId
+                
+                if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return
+                
+                // Mark the loser as eliminated
+                if (match.homeGoals > match.awayGoals) {
+                  eliminatedTeams.add(awayTeamId)
+                } else if (match.homeGoals < match.awayGoals) {
+                  eliminatedTeams.add(homeTeamId)
+                }
+              }
+            })
+          }
+        })
+      }
+      
+      const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
         .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
+      
+      return { table, eliminatedTeams }
     } catch (error) {
       console.error('Error calculating table:', error)
-      return []
+      return { table: [], eliminatedTeams: new Set<string>() }
     }
   }
 
-  const table = useMemo(() => calculateTable(), [tournament])
+  const { table, eliminatedTeams } = useMemo(() => calculateTable(), [tournament])
 
   return (
     <div className="grid gap-6 place-items-center">
@@ -470,9 +556,10 @@ export default function PublicTournamentPage() {
               {table.map((row, index) => {
                 const isQualified = (tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination') && 
                   index < (tournament.format?.playoffQualifiers || 4)
+                const isEliminated = eliminatedTeams.has(row.id)
                 
                 return (
-                  <tr key={row.id} className={`border-t border-white/10 ${isQualified ? 'bg-green-500/10' : ''}`}>
+                  <tr key={row.id} className={`border-t border-white/10 ${isQualified ? 'bg-green-500/10' : ''} ${isEliminated ? 'bg-red-500/20 opacity-70' : ''}`}>
                     <td className="py-2 pr-3">{index + 1}</td>
                     <td className="py-2 pr-3 flex items-center gap-2">
                       {(() => {

@@ -150,7 +150,7 @@ export default function TournamentPage() {
     if (!tournament || !playoffStructure) return
     
     // Get current table standings
-    const table = calculateTable()
+    const { table } = calculateTable()
     const qualifiedTeams = table.slice(0, playoffStructure.qualifiers)
     
     // Create playoff matches
@@ -163,14 +163,16 @@ export default function TournamentPage() {
   }
 
   const calculateTable = () => {
-    if (!tournament) return []
+    if (!tournament) return { table: [], eliminatedTeams: new Set<string>() }
     
     const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
+    const eliminatedTeams = new Set<string>()
+    
     for (const tid of tournament.teamIds) {
       stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
     }
     
-    // Only count league matches for the table
+    // Count league matches for the table
     const leagueMatches = tournament.matches.filter(m => !m.isPlayoff)
     
     for (const m of leagueMatches) {
@@ -184,11 +186,70 @@ export default function TournamentPage() {
       else if (m.homeGoals < m.awayGoals) { b.w++; a.l++; b.pts += 3 }
       else { a.d++; b.d++; a.pts++; b.pts++ }
     }
-    return Object.entries(stats).map(([id, s]) => ({ id, ...s }))
+    
+    // Also count playoff matches for points (3 win, 1 draw, 0 loss)
+    const playoffMatchesList = tournament.matches.filter(m => m.isPlayoff)
+    
+    for (const m of playoffMatchesList) {
+      if (m.homeGoals == null || m.awayGoals == null) continue
+      if (m.homeTeamId === m.awayTeamId) continue // Skip BYE matches
+      
+      const a = stats[m.homeTeamId]
+      const b = stats[m.awayTeamId]
+      
+      if (!a || !b) continue
+      
+      a.p++; b.p++
+      a.gf += m.homeGoals; a.ga += m.awayGoals
+      b.gf += m.awayGoals; b.ga += m.homeGoals
+      
+      if (m.homeGoals > m.awayGoals) { 
+        a.w++; b.l++; a.pts += 3
+        // Check if this is an elimination match and mark loser as eliminated
+        if (m.isElimination) {
+          eliminatedTeams.add(m.awayTeamId)
+        }
+      } else if (m.homeGoals < m.awayGoals) { 
+        b.w++; a.l++; b.pts += 3
+        // Check if this is an elimination match and mark loser as eliminated
+        if (m.isElimination) {
+          eliminatedTeams.add(m.homeTeamId)
+        }
+      } else { 
+        a.d++; b.d++; a.pts++; b.pts++ 
+      }
+    }
+    
+    // For league_custom_playoff format, also check custom playoff rounds for elimination matches
+    if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
+      tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
+        if (round.matches && Array.isArray(round.matches)) {
+          round.matches.forEach((match: any) => {
+            if (match.isElimination && match.homeGoals != null && match.awayGoals != null) {
+              const homeTeamId = match.homeTeamId
+              const awayTeamId = match.awayTeamId
+              
+              if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return
+              
+              // Mark the loser as eliminated
+              if (match.homeGoals > match.awayGoals) {
+                eliminatedTeams.add(awayTeamId)
+              } else if (match.homeGoals < match.awayGoals) {
+                eliminatedTeams.add(homeTeamId)
+              }
+            }
+          })
+        }
+      })
+    }
+    
+    const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
       .sort((x, y) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
+    
+    return { table, eliminatedTeams }
   }
 
-  const table = useMemo(() => calculateTable(), [tournament])
+  const { table, eliminatedTeams } = useMemo(() => calculateTable(), [tournament])
 
   // Redirect if no organizer is selected
   if (!currentOrganizer) {
@@ -446,9 +507,10 @@ export default function TournamentPage() {
               {table.map((row, index) => {
                 const isQualified = (tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination') && 
                   index < (tournament.format?.playoffQualifiers || 4)
+                const isEliminated = eliminatedTeams.has(row.id)
                 
                 return (
-                  <tr key={row.id} className={`border-t border-white/10 ${isQualified ? 'bg-green-500/10' : ''}`}>
+                  <tr key={row.id} className={`border-t border-white/10 ${isQualified ? 'bg-green-500/10' : ''} ${isEliminated ? 'bg-red-500/20 opacity-70' : ''}`}>
                     <td className="py-2 pr-3">{index + 1}</td>
                                            <td className="py-2 pr-3 flex items-center gap-2">
                            {(() => {
