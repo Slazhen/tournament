@@ -382,6 +382,7 @@ export default function PublicTournamentPage() {
               const processedMatch = {
                 ...match,
                 isPlayoff: true,
+                isElimination: match.isElimination || false, // Preserve elimination flag
                 playoffRound: round.roundNumber || 0
               }
               playoffMatchesList.push(processedMatch)

@@ -188,10 +188,32 @@ export default function TournamentPage() {
     }
     
     // Also count playoff matches for points (3 win, 1 draw, 0 loss)
-    const playoffMatchesList = tournament.matches.filter(m => m.isPlayoff)
+    const playoffMatchesList: any[] = []
+    
+    // Get regular playoff matches from tournament.matches
+    if (tournament.matches && Array.isArray(tournament.matches)) {
+      playoffMatchesList.push(...tournament.matches.filter(m => m.isPlayoff))
+    }
+    
+    // For custom playoff format, also include matches from custom playoff configuration
+    if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
+      tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
+        if (round.matches && Array.isArray(round.matches)) {
+          round.matches.forEach((match: any) => {
+            const processedMatch = {
+              ...match,
+              isPlayoff: true,
+              isElimination: match.isElimination || false, // Preserve elimination flag
+              playoffRound: round.roundNumber || 0
+            }
+            playoffMatchesList.push(processedMatch)
+          })
+        }
+      })
+    }
     
     for (const m of playoffMatchesList) {
-      if (m.homeGoals == null || m.awayGoals == null) continue
+      if (!m || m.homeGoals == null || m.awayGoals == null) continue
       if (m.homeTeamId === m.awayTeamId) continue // Skip BYE matches
       
       const a = stats[m.homeTeamId]
@@ -220,7 +242,7 @@ export default function TournamentPage() {
       }
     }
     
-    // For league_custom_playoff format, also check custom playoff rounds for elimination matches
+    // For league_custom_playoff format, also check custom playoff rounds for elimination matches (double-check)
     if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
       tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
         if (round.matches && Array.isArray(round.matches)) {
