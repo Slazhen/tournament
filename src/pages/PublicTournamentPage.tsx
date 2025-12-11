@@ -395,36 +395,6 @@ export default function PublicTournamentPage() {
         })
       }
       
-      // Helper function to check if round should exclude points
-      // Only exclude: "Semi Final", "Grand Final", or standalone "Final" (not "1/2 Final", "1/4 Final", etc.)
-      const shouldExcludePoints = (roundName: string = '', roundDescription: string = '') => {
-        const text = `${roundName} ${roundDescription}`.toLowerCase().trim()
-        
-        // Check for "semi final" or "semi-final"
-        if (text.includes('semi final') || text.includes('semi-final')) {
-          return true
-        }
-        
-        // Check for "grand final" or "grand-final"
-        if (text.includes('grand final') || text.includes('grand-final')) {
-          return true
-        }
-        
-        // Check for standalone "final" - must be at the end and not part of "1/2 Final", "1/4 Final", etc.
-        // Use regex to match "final" as a whole word at the end, not preceded by a fraction
-        const finalMatch = text.match(/\bfinal\b$/i)
-        if (finalMatch) {
-          // Make sure it's not preceded by a fraction pattern like "1/2", "1/4", "1/8", etc.
-          const beforeFinal = text.substring(0, finalMatch.index || 0).trim()
-          // If it's just "final" or ends with space/dash before "final" and doesn't have a fraction pattern
-          if (!beforeFinal.match(/\d+\/\d+\s*$/)) {
-            return true
-          }
-        }
-        
-        return false
-      }
-      
       for (const m of playoffMatchesList) {
         if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
         
@@ -433,36 +403,30 @@ export default function PublicTournamentPage() {
         
         if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) continue // Skip BYE matches
         
-        // Check if this round should exclude points (Semi Final, Grand Final, Final)
-        const excludePoints = shouldExcludePoints((m as any).roundName, (m as any).roundDescription)
-        
         const a = stats[homeTeamId]
         const b = stats[awayTeamId]
         
         if (!a || !b) continue
         
-        // Only count points if not excluded
-        if (!excludePoints) {
-          a.p++; b.p++
-          a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
-          b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
-          
-          if ((m as any).homeGoals > (m as any).awayGoals) { 
-            a.w++; b.l++; a.pts += 3
-          } else if ((m as any).homeGoals < (m as any).awayGoals) { 
-            b.w++; a.l++; b.pts += 3
-          } else { 
-            a.d++; b.d++; a.pts++; b.pts++ 
-          }
-        }
+        // Count all playoff matches for points (3 win, 1 draw, 0 loss)
+        a.p++; b.p++
+        a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
+        b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
         
-        // Always check for elimination (regardless of points exclusion)
-        if ((m as any).isElimination) {
-          if ((m as any).homeGoals > (m as any).awayGoals) {
+        if ((m as any).homeGoals > (m as any).awayGoals) { 
+          a.w++; b.l++; a.pts += 3
+          // Check if this is an elimination match and mark loser as eliminated
+          if ((m as any).isElimination) {
             eliminatedTeams.add(awayTeamId)
-          } else if ((m as any).homeGoals < (m as any).awayGoals) {
+          }
+        } else if ((m as any).homeGoals < (m as any).awayGoals) { 
+          b.w++; a.l++; b.pts += 3
+          // Check if this is an elimination match and mark loser as eliminated
+          if ((m as any).isElimination) {
             eliminatedTeams.add(homeTeamId)
           }
+        } else { 
+          a.d++; b.d++; a.pts++; b.pts++ 
         }
       }
       
