@@ -218,9 +218,33 @@ export default function TournamentPage() {
     }
     
     // Helper function to check if round should exclude points
+    // Only exclude: "Semi Final", "Grand Final", or standalone "Final" (not "1/2 Final", "1/4 Final", etc.)
     const shouldExcludePoints = (roundName: string = '', roundDescription: string = '') => {
-      const text = `${roundName} ${roundDescription}`.toLowerCase()
-      return text.includes('semi final') || text.includes('grand final') || text.includes('final')
+      const text = `${roundName} ${roundDescription}`.toLowerCase().trim()
+      
+      // Check for "semi final" or "semi-final"
+      if (text.includes('semi final') || text.includes('semi-final')) {
+        return true
+      }
+      
+      // Check for "grand final" or "grand-final"
+      if (text.includes('grand final') || text.includes('grand-final')) {
+        return true
+      }
+      
+      // Check for standalone "final" - must be at the end and not part of "1/2 Final", "1/4 Final", etc.
+      // Use regex to match "final" as a whole word at the end, not preceded by a fraction
+      const finalMatch = text.match(/\bfinal\b$/i)
+      if (finalMatch) {
+        // Make sure it's not preceded by a fraction pattern like "1/2", "1/4", "1/8", etc.
+        const beforeFinal = text.substring(0, finalMatch.index || 0).trim()
+        // If it's just "final" or ends with space/dash before "final" and doesn't have a fraction pattern
+        if (!beforeFinal.match(/\d+\/\d+\s*$/)) {
+          return true
+        }
+      }
+      
+      return false
     }
     
     for (const m of playoffMatchesList) {
