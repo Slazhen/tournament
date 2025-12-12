@@ -435,9 +435,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   loadTeams: async () => {
     const currentOrganizerId = get().currentOrganizerId
-    if (!currentOrganizerId) return
-
+    
     set(state => ({ loading: { ...state.loading, teams: true } }))
+    
+    // For public pages (no organizer), load all teams
+    if (!currentOrganizerId) {
+      try {
+        const allTeams = await teamService.getAll()
+        set({
+          teams: allTeams,
+          loading: { ...get().loading, teams: false }
+        })
+        return
+      } catch (error) {
+        console.error('Error loading all teams:', error)
+        set(state => ({ loading: { ...state.loading, teams: false } }))
+        return
+      }
+    }
     
     try {
       const teams = await teamService.getByOrganizer(currentOrganizerId)
@@ -453,9 +468,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   loadTournaments: async () => {
     const currentOrganizerId = get().currentOrganizerId
-    if (!currentOrganizerId) return
-
+    
     set(state => ({ loading: { ...state.loading, tournaments: true } }))
+    
+    // For public pages (no organizer), load all tournaments
+    if (!currentOrganizerId) {
+      try {
+        const allTournaments = await tournamentService.getAll()
+        set({
+          tournaments: allTournaments,
+          loading: { ...get().loading, tournaments: false }
+        })
+        return
+      } catch (error) {
+        console.error('Error loading all tournaments:', error)
+        set(state => ({ loading: { ...state.loading, tournaments: false } }))
+        return
+      }
+    }
     
     try {
       const tournaments = await tournamentService.getByOrganizer(currentOrganizerId)

@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { dynamoDB, TABLES } from '../lib/aws-config'
 import { GetCommand } from '@aws-sdk/lib-dynamodb'
+import { batchGetTeams } from '../lib/aws-database'
 import type { Tournament, Team, Match } from '../types'
 
 export default function PublicMatchPage() {
@@ -50,24 +51,17 @@ export default function PublicMatchPage() {
         }
         setMatch(matchData)
 
-        // Load teams
+        // Load teams using batch operation (much more efficient)
         if (matchData.homeTeamId && matchData.awayTeamId) {
-          const [homeTeamResponse, awayTeamResponse] = await Promise.all([
-            dynamoDB.send(new GetCommand({
-              TableName: TABLES.TEAMS,
-              Key: { id: matchData.homeTeamId }
-            })),
-            dynamoDB.send(new GetCommand({
-              TableName: TABLES.TEAMS,
-              Key: { id: matchData.awayTeamId }
-            }))
-          ])
-
-          if (homeTeamResponse.Item) {
-            setHomeTeam(homeTeamResponse.Item as Team)
+          const teams = await batchGetTeams([matchData.homeTeamId, matchData.awayTeamId])
+          const homeTeam = teams.find(t => t.id === matchData.homeTeamId)
+          const awayTeam = teams.find(t => t.id === matchData.awayTeamId)
+          
+          if (homeTeam) {
+            setHomeTeam(homeTeam)
           }
-          if (awayTeamResponse.Item) {
-            setAwayTeam(awayTeamResponse.Item as Team)
+          if (awayTeam) {
+            setAwayTeam(awayTeam)
           }
         }
       } catch (err) {

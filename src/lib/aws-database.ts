@@ -1,4 +1,4 @@
-import { PutCommand, GetCommand, UpdateCommand, DeleteCommand, ScanCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
+import { PutCommand, GetCommand, UpdateCommand, DeleteCommand, ScanCommand, QueryCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb'
 import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { 
   readOnlyDynamoDB, 
@@ -318,6 +318,71 @@ export const teamService = {
       return false
     }
   }
+}
+
+// Batch operations for efficient loading
+export const batchGetTeams = async (teamIds: string[]): Promise<Team[]> => {
+  if (!teamIds || teamIds.length === 0) return []
+  
+  // Check cache first
+  const cachedTeams: Team[] = []
+  const uncachedIds: string[] = []
+  
+  for (const teamId of teamIds) {
+    const cached = cache.get<Team>(cacheKeys.teams.byId(teamId))
+    if (cached) {
+      cachedTeams.push(cached)
+    } else {
+      uncachedIds.push(teamId)
+    }
+  }
+  
+  // If all teams are cached, return them
+  if (uncachedIds.length === 0) {
+    return cachedTeams
+  }
+  
+  // Batch get uncached teams (DynamoDB allows up to 100 items per batch)
+  const allTeams = [...cachedTeams]
+  
+  // Process in batches of 100 (DynamoDB limit)
+  for (let i = 0; i < uncachedIds.length; i += 100) {
+    const batch = uncachedIds.slice(i, i + 100)
+    
+    try {
+      const result = await readOnlyDynamoDB.send(new BatchGetCommand({
+        RequestItems: {
+          [TABLES.TEAMS]: {
+            Keys: batch.map(id => ({ id }))
+          }
+        }
+      }))
+      
+      const batchTeams = (result.Responses?.[TABLES.TEAMS] || []).map(item => ({
+        id: item.id,
+        name: item.name,
+        colors: item.colors || [],
+        logo: item.logo,
+        photo: item.photo,
+        establishedDate: item.establishedDate,
+        organizerId: item.organizerId,
+        createdAtISO: item.createdAtISO,
+        players: item.players || [],
+        socialMedia: item.socialMedia,
+      })) as Team[]
+      
+      // Cache each team individually
+      batchTeams.forEach(team => {
+        cache.set(cacheKeys.teams.byId(team.id), team)
+      })
+      
+      allTeams.push(...batchTeams)
+    } catch (error) {
+      console.error('Error batch loading teams:', error)
+    }
+  }
+  
+  return allTeams
 }
 
 // Tournament operations

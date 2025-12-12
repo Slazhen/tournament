@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { dynamoDB, TABLES } from '../lib/aws-config'
 import { GetCommand } from '@aws-sdk/lib-dynamodb'
+import { batchGetTeams } from '../lib/aws-database'
 import ErrorBoundary from '../components/ErrorBoundary'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -60,20 +61,9 @@ export default function NewPublicTournament() {
         console.log('Social media data:', tournamentData.socialMedia)
         setTournament(tournamentData)
 
-        // Load teams
+        // Load teams using batch operation (much more efficient)
         if (tournamentData.teamIds && tournamentData.teamIds.length > 0) {
-          const teamPromises = tournamentData.teamIds.map(teamId =>
-            dynamoDB.send(new GetCommand({
-              TableName: TABLES.TEAMS,
-              Key: { id: teamId }
-            }))
-          )
-
-          const teamResponses = await Promise.all(teamPromises)
-          const teamData = teamResponses
-            .map(response => response.Item)
-            .filter(Boolean) as Team[]
-          
+          const teamData = await batchGetTeams(tournamentData.teamIds)
           setTeams(teamData)
         }
 

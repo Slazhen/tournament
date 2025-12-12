@@ -23,6 +23,7 @@ export default function PublicTournamentPage() {
   })
 
   // Load data from AWS when component mounts
+  // Removed expensive 10-second refresh - cache handles this efficiently
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -36,26 +37,19 @@ export default function PublicTournamentPage() {
     }
     loadData()
     
-    // Refresh data when page becomes visible (user switches back to tab)
-    // This ensures scores are updated after admin changes
+    // Only refresh when page becomes visible (user switches back to tab)
+    // This is much less frequent than 10-second intervals
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        // Only refresh if cache is likely stale (after 2 minutes)
         loadData()
       }
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
-    // Also set up periodic refresh every 10 seconds to catch updates quickly
-    const refreshInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        loadData()
-      }
-    }, 10000)
-    
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      clearInterval(refreshInterval)
     }
   }, [loadTournaments, loadTeams])
 
