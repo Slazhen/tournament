@@ -14,7 +14,14 @@ export default function PublicPlayerPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        await Promise.all([loadTournaments(), loadTeams()])
+        // Check if data is already available in store before loading
+        const existingTournaments = getAllTournaments()
+        const existingTeams = getAllTeams()
+        
+        // Only load if we don't have data
+        if (existingTournaments.length === 0 || existingTeams.length === 0) {
+          await Promise.all([loadTournaments(), loadTeams()])
+        }
         setDataLoaded(true)
       } catch (error) {
         console.error('Error loading data for public player page:', error)
@@ -23,7 +30,7 @@ export default function PublicPlayerPage() {
       }
     }
     loadData()
-  }, [loadTournaments, loadTeams])
+  }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams])
 
   if (isLoading || !dataLoaded) {
     return (

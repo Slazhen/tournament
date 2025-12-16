@@ -10,7 +10,7 @@ interface CacheEntry<T> {
 
 class SimpleCache {
   private cache = new Map<string, CacheEntry<any>>()
-  private defaultTTL = 30 * 60 * 1000 // 30 minutes default (increased for read-heavy operations to reduce costs)
+  private defaultTTL = 60 * 60 * 1000 // 60 minutes default (increased for read-heavy operations to reduce costs)
 
   set<T>(key: string, data: T, ttlMs?: number): void {
     const expiresAt = Date.now() + (ttlMs || this.defaultTTL)

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Team, Tournament, Match, Organizer, AppSettings } from './types'
 import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule } from './utils/tournament'
 import { organizerService, teamService, tournamentService, matchService, uploadImageToS3 } from './lib/aws-database'
+import { cache, cacheKeys } from './lib/cache'
 
 type AppStore = {
   // Organizers
@@ -435,6 +436,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   loadTeams: async () => {
     const currentOrganizerId = get().currentOrganizerId
+    const state = get()
+    
+    // Skip if already loading to prevent duplicate requests
+    if (state.loading.teams) {
+      return
+    }
+    
+    // For public pages (no organizer), check if we already have all teams loaded
+    if (!currentOrganizerId) {
+      // If we have teams in store and cache is likely fresh, skip DB call
+      const cached = cache.get<Team[]>(cacheKeys.teams.all)
+      if (cached && state.teams.length > 0) {
+        // Data is already loaded and cached, no need to reload
+        return
+      }
+    }
     
     set(state => ({ loading: { ...state.loading, teams: true } }))
     
@@ -468,6 +485,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   loadTournaments: async () => {
     const currentOrganizerId = get().currentOrganizerId
+    const state = get()
+    
+    // Skip if already loading to prevent duplicate requests
+    if (state.loading.tournaments) {
+      return
+    }
+    
+    // For public pages (no organizer), check if we already have all tournaments loaded
+    if (!currentOrganizerId) {
+      // If we have tournaments in store and cache is likely fresh, skip DB call
+      const cached = cache.get<Tournament[]>(cacheKeys.tournaments.all)
+      if (cached && state.tournaments.length > 0) {
+        // Data is already loaded and cached, no need to reload
+        return
+      }
+    }
     
     set(state => ({ loading: { ...state.loading, tournaments: true } }))
     

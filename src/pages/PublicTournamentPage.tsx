@@ -27,7 +27,14 @@ export default function PublicTournamentPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        await Promise.all([loadTournaments(), loadTeams()])
+        // Check if data is already available in store before loading
+        const existingTournaments = getAllTournaments()
+        const existingTeams = getAllTeams()
+        
+        // Only load if we don't have data or cache is stale
+        if (existingTournaments.length === 0 || existingTeams.length === 0) {
+          await Promise.all([loadTournaments(), loadTeams()])
+        }
         setDataLoaded(true)
       } catch (error) {
         console.error('Error loading data for public tournament page:', error)
@@ -37,12 +44,23 @@ export default function PublicTournamentPage() {
     }
     loadData()
     
-    // Only refresh when page becomes visible (user switches back to tab)
-    // This is much less frequent than 10-second intervals
+    // Only refresh when page becomes visible AND cache is likely stale (after 5 minutes)
+    // This prevents unnecessary reloads when cache is still fresh
+    let lastVisibilityChange = Date.now()
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Only refresh if cache is likely stale (after 2 minutes)
-        loadData()
+        const now = Date.now()
+        // Only refresh if it's been more than 5 minutes since last check
+        // This respects the 30-minute cache TTL
+        if (now - lastVisibilityChange > 5 * 60 * 1000) {
+          const existingTournaments = getAllTournaments()
+          const existingTeams = getAllTeams()
+          // Only reload if we don't have data
+          if (existingTournaments.length === 0 || existingTeams.length === 0) {
+            loadData()
+          }
+          lastVisibilityChange = now
+        }
       }
     }
     
@@ -51,7 +69,7 @@ export default function PublicTournamentPage() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [loadTournaments, loadTeams])
+  }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams])
 
   if (isLoading || !dataLoaded) {
     return (
