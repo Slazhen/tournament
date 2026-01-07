@@ -3,8 +3,9 @@ import { useAuth } from '../contexts/AuthContext'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
 import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword, syncOrganizerEmails } from '../lib/auth'
+import { organizerService } from '../lib/aws-database'
+import { GetCommand } from '@aws-sdk/lib-dynamodb'
 import { dynamoDB, TABLES } from '../lib/aws-config'
-import { ScanCommand } from '@aws-sdk/lib-dynamodb'
 
 interface Organizer {
   id: string
@@ -39,10 +40,9 @@ export default function OrganizersPage() {
   const loadOrganizers = async () => {
     try {
       setLoading(true)
-      const result = await dynamoDB.send(new ScanCommand({
-        TableName: TABLES.ORGANIZERS
-      }))
-      setOrganizers(result.Items as Organizer[] || [])
+      // Use service method which has pagination and caching
+      const organizers = await organizerService.getAll()
+      setOrganizers(organizers as Organizer[])
     } catch (error) {
       console.error('Error loading organizers:', error)
     } finally {
@@ -74,20 +74,12 @@ export default function OrganizersPage() {
       // Create organizer in the main system
       await createOrganizer(newOrganizer.name, newOrganizer.email)
       
-      // Get the created organizer ID (we'll need to fetch it)
-      const result = await dynamoDB.send(new ScanCommand({
-        TableName: TABLES.ORGANIZERS,
-        FilterExpression: '#name = :name AND email = :email',
-        ExpressionAttributeNames: {
-          '#name': 'name'
-        },
-        ExpressionAttributeValues: {
-          ':name': newOrganizer.name,
-          ':email': newOrganizer.email
-        }
-      }))
-      
-      const organizer = result.Items?.[0] as Organizer
+      // Get the created organizer by fetching fresh data
+      // This is more efficient than scanning with filter
+      const allOrganizers = await organizerService.getAll()
+      const organizer = allOrganizers.find(org => 
+        org.name === newOrganizer.name && org.email === newOrganizer.email
+      ) as Organizer
       console.log('Found organizer:', organizer)
       if (organizer) {
         // Create auth account for organizer with custom password

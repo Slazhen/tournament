@@ -1,7 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { dynamoDB, TABLES } from '../lib/aws-config'
-import { ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { teamService } from '../lib/aws-database'
 
 interface Player {
   id: string
@@ -35,16 +34,14 @@ export default function NewPublicPlayer() {
         setLoading(true)
         setError(null)
 
+        // Use service method which has pagination and caching
         // Find player across all teams
-        const teamsResponse = await dynamoDB.send(new ScanCommand({
-          TableName: TABLES.TEAMS
-        }))
+        const allTeams = await teamService.getAll()
 
         let foundPlayer: Player | null = null
         let foundTeam: Team | null = null
 
-        for (const teamData of teamsResponse.Items || []) {
-          const team = teamData as Team & { players?: Player[] }
+        for (const team of allTeams) {
           if (team.players) {
             const playerData = team.players.find(p => p.id === id && p.isPublic)
             if (playerData) {

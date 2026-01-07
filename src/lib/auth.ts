@@ -483,12 +483,11 @@ export const syncOrganizerEmails = async (): Promise<void> => {
   try {
     console.log('Starting organizer email sync...')
     
-    // Get all organizers
-    const organizersResult = await writeDynamoDB.send(new ScanCommand({
-      TableName: TABLES.ORGANIZERS
-    }))
+    // Import organizerService to use cached, paginated getAll
+    const { organizerService } = await import('./aws-database')
     
-    const organizers = organizersResult.Items || []
+    // Get all organizers using service method (uses pagination and cache)
+    const organizers = await organizerService.getAll()
     console.log('Found organizers:', organizers.length)
     
     // Get all auth users

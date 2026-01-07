@@ -79,6 +79,36 @@ async function uploadCompressedImage(compressedFile: File, originalUrl: string):
  * @param compressionType - Compression type to use
  * @returns Promise<ImageProcessingResult[]> - Processing results
  */
+// Helper function to perform paginated scan (more efficient than full scan)
+async function paginatedScan(
+  tableName: string,
+  client: typeof dynamoDB
+): Promise<any[]> {
+  const allItems: any[] = []
+  let lastEvaluatedKey: Record<string, any> | undefined = undefined
+  
+  do {
+    const scanParams: any = {
+      TableName: tableName,
+      Limit: 100, // Process in smaller chunks to reduce capacity consumption
+    }
+    
+    if (lastEvaluatedKey) {
+      scanParams.ExclusiveStartKey = lastEvaluatedKey
+    }
+    
+    const result = await client.send(new ScanCommand(scanParams))
+    
+    if (result.Items) {
+      allItems.push(...result.Items)
+    }
+    
+    lastEvaluatedKey = result.LastEvaluatedKey
+  } while (lastEvaluatedKey)
+  
+  return allItems
+}
+
 async function processEntityImages(
   entityType: 'organizer' | 'tournament' | 'team' | 'player',
   tableName: string,
@@ -88,12 +118,8 @@ async function processEntityImages(
   const results: ImageProcessingResult[] = []
   
   try {
-    // Scan all items from the table
-    const scanResult = await dynamoDB.send(new ScanCommand({
-      TableName: tableName
-    }))
-    
-    const items = scanResult.Items || []
+    // Use paginated scan to reduce read capacity consumption
+    const items = await paginatedScan(tableName, dynamoDB)
     console.log(`Found ${items.length} ${entityType}s to process`)
     
     for (const item of items) {
@@ -272,42 +298,72 @@ export async function getProcessingPreview(): Promise<{entityType: string, count
   const preview: {entityType: string, count: number, totalSize: number}[] = []
   
   try {
-    // Scan organizers
-    const organizersResult = await dynamoDB.send(new ScanCommand({
-      TableName: TABLES.ORGANIZERS,
-      ProjectionExpression: 'id, #name, logo',
-      ExpressionAttributeNames: { '#name': 'name' }
-    }))
+    // Helper function for paginated scan with projection
+    async function paginatedScanWithProjection(
+      tableName: string,
+      projectionExpression: string,
+      expressionAttributeNames: Record<string, string>
+    ): Promise<any[]> {
+      const allItems: any[] = []
+      let lastEvaluatedKey: Record<string, any> | undefined = undefined
+      
+      do {
+        const scanParams: any = {
+          TableName: tableName,
+          ProjectionExpression: projectionExpression,
+          ExpressionAttributeNames: expressionAttributeNames,
+          Limit: 100, // Process in smaller chunks
+        }
+        
+        if (lastEvaluatedKey) {
+          scanParams.ExclusiveStartKey = lastEvaluatedKey
+        }
+        
+        const result = await dynamoDB.send(new ScanCommand(scanParams))
+        
+        if (result.Items) {
+          allItems.push(...result.Items)
+        }
+        
+        lastEvaluatedKey = result.LastEvaluatedKey
+      } while (lastEvaluatedKey)
+      
+      return allItems
+    }
     
-    const organizersWithImages = organizersResult.Items?.filter(item => item.logo) || []
+    // Scan organizers with pagination
+    const organizersItems = await paginatedScanWithProjection(
+      TABLES.ORGANIZERS,
+      'id, #name, logo',
+      { '#name': 'name' }
+    )
+    const organizersWithImages = organizersItems.filter(item => item.logo) || []
     preview.push({
       entityType: 'Organizers',
       count: organizersWithImages.length,
       totalSize: 0 // Would need to fetch actual sizes
     })
     
-    // Scan tournaments
-    const tournamentsResult = await dynamoDB.send(new ScanCommand({
-      TableName: TABLES.TOURNAMENTS,
-      ProjectionExpression: 'id, #name, logo',
-      ExpressionAttributeNames: { '#name': 'name' }
-    }))
-    
-    const tournamentsWithImages = tournamentsResult.Items?.filter(item => item.logo) || []
+    // Scan tournaments with pagination
+    const tournamentsItems = await paginatedScanWithProjection(
+      TABLES.TOURNAMENTS,
+      'id, #name, logo',
+      { '#name': 'name' }
+    )
+    const tournamentsWithImages = tournamentsItems.filter(item => item.logo) || []
     preview.push({
       entityType: 'Tournaments',
       count: tournamentsWithImages.length,
       totalSize: 0
     })
     
-    // Scan teams
-    const teamsResult = await dynamoDB.send(new ScanCommand({
-      TableName: TABLES.TEAMS,
-      ProjectionExpression: 'id, #name, logo',
-      ExpressionAttributeNames: { '#name': 'name' }
-    }))
-    
-    const teamsWithImages = teamsResult.Items?.filter(item => item.logo) || []
+    // Scan teams with pagination
+    const teamsItems = await paginatedScanWithProjection(
+      TABLES.TEAMS,
+      'id, #name, logo',
+      { '#name': 'name' }
+    )
+    const teamsWithImages = teamsItems.filter(item => item.logo) || []
     preview.push({
       entityType: 'Teams',
       count: teamsWithImages.length,

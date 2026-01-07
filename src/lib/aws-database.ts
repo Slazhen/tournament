@@ -37,6 +37,46 @@ export const deleteImageFromS3 = async (url: string): Promise<void> => {
   }))
 }
 
+// Helper function to perform paginated scan (more efficient than full scan)
+async function paginatedScan<T>(
+  tableName: string,
+  client: typeof readOnlyDynamoDB,
+  projectionExpression?: string,
+  expressionAttributeNames?: Record<string, string>
+): Promise<T[]> {
+  const allItems: T[] = []
+  let lastEvaluatedKey: Record<string, any> | undefined = undefined
+  
+  do {
+    const scanParams: any = {
+      TableName: tableName,
+      Limit: 100, // Process in smaller chunks to reduce capacity consumption
+    }
+    
+    if (projectionExpression) {
+      scanParams.ProjectionExpression = projectionExpression
+    }
+    
+    if (expressionAttributeNames) {
+      scanParams.ExpressionAttributeNames = expressionAttributeNames
+    }
+    
+    if (lastEvaluatedKey) {
+      scanParams.ExclusiveStartKey = lastEvaluatedKey
+    }
+    
+    const result = await client.send(new ScanCommand(scanParams))
+    
+    if (result.Items) {
+      allItems.push(...(result.Items as T[]))
+    }
+    
+    lastEvaluatedKey = result.LastEvaluatedKey
+  } while (lastEvaluatedKey)
+  
+  return allItems
+}
+
 // Organizer operations
 export const organizerService = {
   async getAll(): Promise<Organizer[]> {
@@ -46,19 +86,20 @@ export const organizerService = {
     }
 
     try {
-      // Read operation - use read-only client
-      const result = await readOnlyDynamoDB.send(new ScanCommand({
-        TableName: TABLES.ORGANIZERS,
-      }))
+      // Use paginated scan to reduce read capacity consumption
+      const items = await paginatedScan<any>(
+        TABLES.ORGANIZERS,
+        readOnlyDynamoDB
+      )
       
-      const organizers = result.Items?.map(item => ({
+      const organizers = items.map(item => ({
         id: item.id,
         name: item.name,
         email: item.email,
         createdAtISO: item.createdAtISO,
         logo: item.logo,
         description: item.description,
-      })) || []
+      }))
 
       cache.set(cacheKeys.organizers.all, organizers)
       return organizers
@@ -150,12 +191,13 @@ export const teamService = {
     }
 
     try {
-      // Read operation - use read-only client
-      const result = await readOnlyDynamoDB.send(new ScanCommand({
-        TableName: TABLES.TEAMS,
-      }))
+      // Use paginated scan to reduce read capacity consumption
+      const items = await paginatedScan<any>(
+        TABLES.TEAMS,
+        readOnlyDynamoDB
+      )
       
-      const teams = result.Items?.map(item => ({
+      const teams = items.map(item => ({
         id: item.id,
         name: item.name,
         colors: item.colors || [],
@@ -166,7 +208,7 @@ export const teamService = {
         createdAtISO: item.createdAtISO,
         players: item.players || [],
         socialMedia: item.socialMedia,
-      })) || []
+      }))
 
       cache.set(cacheKeys.teams.all, teams)
       return teams
@@ -394,12 +436,13 @@ export const tournamentService = {
     }
 
     try {
-      // Read operation - use read-only client
-      const result = await readOnlyDynamoDB.send(new ScanCommand({
-        TableName: TABLES.TOURNAMENTS,
-      }))
+      // Use paginated scan to reduce read capacity consumption
+      const items = await paginatedScan<any>(
+        TABLES.TOURNAMENTS,
+        readOnlyDynamoDB
+      )
       
-      const tournaments = result.Items?.map(item => ({
+      const tournaments = items.map(item => ({
         id: item.id,
         name: item.name,
         format: item.format,
@@ -409,7 +452,7 @@ export const tournamentService = {
         matches: item.matches || [],
         playoffBracket: item.playoffBracket,
         settings: item.settings,
-      })) || []
+      }))
 
       cache.set(cacheKeys.tournaments.all, tournaments)
       return tournaments
