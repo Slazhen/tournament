@@ -1,5 +1,5 @@
 import { writeDynamoDB, TABLES } from './aws-config'
-import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, ScanCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
+import { GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb'
 // Browser-compatible crypto utilities
 
 // Types

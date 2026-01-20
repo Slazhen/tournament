@@ -332,7 +332,7 @@ export function generateGroupsWithDivisionsSchedule(
     const adjustedMatches = groupMatchesForRound.map(match => ({
       ...match,
       id: `group-${groupIndex + 1}-${match.id}`,
-      round: match.round + roundOffset,
+      round: (match.round || 0) + roundOffset,
       isPlayoff: false,
       groupIndex: groupIndex + 1 // Store group number for reference
     }))
@@ -343,10 +343,6 @@ export function generateGroupsWithDivisionsSchedule(
     const maxRoundInGroup = Math.max(...adjustedMatches.map(m => m.round || 0), 0)
     roundOffset = maxRoundInGroup + 1
   })
-  
-  // Calculate group standings (placeholder - will be calculated from actual match results)
-  // This is a structure to be populated after group stage is complete
-  const groupStandings: Record<string, TeamStanding[]> = {}
   
   // Generate playoff teams based on group positions
   // Division 1: 1st and 2nd from each group
@@ -374,7 +370,7 @@ export function generateGroupsWithDivisionsSchedule(
   const division1PlayoffMatches = createPlayoffMatches(division1Brackets)
   
   // Adjust round numbers and mark as Division 1
-  division1PlayoffMatches.forEach((match, index) => {
+  division1PlayoffMatches.forEach((match) => {
     division1Matches.push({
       ...match,
       id: `div1-${match.id}`,

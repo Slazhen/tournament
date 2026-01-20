@@ -4,8 +4,6 @@ import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
 import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword, syncOrganizerEmails } from '../lib/auth'
 import { organizerService } from '../lib/aws-database'
-import { GetCommand } from '@aws-sdk/lib-dynamodb'
-import { dynamoDB, TABLES } from '../lib/aws-config'
 
 interface Organizer {
   id: string
