@@ -184,6 +184,7 @@ export type Tournament = {
       numberOfGroups: number // Number of groups
       teamsPerGroup: number // Teams per group
       groupRounds: number // 1 or 2 rounds in group stage
+      groups?: string[][] // Array of arrays: [[team1, team2, ...], [team3, team4, ...], ...] - stores team assignments per group
     }
   }
   logo?: string

@@ -299,23 +299,28 @@ export function generateGroupsWithDivisionsSchedule(
     numberOfGroups: number
     teamsPerGroup: number
     groupRounds: number // 1 or 2
+    existingGroups?: string[][] // Optional: use existing groups if provided
   }
-): Match[] {
-  const { numberOfGroups, teamsPerGroup, groupRounds } = config
+): { matches: Match[], groups: string[][] } {
+  const { numberOfGroups, teamsPerGroup, groupRounds, existingGroups } = config
   const totalTeamsNeeded = numberOfGroups * teamsPerGroup
   
   if (teamIds.length < totalTeamsNeeded) {
     console.warn(`Not enough teams: need ${totalTeamsNeeded}, got ${teamIds.length}`)
   }
   
-  // Divide teams into groups
-  const groups: string[][] = []
-  const shuffledTeams = [...teamIds].sort(() => Math.random() - 0.5) // Randomize team distribution
+  // Divide teams into groups - use existing groups if provided, otherwise create new ones
+  const groups: string[][] = existingGroups || []
   
-  for (let i = 0; i < numberOfGroups; i++) {
-    const startIdx = i * teamsPerGroup
-    const endIdx = Math.min(startIdx + teamsPerGroup, shuffledTeams.length)
-    groups.push(shuffledTeams.slice(startIdx, endIdx))
+  if (groups.length === 0) {
+    // Randomize team distribution for new groups
+    const shuffledTeams = [...teamIds].sort(() => Math.random() - 0.5)
+    
+    for (let i = 0; i < numberOfGroups; i++) {
+      const startIdx = i * teamsPerGroup
+      const endIdx = Math.min(startIdx + teamsPerGroup, shuffledTeams.length)
+      groups.push(shuffledTeams.slice(startIdx, endIdx))
+    }
   }
   
   // Generate group stage matches (round-robin within each group)
@@ -404,8 +409,11 @@ export function generateGroupsWithDivisionsSchedule(
     })
   }
   
-  // Combine all matches and return
-  return [...groupMatches, ...division1Matches, ...division2Matches]
+  // Combine all matches and return with groups
+  return {
+    matches: [...groupMatches, ...division1Matches, ...division2Matches],
+    groups: groups
+  }
 }
 
 export function populatePlayoffBrackets(brackets: PlayoffBracket[], finalStandings: string[]): PlayoffBracket[] {

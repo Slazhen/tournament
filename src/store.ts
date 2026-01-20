@@ -255,17 +255,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
             console.error('groups_with_divisions format requires groupsWithDivisionsConfig')
             matches = []
           } else {
-            matches = generateGroupsWithDivisionsSchedule(teamIds, {
+            const result = generateGroupsWithDivisionsSchedule(teamIds, {
               numberOfGroups: config.numberOfGroups,
               teamsPerGroup: config.teamsPerGroup,
-              groupRounds: config.groupRounds
+              groupRounds: config.groupRounds,
+              existingGroups: config.groups // Use existing groups if available
             })
+            matches = result.matches
+            
+            // Store group assignments in tournament format
+            if (tournament.format) {
+              tournament.format.groupsWithDivisionsConfig = {
+                ...config,
+                groups: result.groups
+              }
+            }
           }
         }
         
-        // Update tournament with generated matches
-        const updatedTournament = { ...tournament, matches }
-        await tournamentService.update(tournament.id, { matches })
+        // Update tournament with generated matches and format (which includes groups)
+        const updatedTournament = { ...tournament, matches, format: tournament.format }
+        await tournamentService.update(tournament.id, { matches, format: tournament.format })
         
         set(state => ({
           tournaments: [...state.tournaments, updatedTournament],
