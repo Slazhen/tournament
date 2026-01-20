@@ -9,8 +9,11 @@ export default function TournamentsPage() {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [rounds, setRounds] = useState(1)
-  const [mode, setMode] = useState<'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff'>('league')
+  const [mode, setMode] = useState<'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff' | 'groups_with_divisions'>('league')
   const [qualifiers, setQualifiers] = useState(4)
+  const [numberOfGroups, setNumberOfGroups] = useState(4)
+  const [teamsPerGroup, setTeamsPerGroup] = useState(4)
+  const [groupRounds, setGroupRounds] = useState(1)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string>("")
   
@@ -54,6 +57,11 @@ export default function TournamentsPage() {
           playoffTeams: qualifiers,
           enableBye: true,
           playoffRounds: [] // Will be configured later
+        } : undefined,
+        groupsWithDivisionsConfig: mode === 'groups_with_divisions' ? {
+          numberOfGroups,
+          teamsPerGroup,
+          groupRounds
         } : undefined
       }
       
@@ -176,13 +184,14 @@ export default function TournamentsPage() {
                   <label className="block text-sm font-medium mb-2">Tournament Mode</label>
                   <select
                     value={mode}
-                    onChange={(e) => setMode(e.target.value as 'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff')}
+                    onChange={(e) => setMode(e.target.value as 'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff' | 'groups_with_divisions')}
                     className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                   >
                     <option value="league">League Only</option>
                     <option value="league_playoff">League + Playoffs</option>
                     <option value="swiss_elimination">Swiss + Elimination</option>
                     <option value="league_custom_playoff">League + Custom Playoff</option>
+                    <option value="groups_with_divisions">Groups + Divisions</option>
                   </select>
                 </div>
               </div>
@@ -240,6 +249,87 @@ export default function TournamentsPage() {
                     <p>• <strong>Points System:</strong> Additional league games count toward table, knockout games don't</p>
                     <p>• <strong>Flexible:</strong> Mix knockout and league games as needed</p>
                   </div>
+                </div>
+              )}
+
+              {mode === 'groups_with_divisions' && (
+                <div className="space-y-4 p-4 bg-blue-500/10 border border-blue-400/30 rounded-lg">
+                  <h3 className="text-lg font-semibold text-blue-400">Groups + Divisions Configuration</h3>
+                  <p className="text-sm opacity-80 mb-4">
+                    Teams will be divided into groups. Top 2 teams from each group go to Division 1 playoffs. 
+                    3rd and 4th place teams go to Division 2 playoffs.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Number of Groups</label>
+                      <select
+                        value={numberOfGroups}
+                        onChange={(e) => {
+                          const numGroups = Number(e.target.value)
+                          setNumberOfGroups(numGroups)
+                          // Auto-calculate teams per group if possible
+                          if (selectedTeamIds.length > 0) {
+                            const calculatedTeamsPerGroup = Math.floor(selectedTeamIds.length / numGroups)
+                            if (calculatedTeamsPerGroup >= 4 && calculatedTeamsPerGroup <= 8) {
+                              setTeamsPerGroup(calculatedTeamsPerGroup)
+                            }
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                      >
+                        <option value={2}>2 Groups</option>
+                        <option value={3}>3 Groups</option>
+                        <option value={4}>4 Groups</option>
+                        <option value={5}>5 Groups</option>
+                        <option value={6}>6 Groups</option>
+                        <option value={8}>8 Groups</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Teams per Group</label>
+                      <select
+                        value={teamsPerGroup}
+                        onChange={(e) => setTeamsPerGroup(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                      >
+                        <option value={3}>3 Teams</option>
+                        <option value={4}>4 Teams</option>
+                        <option value={5}>5 Teams</option>
+                        <option value={6}>6 Teams</option>
+                        <option value={7}>7 Teams</option>
+                        <option value={8}>8 Teams</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Group Stage Rounds</label>
+                      <select
+                        value={groupRounds}
+                        onChange={(e) => setGroupRounds(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                      >
+                        <option value={1}>1 Round</option>
+                        <option value={2}>2 Rounds</option>
+                      </select>
+                    </div>
+                  </div>
+                  {selectedTeamIds.length > 0 && (
+                    <div className="mt-4 p-3 bg-white/5 rounded-lg">
+                      <p className="text-sm">
+                        <strong>Total Teams:</strong> {selectedTeamIds.length}<br />
+                        <strong>Total Needed:</strong> {numberOfGroups * teamsPerGroup}<br />
+                        {selectedTeamIds.length < numberOfGroups * teamsPerGroup && (
+                          <span className="text-yellow-400">
+                            ⚠️ Not enough teams! Need {numberOfGroups * teamsPerGroup - selectedTeamIds.length} more.
+                          </span>
+                        )}
+                        {selectedTeamIds.length > numberOfGroups * teamsPerGroup && (
+                          <span className="text-gray-400">
+                            ℹ️ {selectedTeamIds.length - numberOfGroups * teamsPerGroup} team(s) will not participate.
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

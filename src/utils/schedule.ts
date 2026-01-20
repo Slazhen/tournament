@@ -293,6 +293,125 @@ export function generateSwissEliminationSchedule(teamIds: string[], leagueRounds
   return { leagueMatches, eliminationMatches }
 }
 
+export function generateGroupsWithDivisionsSchedule(
+  teamIds: string[],
+  config: {
+    numberOfGroups: number
+    teamsPerGroup: number
+    groupRounds: number // 1 or 2
+  }
+): Match[] {
+  const { numberOfGroups, teamsPerGroup, groupRounds } = config
+  const totalTeamsNeeded = numberOfGroups * teamsPerGroup
+  
+  if (teamIds.length < totalTeamsNeeded) {
+    console.warn(`Not enough teams: need ${totalTeamsNeeded}, got ${teamIds.length}`)
+  }
+  
+  // Divide teams into groups
+  const groups: string[][] = []
+  const shuffledTeams = [...teamIds].sort(() => Math.random() - 0.5) // Randomize team distribution
+  
+  for (let i = 0; i < numberOfGroups; i++) {
+    const startIdx = i * teamsPerGroup
+    const endIdx = Math.min(startIdx + teamsPerGroup, shuffledTeams.length)
+    groups.push(shuffledTeams.slice(startIdx, endIdx))
+  }
+  
+  // Generate group stage matches (round-robin within each group)
+  const groupMatches: Match[] = []
+  let roundOffset = 0
+  
+  groups.forEach((groupTeams, groupIndex) => {
+    if (groupTeams.length < 2) return
+    
+    // Generate round-robin matches for this group
+    const groupMatchesForRound = generateRoundRobinSchedule(groupTeams, groupRounds)
+    
+    // Adjust round numbers and add group identifier
+    const adjustedMatches = groupMatchesForRound.map(match => ({
+      ...match,
+      id: `group-${groupIndex + 1}-${match.id}`,
+      round: match.round + roundOffset,
+      isPlayoff: false,
+      groupIndex: groupIndex + 1 // Store group number for reference
+    }))
+    
+    groupMatches.push(...adjustedMatches)
+    
+    // Calculate max rounds for this group to offset next group
+    const maxRoundInGroup = Math.max(...adjustedMatches.map(m => m.round || 0), 0)
+    roundOffset = maxRoundInGroup + 1
+  })
+  
+  // Calculate group standings (placeholder - will be calculated from actual match results)
+  // This is a structure to be populated after group stage is complete
+  const groupStandings: Record<string, TeamStanding[]> = {}
+  
+  // Generate playoff teams based on group positions
+  // Division 1: 1st and 2nd from each group
+  // Division 2: 3rd and 4th from each group
+  const division1Teams: string[] = []
+  const division2Teams: string[] = []
+  
+  // For now, we'll create placeholder teams. In practice, these will be determined by group standings
+  // The structure will be: group1-1st, group1-2nd, group2-1st, group2-2nd, etc.
+  groups.forEach((groupTeams, groupIndex) => {
+    // Division 1 qualifiers (1st and 2nd place)
+    division1Teams.push(`group-${groupIndex + 1}-1st`, `group-${groupIndex + 1}-2nd`)
+    
+    // Division 2 qualifiers (3rd and 4th place) - only if group has 4+ teams
+    if (groupTeams.length >= 4) {
+      division2Teams.push(`group-${groupIndex + 1}-3rd`, `group-${groupIndex + 1}-4th`)
+    } else if (groupTeams.length === 3) {
+      division2Teams.push(`group-${groupIndex + 1}-3rd`)
+    }
+  })
+  
+  // Generate Division 1 playoff matches (Quarter Finals -> Semi Finals -> Final)
+  const division1Matches: Match[] = []
+  const division1Brackets = generatePlayoffBrackets(division1Teams)
+  const division1PlayoffMatches = createPlayoffMatches(division1Brackets)
+  
+  // Adjust round numbers and mark as Division 1
+  division1PlayoffMatches.forEach((match, index) => {
+    division1Matches.push({
+      ...match,
+      id: `div1-${match.id}`,
+      round: (match.round || 0) + roundOffset,
+      isPlayoff: true,
+      playoffRound: match.playoffRound,
+      division: 1 // Mark as Division 1
+    })
+  })
+  
+  // Update round offset for Division 2
+  const maxDiv1Round = Math.max(...division1Matches.map(m => m.round || 0), roundOffset - 1)
+  roundOffset = maxDiv1Round + 1
+  
+  // Generate Division 2 playoff matches (if there are enough teams)
+  const division2Matches: Match[] = []
+  if (division2Teams.length >= 4) {
+    const division2Brackets = generatePlayoffBrackets(division2Teams)
+    const division2PlayoffMatches = createPlayoffMatches(division2Brackets)
+    
+    // Adjust round numbers and mark as Division 2
+    division2PlayoffMatches.forEach((match) => {
+      division2Matches.push({
+        ...match,
+        id: `div2-${match.id}`,
+        round: (match.round || 0) + roundOffset,
+        isPlayoff: true,
+        playoffRound: match.playoffRound,
+        division: 2 // Mark as Division 2
+      })
+    })
+  }
+  
+  // Combine all matches and return
+  return [...groupMatches, ...division1Matches, ...division2Matches]
+}
+
 export function populatePlayoffBrackets(brackets: PlayoffBracket[], finalStandings: string[]): PlayoffBracket[] {
   if (!brackets.length || !finalStandings.length) return brackets
   

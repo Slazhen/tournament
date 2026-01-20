@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Team, Tournament, Match, Organizer, AppSettings } from './types'
-import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule } from './utils/tournament'
+import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule, generateGroupsWithDivisionsSchedule } from './utils/tournament'
 import { organizerService, teamService, tournamentService, matchService, uploadImageToS3 } from './lib/aws-database'
 import { cache, cacheKeys } from './lib/cache'
 
@@ -248,6 +248,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
           // For now, just create the league matches
           // Playoff rounds will be configured later by the admin
           matches = leagueMatches
+        } else if (tournamentFormat.mode === 'groups_with_divisions') {
+          // Generate groups with divisions format
+          const config = tournamentFormat.groupsWithDivisionsConfig
+          if (!config) {
+            console.error('groups_with_divisions format requires groupsWithDivisionsConfig')
+            matches = []
+          } else {
+            matches = generateGroupsWithDivisionsSchedule(teamIds, {
+              numberOfGroups: config.numberOfGroups,
+              teamsPerGroup: config.teamsPerGroup,
+              groupRounds: config.groupRounds
+            })
+          }
         }
         
         // Update tournament with generated matches

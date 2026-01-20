@@ -51,6 +51,8 @@ export type Match = {
   playoffRound?: number
   playoffMatch?: number
   isElimination?: boolean // Mark individual matches as elimination for public display
+  division?: number // Division number (1 or 2) for groups_with_divisions format
+  groupIndex?: number // Group number (1-based) for groups_with_divisions format
   // Match details
   venue?: string
   referee?: string
@@ -171,12 +173,17 @@ export type Tournament = {
   matches: Match[]
   format?: {
     rounds: number
-    mode: 'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff'
+    mode: 'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff' | 'groups_with_divisions'
     playoffQualifiers?: number
     customPlayoffConfig?: {
       playoffTeams: number // Total teams in playoffs
       enableBye: boolean // Enable BYE for odd numbers (default: true)
       playoffRounds?: CustomPlayoffRoundConfig[] // Configuration for each playoff round
+    }
+    groupsWithDivisionsConfig?: {
+      numberOfGroups: number // Number of groups
+      teamsPerGroup: number // Teams per group
+      groupRounds: number // 1 or 2 rounds in group stage
     }
   }
   logo?: string
