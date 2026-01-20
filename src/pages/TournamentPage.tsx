@@ -705,34 +705,84 @@ export default function TournamentPage() {
       ) : null}
       
       {/* Group Editing Modal */}
-      {showEditGroups && tournament?.format?.mode === 'groups_with_divisions' && (
+      {showEditGroups && tournament?.format?.mode === 'groups_with_divisions' && (() => {
+        // Get all teams in tournament
+        const allTournamentTeams = tournament.teamIds || []
+        // Get all teams currently assigned to groups
+        const assignedTeamIds = new Set(editingGroups.flat())
+        // Get unassigned teams
+        const unassignedTeams = allTournamentTeams.filter(teamId => !assignedTeamIds.has(teamId))
+        
+        return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowEditGroups(false)}>
-          <div className="glass rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-slate-800 rounded-xl p-6 max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-slate-700" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Edit Groups</h2>
+              <h2 className="text-xl font-semibold text-white">Edit Groups</h2>
               <button
                 onClick={() => setShowEditGroups(false)}
-                className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-all text-white"
               >
                 ✕ Close
               </button>
             </div>
-            <p className="text-sm opacity-70 mb-4">
+            <p className="text-sm text-gray-300 mb-4">
               Drag teams between groups or click to move teams. Changes will regenerate group matches.
             </p>
+            
+            {/* Available Teams Section */}
+            {unassignedTeams.length > 0 && (
+              <div className="mb-4 p-4 bg-slate-900 rounded-lg border border-slate-700">
+                <h3 className="font-semibold mb-2 text-white">Available Teams ({unassignedTeams.length})</h3>
+                <div className="flex flex-wrap gap-2">
+                  {unassignedTeams.map((teamId) => {
+                    const team = teams.find(t => t.id === teamId)
+                    return (
+                      <div
+                        key={teamId}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 cursor-pointer"
+                        onClick={() => {
+                          // Add to first group that has space
+                          const newGroups = [...editingGroups]
+                          const maxTeamsPerGroup = tournament?.format?.groupsWithDivisionsConfig?.teamsPerGroup || 4
+                          for (let i = 0; i < newGroups.length; i++) {
+                            if (newGroups[i].length < maxTeamsPerGroup) {
+                              newGroups[i] = [...newGroups[i], teamId]
+                              setEditingGroups(newGroups)
+                              break
+                            }
+                          }
+                        }}
+                      >
+                        {team?.logo ? (
+                          <img src={team.logo} alt={team.name} className="w-5 h-5 rounded-full object-cover" />
+                        ) : (
+                          <span className="w-5 h-5 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
+                        )}
+                        <span className="text-sm text-white">{team?.name || teamId}</span>
+                        <span className="text-xs text-gray-400">Click to add</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {editingGroups.map((groupTeams, groupIndex) => {
                 const groupLetter = String.fromCharCode(65 + groupIndex) // A, B, C, D, etc.
+                const maxTeamsPerGroup = tournament?.format?.groupsWithDivisionsConfig?.teamsPerGroup || 4
+                const hasSpace = groupTeams.length < maxTeamsPerGroup
+                
                 return (
-                <div key={groupIndex} className="glass rounded-lg p-4 border border-white/20">
-                  <h3 className="font-semibold mb-2">Group {groupLetter}</h3>
-                  <div className="space-y-2 min-h-[200px] bg-white/5 rounded p-2">
+                <div key={groupIndex} className="bg-slate-900 rounded-lg p-4 border border-slate-700">
+                  <h3 className="font-semibold mb-2 text-white">Group {groupLetter}</h3>
+                  <div className="space-y-2 min-h-[200px] bg-slate-800 rounded p-2 border border-slate-700">
                     {groupTeams.map((teamId) => {
                       const team = teams.find(t => t.id === teamId)
                       return (
                         <div
                           key={teamId}
-                          className="flex items-center gap-2 p-2 bg-white/10 rounded hover:bg-white/20 cursor-move"
+                          className="flex items-center gap-2 p-2 bg-slate-700 rounded hover:bg-slate-600 cursor-move"
                           draggable
                           onDragStart={(e) => {
                             e.dataTransfer.setData('teamId', teamId)
@@ -757,23 +807,28 @@ export default function TournamentPage() {
                           ) : (
                             <span className="w-6 h-6 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
                           )}
-                          <span className="flex-1">{team?.name || teamId}</span>
+                          <span className="flex-1 text-white">{team?.name || teamId}</span>
                           <button
                             onClick={() => {
                               const newGroups = [...editingGroups]
                               newGroups[groupIndex] = newGroups[groupIndex].filter(id => id !== teamId)
                               setEditingGroups(newGroups)
                             }}
-                            className="px-2 py-1 text-xs glass hover:bg-red-500/20 rounded"
+                            className="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 rounded text-white"
                           >
                             Remove
                           </button>
                         </div>
                       )
                     })}
+                    {hasSpace && (
+                      <div className="p-2 text-center text-sm text-gray-400 border-2 border-dashed border-slate-600 rounded">
+                        Drop teams here or click available teams above
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-2 text-xs opacity-70">
-                    {groupTeams.length} / {tournament?.format?.groupsWithDivisionsConfig?.teamsPerGroup || 4} teams
+                  <div className="mt-2 text-xs text-gray-400">
+                    {groupTeams.length} / {maxTeamsPerGroup} teams
                   </div>
                 </div>
                 )
@@ -782,7 +837,7 @@ export default function TournamentPage() {
             <div className="flex gap-4 justify-end">
               <button
                 onClick={() => setShowEditGroups(false)}
-                className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all"
+                className="px-6 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 transition-all text-white"
               >
                 Cancel
               </button>
@@ -817,14 +872,15 @@ export default function TournamentPage() {
                   
                   setShowEditGroups(false)
                 }}
-                className="px-6 py-3 rounded-lg glass hover:bg-green-500/20 transition-all bg-green-500/10 border border-green-400/30"
+                className="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 transition-all text-white font-semibold"
               >
                 Save Changes
               </button>
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
       
       {tournament.format?.mode !== 'groups_with_divisions' && (
         <section className="glass rounded-xl p-6 w-full max-w-4xl">
