@@ -172,12 +172,12 @@ export default function PublicTournamentPage() {
             const endIdx = Math.min(startIdx + teamsPerGroup, tournament.teamIds.length)
             groups.push(tournament.teamIds.slice(startIdx, endIdx))
           }
-        }
-      }
-      
+                }
+              }
+              
       if (groups && groups.length > 0) {
         const groupTables: Record<number, any[]> = {}
-      
+              
         // Calculate standings for each group separately - EXACTLY like admin page
         groups.forEach((groupTeams: string[], groupIndex: number) => {
           const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
@@ -214,7 +214,7 @@ export default function PublicTournamentPage() {
         })
       
         return { table: [], eliminatedTeams: new Set<string>(), groupTables }
-      }
+    }
     }
     
     // Regular league/playoff table calculation
@@ -269,7 +269,15 @@ export default function PublicTournamentPage() {
     return { table, eliminatedTeams, groupTables: {} }
   }
 
-  const { table, eliminatedTeams, groupTables } = useMemo(() => calculateTable(), [tournament])
+  const { table, eliminatedTeams, groupTables } = useMemo(() => {
+    return calculateTable()
+  }, [
+    tournament?.id, 
+    tournament?.format?.mode,
+    JSON.stringify(tournament?.format?.groupsWithDivisionsConfig),
+    tournament?.teamIds?.length,
+    tournament?.matches?.length
+  ])
 
   return (
     <div className="grid gap-6 place-items-center">
