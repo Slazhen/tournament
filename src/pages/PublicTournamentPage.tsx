@@ -247,10 +247,10 @@ export default function PublicTournamentPage() {
     const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
     const eliminatedTeams = new Set<string>()
     
-    // Initialize stats for all teams
-    teams.forEach((team: any) => {
-      if (team.id) {
-        stats[team.id] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
+    // Initialize stats ONLY for teams in this tournament
+    tournament.teamIds.forEach((tid: string) => {
+      if (tid) {
+        stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
       }
     })
 
@@ -507,16 +507,6 @@ export default function PublicTournamentPage() {
                                       <span className="font-medium text-xs sm:text-lg group-hover:text-blue-300 transition-colors duration-300">
                                         {team?.name || 'Unknown Team'}
                                       </span>
-                                      {isTop2 && (
-                                        <span className="text-xs bg-green-500/20 text-green-300 px-1.5 py-0.5 rounded-full">
-                                          Div 1
-                                        </span>
-                                      )}
-                                      {index === 2 || index === 3 ? (
-                                        <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-full">
-                                          Div 2
-                                        </span>
-                                      ) : null}
                                     </Link>
                                   </td>
                                   <td className="py-2 px-1 sm:px-6 text-center text-white text-xs sm:text-lg font-medium">{row.p}</td>
