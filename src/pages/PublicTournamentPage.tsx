@@ -127,10 +127,14 @@ export default function PublicTournamentPage() {
         name: tournament.name,
         formatMode: tournament.format?.mode,
         hasFormat: !!tournament.format,
+        hasGroupsWithDivisionsConfig: !!tournament.format?.groupsWithDivisionsConfig,
+        groupsWithDivisionsConfig: tournament.format?.groupsWithDivisionsConfig,
         hasCustomPlayoffConfig: !!tournament.format?.customPlayoffConfig,
         playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds,
         playoffRoundsLength: tournament.format?.customPlayoffConfig?.playoffRounds?.length,
-        fullFormat: tournament.format
+        fullFormat: tournament.format,
+        teamIdsCount: tournament.teamIds?.length || 0,
+        matchesCount: tournament.matches?.length || 0
       })
     }
   } catch (error) {
@@ -344,16 +348,47 @@ export default function PublicTournamentPage() {
     
     try {
       // Check if this is a groups_with_divisions format
-      if (tournament.format?.mode === 'groups_with_divisions' && tournament.format?.groupsWithDivisionsConfig) {
-        let groups = tournament.format.groupsWithDivisionsConfig.groups
-        
-        // If groups aren't stored, reconstruct them from matches
-        if (!groups || groups.length === 0) {
-          const config = tournament.format.groupsWithDivisionsConfig
-          const numberOfGroups = config.numberOfGroups || 4
-          const teamsPerGroup = config.teamsPerGroup || 4
+      // Also check if matches have groupIndex (indicates groups format even if format.mode isn't set)
+      const hasGroupMatches = tournament.matches.some((m: any) => m.groupIndex && !m.isPlayoff)
+      const isGroupsFormat = tournament.format?.mode === 'groups_with_divisions' || hasGroupMatches
+      
+      if (isGroupsFormat) {
+        // Get or create config
+        let config = tournament.format?.groupsWithDivisionsConfig
+        if (!config) {
+          // If config doesn't exist, try to infer from matches or create default
+          const groupIndices = new Set<number>()
+          tournament.matches.forEach((m: any) => {
+            if (m.groupIndex && !m.isPlayoff) {
+              groupIndices.add(m.groupIndex)
+            }
+          })
           
-          // Reconstruct groups from match groupIndex
+          const numberOfGroups = groupIndices.size > 0 ? groupIndices.size : 4
+          const teamCount = tournament.teamIds.length
+          const teamsPerGroup = Math.ceil(teamCount / numberOfGroups)
+          
+          config = {
+            numberOfGroups,
+            teamsPerGroup,
+            groupRounds: 1
+          }
+          
+          // Ensure format object exists
+          if (!tournament.format) {
+            tournament.format = { mode: 'groups_with_divisions', rounds: 1 }
+          }
+          tournament.format.mode = 'groups_with_divisions'
+          tournament.format.groupsWithDivisionsConfig = config
+        }
+        
+        let groups = config.groups || []
+        const numberOfGroups = config.numberOfGroups || 4
+        const teamsPerGroup = config.teamsPerGroup || 4
+        
+        // If groups aren't stored, reconstruct them from matches or teamIds
+        if (!groups || groups.length === 0) {
+          // Try to reconstruct from match groupIndex first
           const reconstructedGroups: Record<number, Set<string>> = {}
           tournament.matches.forEach((m: any) => {
             if (!m.isPlayoff && m.groupIndex) {
@@ -368,7 +403,7 @@ export default function PublicTournamentPage() {
           // Convert to array format
           groups = []
           for (let i = 1; i <= numberOfGroups; i++) {
-            if (reconstructedGroups[i]) {
+            if (reconstructedGroups[i] && reconstructedGroups[i].size > 0) {
               groups.push(Array.from(reconstructedGroups[i]))
             } else {
               // Fallback: distribute teams evenly
@@ -379,51 +414,50 @@ export default function PublicTournamentPage() {
           }
         }
         
-        if (groups && groups.length > 0) {
-          const groupTables: Record<number, any[]> = {}
+        // Always calculate group tables, even if groups are empty (will show empty tables)
+        const groupTables: Record<number, any[]> = {}
+        
+        // Calculate standings for each group separately
+        groups.forEach((groupTeams: string[], groupIndex: number) => {
+          const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
           
-          // Calculate standings for each group separately
-          groups.forEach((groupTeams: string[], groupIndex: number) => {
-            const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
-            
-            // Initialize stats for teams in this group
-            groupTeams.forEach((tid: string) => {
-              stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
-            })
-            
-            // Count group matches (matches with this groupIndex)
-            const groupMatches = tournament.matches.filter((m: any) => 
-              !m.isPlayoff && m.groupIndex === groupIndex + 1 &&
-              groupTeams.includes(m.homeTeamId) && groupTeams.includes(m.awayTeamId)
-            )
-            
-            for (const m of groupMatches) {
-              if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
-              const a = stats[(m as any).homeTeamId]
-              const b = stats[(m as any).awayTeamId]
-              if (!a || !b) continue
-              
-              a.p++; b.p++
-              a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
-              b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
-              if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
-              else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
-              else { a.d++; b.d++; a.pts++; b.pts++ }
-            }
-            
-            const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
-              .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
-            
-            groupTables[groupIndex + 1] = table
+          // Initialize stats for teams in this group
+          groupTeams.forEach((tid: string) => {
+            stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
           })
           
-          // Store reconstructed groups in format if they weren't there
-          if (!tournament.format.groupsWithDivisionsConfig.groups && groups.length > 0) {
-            tournament.format.groupsWithDivisionsConfig.groups = groups
+          // Count group matches (matches with this groupIndex)
+          const groupMatches = tournament.matches.filter((m: any) => 
+            !m.isPlayoff && m.groupIndex === groupIndex + 1 &&
+            groupTeams.includes(m.homeTeamId) && groupTeams.includes(m.awayTeamId)
+          )
+          
+          for (const m of groupMatches) {
+            if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
+            const a = stats[(m as any).homeTeamId]
+            const b = stats[(m as any).awayTeamId]
+            if (!a || !b) continue
+            
+            a.p++; b.p++
+            a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
+            b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
+            if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
+            else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
+            else { a.d++; b.d++; a.pts++; b.pts++ }
           }
           
-          return { table: [], eliminatedTeams: new Set<string>(), groupTables }
+          const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
+            .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
+          
+          groupTables[groupIndex + 1] = table
+        })
+        
+        // Store groups in format if they weren't there
+        if (!config.groups && groups.length > 0) {
+          config.groups = groups
         }
+        
+        return { table: [], eliminatedTeams: new Set<string>(), groupTables }
       }
       
       const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
@@ -632,7 +666,11 @@ export default function PublicTournamentPage() {
       </section>
 
       {/* Championship Table or Group Tables */}
-      {tournament.format?.mode === 'groups_with_divisions' && tournament.format?.groupsWithDivisionsConfig ? (
+      {(() => {
+        const hasGroupMatches = tournament.matches?.some((m: any) => m.groupIndex && !m.isPlayoff) || false
+        const isGroupsFormat = tournament.format?.mode === 'groups_with_divisions' || hasGroupMatches
+        return isGroupsFormat
+      })() ? (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <div className="text-center mb-4">
             <h2 className="text-lg font-semibold tracking-wide">Group Tables</h2>
