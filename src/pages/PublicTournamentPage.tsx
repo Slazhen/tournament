@@ -417,6 +417,11 @@ export default function PublicTournamentPage() {
             groupTables[groupIndex + 1] = table
           })
           
+          // Store reconstructed groups in format if they weren't there
+          if (!tournament.format.groupsWithDivisionsConfig.groups && groups.length > 0) {
+            tournament.format.groupsWithDivisionsConfig.groups = groups
+          }
+          
           return { table: [], eliminatedTeams: new Set<string>(), groupTables }
         }
       }
@@ -627,7 +632,7 @@ export default function PublicTournamentPage() {
       </section>
 
       {/* Championship Table or Group Tables */}
-      {tournament.format?.mode === 'groups_with_divisions' && (tournament.format?.groupsWithDivisionsConfig?.groups || tournament.format?.groupsWithDivisionsConfig) ? (
+      {tournament.format?.mode === 'groups_with_divisions' && tournament.format?.groupsWithDivisionsConfig ? (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <div className="text-center mb-4">
             <h2 className="text-lg font-semibold tracking-wide">Group Tables</h2>
@@ -636,10 +641,39 @@ export default function PublicTournamentPage() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(tournament.format.groupsWithDivisionsConfig.groups || []).map((_groupTeams: string[], groupIndex: number) => {
-              const groupTable = (groupTables as Record<number, any[]>)[groupIndex + 1] || []
-              const groupLetter = String.fromCharCode(65 + groupIndex) // A, B, C, D, etc.
-              return (
+            {(() => {
+              // Get groups from format or reconstruct from groupTables or teamIds
+              let groups = tournament.format?.groupsWithDivisionsConfig?.groups || []
+              const config = tournament.format.groupsWithDivisionsConfig
+              const numberOfGroups = config.numberOfGroups || 4
+              const teamsPerGroup = config.teamsPerGroup || 4
+              
+              // If no groups and no groupTables, create groups from teamIds
+              if (groups.length === 0 && Object.keys(groupTables).length === 0) {
+                groups = []
+                for (let i = 0; i < numberOfGroups; i++) {
+                  const startIdx = i * teamsPerGroup
+                  const endIdx = Math.min(startIdx + teamsPerGroup, tournament.teamIds.length)
+                  groups.push(tournament.teamIds.slice(startIdx, endIdx))
+                }
+              }
+              
+              // Use groupTables if available, otherwise create empty tables
+              return groups.map((groupTeams: string[], groupIndex: number) => {
+                const groupTable = (groupTables as Record<number, any[]>)[groupIndex + 1] || 
+                  groupTeams.map((teamId: string) => ({
+                    id: teamId,
+                    p: 0,
+                    w: 0,
+                    d: 0,
+                    l: 0,
+                    gf: 0,
+                    ga: 0,
+                    pts: 0
+                  }))
+                const groupLetter = String.fromCharCode(65 + groupIndex) // A, B, C, D, etc.
+                
+                return (
                 <div key={groupIndex} className="glass rounded-lg p-4 border border-white/10">
                   <h3 className="text-md font-semibold mb-3 text-center">Group {groupLetter}</h3>
                   <div className="overflow-x-auto">
@@ -713,8 +747,9 @@ export default function PublicTournamentPage() {
                     </table>
                   </div>
                 </div>
-              )
-            })}
+                )
+              })
+            })()}
           </div>
         </section>
       ) : (
