@@ -269,15 +269,9 @@ export default function PublicTournamentPage() {
     return { table, eliminatedTeams, groupTables: {} }
   }
 
-  const { table, eliminatedTeams, groupTables } = useMemo(() => {
-    return calculateTable()
-  }, [
-    tournament?.id, 
-    tournament?.format?.mode,
-    JSON.stringify(tournament?.format?.groupsWithDivisionsConfig),
-    tournament?.teamIds?.length,
-    tournament?.matches?.length
-  ])
+  // Calculate table directly without useMemo to avoid infinite loops
+  // The calculation is fast and tournament object is stable from store
+  const { table, eliminatedTeams, groupTables } = calculateTable()
 
   return (
     <div className="grid gap-6 place-items-center">
