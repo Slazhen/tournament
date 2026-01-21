@@ -43,7 +43,7 @@ export default function PublicTournamentPage() {
     }
     loadData()
   }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams])
-
+    
   // Reload data when page becomes visible (handles tab switching)
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -218,54 +218,54 @@ export default function PublicTournamentPage() {
     }
     
     // Regular league/playoff table calculation
-    const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
-    const eliminatedTeams = new Set<string>()
-    
-    for (const tid of tournament.teamIds) {
-      if (tid) {
-        stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
+      const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
+      const eliminatedTeams = new Set<string>()
+      
+      for (const tid of tournament.teamIds) {
+        if (tid) {
+          stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
+        }
       }
-    }
-    
-    // Count league matches for the table
+      
+      // Count league matches for the table
     const leagueMatches = tournament.matches.filter((m: any) => !m.isPlayoff)
-    
-    for (const m of leagueMatches) {
-      if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
+      
+      for (const m of leagueMatches) {
+        if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
       const a = stats[(m as any).homeTeamId]
       const b = stats[(m as any).awayTeamId]
-      if (!a || !b) continue
+        if (!a || !b) continue
+        
+        a.p++; b.p++
+        a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
+        b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
+        if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
+        else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
+        else { a.d++; b.d++; a.pts++; b.pts++ }
+      }
       
-      a.p++; b.p++
-      a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
-      b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
-      if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
-      else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
-      else { a.d++; b.d++; a.pts++; b.pts++ }
-    }
-    
     // Handle elimination matches
     if (tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination') {
       tournament.matches.forEach((match: any) => {
         if (match.isPlayoff && ((match as any).homeGoals != null || (match as any).awayGoals != null)) {
-          const homeTeamId = match.homeTeamId
-          const awayTeamId = match.awayTeamId
-          
-          if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return
-          
-          // Mark the loser as eliminated
+                const homeTeamId = match.homeTeamId
+                const awayTeamId = match.awayTeamId
+                
+                if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return
+                
+                // Mark the loser as eliminated
           if ((match as any).homeGoals > (match as any).awayGoals) {
-            eliminatedTeams.add(awayTeamId)
+                  eliminatedTeams.add(awayTeamId)
           } else if ((match as any).homeGoals < (match as any).awayGoals) {
-            eliminatedTeams.add(homeTeamId)
+                  eliminatedTeams.add(homeTeamId)
+                }
           }
-        }
-      })
-    }
-    
-    const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
-      .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
-    
+        })
+      }
+      
+      const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
+        .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
+      
     return { table, eliminatedTeams, groupTables: {} }
   }
 
@@ -360,9 +360,54 @@ export default function PublicTournamentPage() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(tournament.format.groupsWithDivisionsConfig.groups || []).map((_groupTeams: string[], groupIndex: number) => {
-              const groupTable = (groupTables as Record<number, any[]>)[groupIndex + 1] || []
-              const groupLetter = String.fromCharCode(65 + groupIndex) // A, B, C, D, etc.
+            {(() => {
+              // Get groups from config or reconstruct from groupTables
+              let groups = tournament.format?.groupsWithDivisionsConfig?.groups || []
+              
+              // If no groups but we have groupTables, create groups from groupTables
+              if (groups.length === 0 && Object.keys(groupTables).length > 0) {
+                const config = tournament.format?.groupsWithDivisionsConfig
+                const numberOfGroups = config?.numberOfGroups || Object.keys(groupTables).length
+                const teamsPerGroup = config?.teamsPerGroup || 4
+                
+                // Reconstruct groups from groupTables
+                groups = []
+                for (let i = 1; i <= numberOfGroups; i++) {
+                  const groupTable = (groupTables as Record<number, any[]>)[i] || []
+                  const teamIds = groupTable.map((row: any) => row.id)
+                  if (teamIds.length > 0) {
+                    groups.push(teamIds)
+                  } else {
+                    // Fallback: distribute teams evenly
+                    const startIdx = (i - 1) * teamsPerGroup
+                    const endIdx = Math.min(startIdx + teamsPerGroup, tournament.teamIds.length)
+                    groups.push(tournament.teamIds.slice(startIdx, endIdx))
+                  }
+                }
+              }
+              
+              // If still no groups, create from teamIds based on config
+              if (groups.length === 0) {
+                const config = tournament.format?.groupsWithDivisionsConfig
+                const numberOfGroups = config?.numberOfGroups || 4
+                const teamsPerGroup = config?.teamsPerGroup || 4
+                
+                for (let i = 0; i < numberOfGroups; i++) {
+                  const startIdx = i * teamsPerGroup
+                  const endIdx = Math.min(startIdx + teamsPerGroup, tournament.teamIds.length)
+                  groups.push(tournament.teamIds.slice(startIdx, endIdx))
+                }
+              }
+              
+              console.log('🎯 PublicTournamentPage rendering groups:', {
+                groupsCount: groups.length,
+                groups,
+                groupTablesKeys: Object.keys(groupTables)
+              })
+              
+              return groups.map((_groupTeams: string[], groupIndex: number) => {
+                const groupTable = (groupTables as Record<number, any[]>)[groupIndex + 1] || []
+                const groupLetter = String.fromCharCode(65 + groupIndex) // A, B, C, D, etc.
               
               return (
                 <div key={groupIndex} className="glass rounded-lg p-4 border border-white/10">
@@ -439,23 +484,24 @@ export default function PublicTournamentPage() {
                   </div>
                 </div>
               )
-            })}
+            })
+            })()}
           </div>
         </section>
       ) : (
-        <section className="glass rounded-xl p-6 w-full max-w-4xl">
-          <div className="text-center mb-4">
-            <h2 className="text-lg font-semibold tracking-wide">Championship Table</h2>
-            {(tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination') && (
-              <p className="text-sm opacity-70 mt-1">
-                Top {tournament.format.playoffQualifiers} teams qualify for playoffs
-              </p>
-            )}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr>
+      <section className="glass rounded-xl p-6 w-full max-w-4xl">
+        <div className="text-center mb-4">
+          <h2 className="text-lg font-semibold tracking-wide">Championship Table</h2>
+          {(tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination') && (
+            <p className="text-sm opacity-70 mt-1">
+              Top {tournament.format.playoffQualifiers} teams qualify for playoffs
+            </p>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr>
                   <th className="py-2 pr-2 text-left">Pos</th>
                   <th className="py-2 pr-2 text-left">Team</th>
                   <th className="py-2 pr-2 text-center">P</th>
@@ -465,44 +511,44 @@ export default function PublicTournamentPage() {
                   <th className="py-2 pr-2 text-center">GF</th>
                   <th className="py-2 pr-2 text-center">GA</th>
                   <th className="py-2 pr-2 text-center font-semibold">Pts</th>
-                </tr>
-              </thead>
-              <tbody>
+              </tr>
+            </thead>
+            <tbody>
                 {table.map((row: any, index: number) => {
-                  const isEliminated = eliminatedTeams.has(row.id)
-                  return (
+                const isEliminated = eliminatedTeams.has(row.id)
+                return (
                     <tr 
                       key={row.id} 
                       className={`border-t border-white/5 ${isEliminated ? 'opacity-50' : ''}`}
                     >
                       <td className="py-2 pr-2">{index + 1}</td>
                       <td className="py-2 pr-2 flex items-center gap-2">
-                        {(() => {
-                          const team = teams.find((t: any) => t.id === row.id)
-                          if (team?.logo) {
-                            return (
+                      {(() => {
+                        const team = teams.find((t: any) => t.id === row.id)
+                        if (team?.logo) {
+                          return (
                               <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                                <img src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
-                              </div>
-                            )
-                          } else {
-                            return (
+                              <img src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
+                            </div>
+                          )
+                        } else {
+                          return (
                               <span className="h-2.5 w-2.5 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
-                            )
-                          }
-                        })()}
-                        <Link 
-                          to={`/public/teams/${row.id}`}
+                          )
+                        }
+                      })()}
+                      <Link 
+                        to={`/public/teams/${row.id}`}
                           className="hover:opacity-80 transition-opacity text-xs"
-                        >
-                          {teams.find((t: any) => t.id === row.id)?.name ?? row.id}
-                        </Link>
+                      >
+                        {teams.find((t: any) => t.id === row.id)?.name ?? row.id}
+                      </Link>
                         {isEliminated && (
                           <span className="text-xs bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded-full">
                             Eliminated
-                          </span>
-                        )}
-                      </td>
+                        </span>
+                      )}
+                    </td>
                       <td className="py-2 pr-2 text-center">{row.p}</td>
                       <td className="py-2 pr-2 text-center">{row.w}</td>
                       <td className="py-2 pr-2 text-center">{row.d}</td>
@@ -510,24 +556,24 @@ export default function PublicTournamentPage() {
                       <td className="py-2 pr-2 text-center">{row.gf}</td>
                       <td className="py-2 pr-2 text-center">{row.ga}</td>
                       <td className="py-2 pr-2 text-center font-semibold">{row.pts}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
       )}
 
       {/* Fixtures Section */}
-      <section className="glass rounded-xl p-6 w-full max-w-6xl">
+        <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <h2 className="text-lg font-semibold tracking-wide mb-4 text-center">Fixtures</h2>
         <div className="space-y-4">
           {tournament.matches && tournament.matches.length > 0 ? (
             tournament.matches.map((match: any) => {
-              const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
-              const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
-              
+                        const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
+                        const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
+                        
               return (
                 <div 
                   key={match.id} 
@@ -545,12 +591,12 @@ export default function PublicTournamentPage() {
                             <span className="text-xs opacity-50">H</span>
                           </div>
                         )}
-                        <Link 
+                    <Link 
                           to={`/public/teams/${match.homeTeamId}`}
                           className="hover:opacity-80 transition-opacity text-sm font-medium"
-                        >
+                    >
                           {homeTeam?.name || match.homeTeamId}
-                        </Link>
+                    </Link>
                       </div>
                       
                       <div className="flex items-center gap-2 px-4">
@@ -566,12 +612,12 @@ export default function PublicTournamentPage() {
                       </div>
                       
                       <div className="flex items-center gap-2 flex-1 justify-end">
-                        <Link 
+                    <Link 
                           to={`/public/teams/${match.awayTeamId}`}
                           className="hover:opacity-80 transition-opacity text-sm font-medium"
-                        >
+                    >
                           {awayTeam?.name || match.awayTeamId}
-                        </Link>
+                    </Link>
                         {awayTeam?.logo ? (
                           <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                             <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
@@ -579,23 +625,23 @@ export default function PublicTournamentPage() {
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
                             <span className="text-xs opacity-50">A</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                  </div>
+                    )}
+                  </div>
+                </div>
                   </div>
                   {match.isPlayoff && (
                     <div className="text-xs opacity-50 mt-2 text-center">
                       {match.playoffRound ? `Round ${match.playoffRound}` : 'Playoff Match'}
-                    </div>
+                </div>
                   )}
                 </div>
               )
             })
           ) : (
             <p className="text-center opacity-50">No matches scheduled yet.</p>
-          )}
-        </div>
+                  )}
+                </div>
       </section>
     </div>
   )
