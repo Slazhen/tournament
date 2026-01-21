@@ -18,6 +18,7 @@ import TeamPage from './pages/TeamPage.tsx'
 import PlayerPage from './pages/PlayerPage.tsx'
 import MatchPage from './pages/MatchPage.tsx'
 import NewPublicTournament from './pages/NewPublicTournament.tsx'
+import PublicTournamentPage from './pages/PublicTournamentPage.tsx'
 import NewPublicTeam from './pages/NewPublicTeam.tsx'
 import NewPublicPlayer from './pages/NewPublicPlayer.tsx'
 import PublicMatchPage from './pages/PublicMatchPage.tsx'
@@ -130,7 +131,11 @@ const router = createBrowserRouter([
       },
       { 
         path: 'tournaments/:id', 
-        element: <NewPublicTournament />
+        element: <PublicTournamentPage />
+      },
+      { 
+        path: 'tournaments/:orgName/:tournamentId', 
+        element: <PublicTournamentPage />
       },
       { 
         path: 'teams/:id', 
