@@ -121,6 +121,24 @@ export default function PublicTournamentPage() {
   const calculateTable = () => {
     if (!tournament) return { table: [], eliminatedTeams: new Set<string>(), groupTables: {} }
     
+    // Debug logging
+    console.log('🔍 PublicTournamentPage calculateTable - Tournament data:', {
+      id: tournament.id,
+      format: tournament.format,
+      formatMode: tournament.format?.mode,
+      hasGroupsConfig: !!tournament.format?.groupsWithDivisionsConfig,
+      groupsConfig: tournament.format?.groupsWithDivisionsConfig,
+      hasGroups: !!(tournament.format?.groupsWithDivisionsConfig?.groups && tournament.format.groupsWithDivisionsConfig.groups.length > 0),
+      groups: tournament.format?.groupsWithDivisionsConfig?.groups,
+      teamIdsCount: tournament.teamIds?.length,
+      matchesCount: tournament.matches?.length,
+      firstMatch: tournament.matches?.[0] ? {
+        id: tournament.matches[0].id,
+        groupIndex: tournament.matches[0].groupIndex,
+        isPlayoff: tournament.matches[0].isPlayoff
+      } : null
+    })
+    
     // Check if this is a groups_with_divisions format - EXACTLY like admin page
     if (tournament.format?.mode === 'groups_with_divisions' && tournament.format?.groupsWithDivisionsConfig) {
       let groups = tournament.format.groupsWithDivisionsConfig.groups
@@ -322,7 +340,18 @@ export default function PublicTournamentPage() {
       </section>
 
       {/* Championship Table or Group Tables - EXACTLY like admin page */}
-      {tournament.format?.mode === 'groups_with_divisions' && (tournament.format?.groupsWithDivisionsConfig?.groups || tournament.format?.groupsWithDivisionsConfig) ? (
+      {(() => {
+        const condition = tournament.format?.mode === 'groups_with_divisions' && (tournament.format?.groupsWithDivisionsConfig?.groups || tournament.format?.groupsWithDivisionsConfig)
+        console.log('🎯 PublicTournamentPage render condition:', {
+          formatMode: tournament.format?.mode,
+          hasGroupsConfig: !!tournament.format?.groupsWithDivisionsConfig,
+          hasGroups: !!(tournament.format?.groupsWithDivisionsConfig?.groups && tournament.format.groupsWithDivisionsConfig.groups.length > 0),
+          groups: tournament.format?.groupsWithDivisionsConfig?.groups,
+          conditionResult: condition,
+          fullFormat: tournament.format
+        })
+        return condition
+      })() ? (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <div className="text-center mb-4">
             <h2 className="text-lg font-semibold tracking-wide">Group Tables</h2>

@@ -452,6 +452,11 @@ export const tournamentService = {
         matches: item.matches || [],
         playoffBracket: item.playoffBracket,
         settings: item.settings,
+        logo: item.logo,
+        backgroundImage: item.backgroundImage,
+        location: item.location,
+        socialMedia: item.socialMedia,
+        visibility: item.visibility,
       }))
 
       cache.set(cacheKeys.tournaments.all, tournaments)
@@ -490,6 +495,11 @@ export const tournamentService = {
         matches: item.matches || [],
         playoffBracket: item.playoffBracket,
         settings: item.settings,
+        logo: item.logo,
+        backgroundImage: item.backgroundImage,
+        location: item.location,
+        socialMedia: item.socialMedia,
+        visibility: item.visibility,
       })) || []
 
       cache.set(cacheKey, tournaments)
