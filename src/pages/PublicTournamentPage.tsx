@@ -350,7 +350,19 @@ export default function PublicTournamentPage() {
       // Check if this is a groups_with_divisions format
       // Also check if matches have groupIndex (indicates groups format even if format.mode isn't set)
       const hasGroupMatches = tournament.matches.some((m: any) => m.groupIndex && !m.isPlayoff)
-      const isGroupsFormat = tournament.format?.mode === 'groups_with_divisions' || hasGroupMatches
+      const hasGroupsConfig = !!tournament.format?.groupsWithDivisionsConfig
+      const teamCount = tournament.teamIds.length
+      // If we have groupsWithDivisionsConfig, treat it as groups format even if mode isn't set
+      const isGroupsFormat = tournament.format?.mode === 'groups_with_divisions' || hasGroupMatches || hasGroupsConfig
+      
+      console.log('🔍 calculateTable - Format detection:', {
+        formatMode: tournament.format?.mode,
+        hasGroupMatches,
+        hasGroupsConfig,
+        teamCount,
+        isGroupsFormat,
+        groupsConfig: tournament.format?.groupsWithDivisionsConfig
+      })
       
       if (isGroupsFormat) {
         // Get or create config
@@ -457,6 +469,91 @@ export default function PublicTournamentPage() {
           config.groups = groups
         }
         
+        console.log('✅ calculateTable - Returning groupTables:', {
+          groupsCount: groups.length,
+          groupTablesKeys: Object.keys(groupTables),
+          groupTables
+        })
+        return { table: [], eliminatedTeams: new Set<string>(), groupTables }
+      }
+      
+      // If we have groupsWithDivisionsConfig but didn't enter the branch above, still try to create groups
+      // Also check if team count suggests groups format (16 teams = likely 4 groups of 4)
+      const shouldBeGroups = tournament.format?.groupsWithDivisionsConfig || 
+                            (teamCount === 16 && !tournament.format?.mode) ||
+                            (teamCount === 16 && tournament.format?.mode === 'league')
+      
+      if (shouldBeGroups) {
+        // Get or create config
+        let config = tournament.format?.groupsWithDivisionsConfig
+        if (!config) {
+          // Infer from team count: 16 teams = 4 groups of 4
+          const numberOfGroups = teamCount === 16 ? 4 : Math.ceil(teamCount / 4)
+          const teamsPerGroup = Math.ceil(teamCount / numberOfGroups)
+          config = {
+            numberOfGroups,
+            teamsPerGroup,
+            groupRounds: 1
+          }
+          
+          // Ensure format object exists
+          if (!tournament.format) {
+            tournament.format = { mode: 'groups_with_divisions', rounds: 1 }
+          }
+          tournament.format.mode = 'groups_with_divisions'
+          tournament.format.groupsWithDivisionsConfig = config
+        }
+        
+        const numberOfGroups = config.numberOfGroups || 4
+        const teamsPerGroup = config.teamsPerGroup || 4
+        
+        // Create groups from teamIds
+        const groups: string[][] = []
+        for (let i = 0; i < numberOfGroups; i++) {
+          const startIdx = i * teamsPerGroup
+          const endIdx = Math.min(startIdx + teamsPerGroup, tournament.teamIds.length)
+          groups.push(tournament.teamIds.slice(startIdx, endIdx))
+        }
+        
+        // Calculate group tables
+        const groupTables: Record<number, any[]> = {}
+        groups.forEach((groupTeams: string[], groupIndex: number) => {
+          const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
+          
+          groupTeams.forEach((tid: string) => {
+            stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
+          })
+          
+          // Count group matches
+          const groupMatches = tournament.matches.filter((m: any) => 
+            !m.isPlayoff && m.groupIndex === groupIndex + 1 &&
+            groupTeams.includes(m.homeTeamId) && groupTeams.includes(m.awayTeamId)
+          )
+          
+          for (const m of groupMatches) {
+            if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
+            const a = stats[(m as any).homeTeamId]
+            const b = stats[(m as any).awayTeamId]
+            if (!a || !b) continue
+            
+            a.p++; b.p++
+            a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
+            b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
+            if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
+            else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
+            else { a.d++; b.d++; a.pts++; b.pts++ }
+          }
+          
+          const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
+            .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
+          
+          groupTables[groupIndex + 1] = table
+        })
+        
+        console.log('✅ calculateTable - Fallback groupTables:', {
+          groupsCount: groups.length,
+          groupTablesKeys: Object.keys(groupTables)
+        })
         return { table: [], eliminatedTeams: new Set<string>(), groupTables }
       }
       
@@ -668,7 +765,28 @@ export default function PublicTournamentPage() {
       {/* Championship Table or Group Tables */}
       {(() => {
         const hasGroupMatches = tournament.matches?.some((m: any) => m.groupIndex && !m.isPlayoff) || false
-        const isGroupsFormat = tournament.format?.mode === 'groups_with_divisions' || hasGroupMatches
+        const isGroupsFormatByMode = tournament.format?.mode === 'groups_with_divisions'
+        const isGroupsFormatByMatches = hasGroupMatches
+        const hasGroupTables = Object.keys(groupTables).length > 0
+        const hasGroupsConfig = !!tournament.format?.groupsWithDivisionsConfig
+        const teamCount = tournament.teamIds?.length || 0
+        // If we have groupTables, definitely show groups. Also check config or team count
+        const isGroupsFormatByTables = hasGroupTables || hasGroupsConfig || (teamCount === 16 && !tournament.format?.mode)
+        
+        const isGroupsFormat = isGroupsFormatByMode || isGroupsFormatByMatches || isGroupsFormatByTables
+        
+        console.log('🎯 PublicTournamentPage - Display condition check:', {
+          isGroupsFormatByMode,
+          isGroupsFormatByMatches,
+          hasGroupTables,
+          hasGroupsConfig,
+          isGroupsFormatByTables,
+          isGroupsFormat,
+          teamCount,
+          groupTablesKeys: Object.keys(groupTables),
+          formatMode: tournament.format?.mode
+        })
+        
         return isGroupsFormat
       })() ? (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
