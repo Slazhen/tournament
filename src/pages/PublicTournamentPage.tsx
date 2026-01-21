@@ -129,12 +129,19 @@ export default function PublicTournamentPage() {
         hasFormat: !!tournament.format,
         hasGroupsWithDivisionsConfig: !!tournament.format?.groupsWithDivisionsConfig,
         groupsWithDivisionsConfig: tournament.format?.groupsWithDivisionsConfig,
+        hasGroups: !!(tournament.format?.groupsWithDivisionsConfig?.groups && tournament.format.groupsWithDivisionsConfig.groups.length > 0),
+        groupsCount: tournament.format?.groupsWithDivisionsConfig?.groups?.length || 0,
         hasCustomPlayoffConfig: !!tournament.format?.customPlayoffConfig,
         playoffRounds: tournament.format?.customPlayoffConfig?.playoffRounds,
         playoffRoundsLength: tournament.format?.customPlayoffConfig?.playoffRounds?.length,
         fullFormat: tournament.format,
         teamIdsCount: tournament.teamIds?.length || 0,
-        matchesCount: tournament.matches?.length || 0
+        matchesCount: tournament.matches?.length || 0,
+        firstMatchSample: tournament.matches?.[0] ? {
+          id: tournament.matches[0].id,
+          groupIndex: tournament.matches[0].groupIndex,
+          isPlayoff: tournament.matches[0].isPlayoff
+        } : null
       })
     }
   } catch (error) {
@@ -764,30 +771,24 @@ export default function PublicTournamentPage() {
 
       {/* Championship Table or Group Tables */}
       {(() => {
-        const hasGroupMatches = tournament.matches?.some((m: any) => m.groupIndex && !m.isPlayoff) || false
-        const isGroupsFormatByMode = tournament.format?.mode === 'groups_with_divisions'
-        const isGroupsFormatByMatches = hasGroupMatches
-        const hasGroupTables = Object.keys(groupTables).length > 0
+        // Check if we should show groups - be more lenient than admin page to handle edge cases
+        const hasGroupsMode = tournament.format?.mode === 'groups_with_divisions'
         const hasGroupsConfig = !!tournament.format?.groupsWithDivisionsConfig
-        const teamCount = tournament.teamIds?.length || 0
-        // If we have groupTables, definitely show groups. Also check config or team count
-        const isGroupsFormatByTables = hasGroupTables || hasGroupsConfig || (teamCount === 16 && !tournament.format?.mode)
+        const hasGroups = !!(tournament.format?.groupsWithDivisionsConfig?.groups && tournament.format.groupsWithDivisionsConfig.groups.length > 0)
+        // Show groups if: (mode is set AND config exists) OR (groups exist in config)
+        const shouldShowGroups = (hasGroupsMode && hasGroupsConfig) || hasGroups
         
-        const isGroupsFormat = isGroupsFormatByMode || isGroupsFormatByMatches || isGroupsFormatByTables
-        
-        console.log('🎯 PublicTournamentPage - Display condition check:', {
-          isGroupsFormatByMode,
-          isGroupsFormatByMatches,
-          hasGroupTables,
+        console.log('🎯 PublicTournamentPage - Final display check:', {
+          hasGroupsMode,
           hasGroupsConfig,
-          isGroupsFormatByTables,
-          isGroupsFormat,
-          teamCount,
-          groupTablesKeys: Object.keys(groupTables),
+          hasGroups,
+          shouldShowGroups,
+          groups: tournament.format?.groupsWithDivisionsConfig?.groups,
+          config: tournament.format?.groupsWithDivisionsConfig,
           formatMode: tournament.format?.mode
         })
         
-        return isGroupsFormat
+        return shouldShowGroups
       })() ? (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <div className="text-center mb-4">
@@ -797,37 +798,9 @@ export default function PublicTournamentPage() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(() => {
-              // Get groups from format or reconstruct from groupTables or teamIds
-              let groups = tournament.format?.groupsWithDivisionsConfig?.groups || []
-              const config = tournament.format.groupsWithDivisionsConfig
-              const numberOfGroups = config.numberOfGroups || 4
-              const teamsPerGroup = config.teamsPerGroup || 4
-              
-              // If no groups and no groupTables, create groups from teamIds
-              if (groups.length === 0 && Object.keys(groupTables).length === 0) {
-                groups = []
-                for (let i = 0; i < numberOfGroups; i++) {
-                  const startIdx = i * teamsPerGroup
-                  const endIdx = Math.min(startIdx + teamsPerGroup, tournament.teamIds.length)
-                  groups.push(tournament.teamIds.slice(startIdx, endIdx))
-                }
-              }
-              
-              // Use groupTables if available, otherwise create empty tables
-              return groups.map((groupTeams: string[], groupIndex: number) => {
-                const groupTable = (groupTables as Record<number, any[]>)[groupIndex + 1] || 
-                  groupTeams.map((teamId: string) => ({
-                    id: teamId,
-                    p: 0,
-                    w: 0,
-                    d: 0,
-                    l: 0,
-                    gf: 0,
-                    ga: 0,
-                    pts: 0
-                  }))
-                const groupLetter = String.fromCharCode(65 + groupIndex) // A, B, C, D, etc.
+            {(tournament.format?.groupsWithDivisionsConfig?.groups || []).map((_groupTeams: string[], groupIndex: number) => {
+              const groupTable = (groupTables as Record<number, any[]>)[groupIndex + 1] || []
+              const groupLetter = String.fromCharCode(65 + groupIndex) // A, B, C, D, etc.
                 
                 return (
                 <div key={groupIndex} className="glass rounded-lg p-4 border border-white/10">
@@ -903,9 +876,8 @@ export default function PublicTournamentPage() {
                     </table>
                   </div>
                 </div>
-                )
-              })
-            })()}
+              )
+            })}
           </div>
         </section>
       ) : (
