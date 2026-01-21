@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useMemo, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import LocationIcon from '../components/LocationIcon'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
