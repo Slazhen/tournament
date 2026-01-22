@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useMemo, useState } from 'react'
-import { generatePlayoffBrackets } from '../utils/schedule'
+import { generatePlayoffBrackets, createPlayoffMatches as createPlayoffMatchesFromBrackets } from '../utils/schedule'
 import { generateMatchUID } from '../utils/uid'
 import { generateGroupsWithDivisionsSchedule } from '../utils/tournament'
 import LocationIcon from '../components/LocationIcon'
@@ -206,6 +206,132 @@ export default function TournamentPage() {
     updateTournament(tournament.id, {
       matches: [...tournament.matches, ...playoffMatches]
     })
+  }
+
+  // Fix group round numbers for existing tournaments
+  const handleFixGroupRounds = () => {
+    if (!tournament || tournament.format?.mode !== 'groups_with_divisions') return
+    
+    const groupMatches = tournament.matches.filter(m => !m.isPlayoff && m.groupIndex)
+    
+    // Group matches by groupIndex
+    const matchesByGroup: Record<number, any[]> = {}
+    groupMatches.forEach(match => {
+      const groupIndex = match.groupIndex || 1
+      if (!matchesByGroup[groupIndex]) {
+        matchesByGroup[groupIndex] = []
+      }
+      matchesByGroup[groupIndex].push(match)
+    })
+    
+    // Sort matches within each group by their current round
+    Object.keys(matchesByGroup).forEach(groupKey => {
+      const groupIndex = Number(groupKey)
+      matchesByGroup[groupIndex].sort((a, b) => (a.round || 0) - (b.round || 0))
+    })
+    
+    // Create a map of match ID to new round number
+    const matchRoundMap: Record<string, number> = {}
+    Object.keys(matchesByGroup).forEach(groupKey => {
+      const groupIndex = Number(groupKey)
+      const groupMatches = matchesByGroup[groupIndex]
+      groupMatches.forEach((match, index) => {
+        matchRoundMap[match.id] = index
+      })
+    })
+    
+    // Reassign round numbers: first match from each group = round 0, second = round 1, etc.
+    const updatedMatches = tournament.matches.map(match => {
+      if (match.isPlayoff || !match.groupIndex) return match
+      
+      const newRound = matchRoundMap[match.id]
+      if (newRound === undefined) return match
+      
+      return {
+        ...match,
+        round: newRound
+      }
+    })
+    
+    updateTournament(tournament.id, { matches: updatedMatches })
+    alert('Group rounds have been fixed! The tournament now shows 3 rounds with 8 games each.')
+  }
+
+  // Regenerate playoff matches for groups_with_divisions tournaments
+  const handleRegeneratePlayoffs = () => {
+    if (!tournament || tournament.format?.mode !== 'groups_with_divisions') return
+    
+    const { groupTables } = calculateTable()
+    if (!groupTables || Object.keys(groupTables).length === 0) {
+      alert('Cannot regenerate playoffs: Group standings are not available.')
+      return
+    }
+    
+    // Get Division 1 teams (1st and 2nd from each group)
+    const division1Teams: string[] = []
+    const division2Teams: string[] = []
+    
+    Object.keys(groupTables).forEach(groupKey => {
+      const groupIndex = Number(groupKey)
+      const table = (groupTables as Record<number, any[]>)[groupIndex] || []
+      
+      // Division 1: 1st and 2nd place
+      if (table[0]) division1Teams.push(table[0].id)
+      if (table[1]) division1Teams.push(table[1].id)
+      
+      // Division 2: 3rd and 4th place
+      if (table[2]) division2Teams.push(table[2].id)
+      if (table[3]) division2Teams.push(table[3].id)
+    })
+    
+    if (division1Teams.length < 4) {
+      alert('Cannot regenerate playoffs: Need at least 4 teams for Division 1 playoffs.')
+      return
+    }
+    
+    // Generate Division 1 playoff brackets
+    const div1Brackets = generatePlayoffBrackets(division1Teams)
+    const div1PlayoffMatches = createPlayoffMatchesFromBrackets(div1Brackets)
+    
+    // Calculate max group round to offset playoff rounds
+    const groupMatches = tournament.matches.filter(m => !m.isPlayoff)
+    const maxGroupRound = groupMatches.length > 0 
+      ? Math.max(...groupMatches.map(m => m.round || 0), 0)
+      : -1
+    const playoffRoundOffset = maxGroupRound + 1
+    
+    // Adjust Division 1 matches
+    const updatedDiv1Matches = div1PlayoffMatches.map(match => ({
+      ...match,
+      id: `div1-${match.id}-${Date.now()}`,
+      round: playoffRoundOffset + (match.playoffRound || 0),
+      isPlayoff: true,
+      playoffRound: match.playoffRound,
+      division: 1
+    }))
+    
+    // Generate Division 2 playoff brackets if we have enough teams
+    let updatedDiv2Matches: any[] = []
+    if (division2Teams.length >= 4) {
+      const div2Brackets = generatePlayoffBrackets(division2Teams)
+      const div2PlayoffMatches = createPlayoffMatchesFromBrackets(div2Brackets)
+      
+      updatedDiv2Matches = div2PlayoffMatches.map(match => ({
+        ...match,
+        id: `div2-${match.id}-${Date.now()}`,
+        round: playoffRoundOffset + (match.playoffRound || 0),
+        isPlayoff: true,
+        playoffRound: match.playoffRound,
+        division: 2
+      }))
+    }
+    
+    // Remove old playoff matches and add new ones
+    const nonPlayoffMatches = tournament.matches.filter(m => !m.isPlayoff)
+    const updatedMatches = [...nonPlayoffMatches, ...updatedDiv1Matches, ...updatedDiv2Matches]
+    
+    updateTournament(tournament.id, { matches: updatedMatches })
+    alert('Playoff matches have been regenerated! All 3 rounds (1/4 Final, 1/2 Final, Final) are now available.')
   }
 
   const calculateTable = () => {
@@ -534,7 +660,33 @@ export default function TournamentPage() {
                </div>
                
                {/* Quick Actions */}
-               <div className="flex justify-center gap-4 mt-4">
+               <div className="flex justify-center gap-4 mt-4 flex-wrap">
+                 {tournament.format?.mode === 'groups_with_divisions' && (
+                   <>
+                     <button
+                       onClick={() => {
+                         if (confirm('Fix group round numbers? This will reorganize group matches into 3 rounds with 8 games each.')) {
+                           handleFixGroupRounds()
+                         }
+                       }}
+                       className="px-4 py-2 rounded-lg glass hover:bg-blue-500/20 hover:text-blue-300 transition-all font-medium border border-blue-500/30 text-blue-400 text-sm"
+                       title="Fix group rounds (6 rounds → 3 rounds)"
+                     >
+                       🔧 Fix Group Rounds
+                     </button>
+                     <button
+                       onClick={() => {
+                         if (confirm('Regenerate playoff matches? This will remove existing playoff matches and create new ones with all 3 rounds (1/4 Final, 1/2 Final, Final).')) {
+                           handleRegeneratePlayoffs()
+                         }
+                       }}
+                       className="px-4 py-2 rounded-lg glass hover:bg-green-500/20 hover:text-green-300 transition-all font-medium border border-green-500/30 text-green-400 text-sm"
+                       title="Regenerate playoff matches with all rounds"
+                     >
+                       🔄 Regenerate Playoffs
+                     </button>
+                   </>
+                 )}
                  <button
                    onClick={() => {
                      if (confirm(`Are you sure you want to delete the tournament "${tournament.name}"?\n\nThis will permanently remove:\n• All match results\n• Tournament standings\n• Playoff brackets\n• Tournament data\n\nThis action cannot be undone.`)) {
