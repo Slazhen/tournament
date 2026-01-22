@@ -330,8 +330,8 @@ export function generateGroupsWithDivisionsSchedule(
   }
   
   // Generate group stage matches (round-robin within each group)
+  // All groups share the same round numbers (0, 1, 2) so they can be reorganized later
   const groupMatches: Match[] = []
-  let roundOffset = 0
   
   groups.forEach((groupTeams, groupIndex) => {
     if (groupTeams.length < 2) return
@@ -339,21 +339,24 @@ export function generateGroupsWithDivisionsSchedule(
     // Generate round-robin matches for this group
     const groupMatchesForRound = generateRoundRobinSchedule(groupTeams, groupRounds)
     
-    // Adjust round numbers and add group identifier
+    // Keep the same round numbers for all groups (don't offset)
+    // This allows us to reorganize rounds later (Round 1 = first games from all groups)
     const adjustedMatches = groupMatchesForRound.map(match => ({
       ...match,
       id: `group-${groupIndex + 1}-${match.id}`,
-      round: (match.round || 0) + roundOffset,
+      round: match.round || 0, // Keep original round number (0, 1, 2)
       isPlayoff: false,
       groupIndex: groupIndex + 1 // Store group number for reference
     }))
     
     groupMatches.push(...adjustedMatches)
-    
-    // Calculate max rounds for this group to offset next group
-    const maxRoundInGroup = Math.max(...adjustedMatches.map(m => m.round || 0), 0)
-    roundOffset = maxRoundInGroup + 1
   })
+  
+  // Calculate max group round to offset playoff rounds
+  const maxGroupRound = groupMatches.length > 0 
+    ? Math.max(...groupMatches.map(m => m.round || 0), 0)
+    : -1
+  const playoffRoundOffset = maxGroupRound + 1
   
   // Generate playoff teams based on group positions
   // Division 1: 1st and 2nd from each group
@@ -380,21 +383,17 @@ export function generateGroupsWithDivisionsSchedule(
   const division1Brackets = generatePlayoffBrackets(division1Teams)
   const division1PlayoffMatches = createPlayoffMatches(division1Brackets)
   
-  // Adjust round numbers and mark as Division 1
+  // Use playoffRound for organization, but set round to come after group matches
   division1PlayoffMatches.forEach((match) => {
     division1Matches.push({
       ...match,
       id: `div1-${match.id}`,
-      round: (match.round || 0) + roundOffset,
+      round: playoffRoundOffset + (match.playoffRound || 0), // Offset to come after group matches
       isPlayoff: true,
-      playoffRound: match.playoffRound,
+      playoffRound: match.playoffRound, // Keep original playoffRound (0, 1, 2) for display
       division: 1 // Mark as Division 1
     })
   })
-  
-  // Update round offset for Division 2
-  const maxDiv1Round = Math.max(...division1Matches.map(m => m.round || 0), roundOffset - 1)
-  roundOffset = maxDiv1Round + 1
   
   // Generate Division 2 playoff matches (if there are enough teams)
   const division2Matches: Match[] = []
@@ -402,14 +401,14 @@ export function generateGroupsWithDivisionsSchedule(
     const division2Brackets = generatePlayoffBrackets(division2Teams)
     const division2PlayoffMatches = createPlayoffMatches(division2Brackets)
     
-    // Adjust round numbers and mark as Division 2
+    // Use playoffRound for organization, but set round to come after group matches
     division2PlayoffMatches.forEach((match) => {
       division2Matches.push({
         ...match,
         id: `div2-${match.id}`,
-        round: (match.round || 0) + roundOffset,
+        round: playoffRoundOffset + (match.playoffRound || 0), // Offset to come after group matches
         isPlayoff: true,
-        playoffRound: match.playoffRound,
+        playoffRound: match.playoffRound, // Keep original playoffRound (0, 1, 2) for display
         division: 2 // Mark as Division 2
       })
     })
