@@ -214,10 +214,23 @@ export default function PublicTournamentPage() {
           })
           
           // Count group matches (matches with this groupIndex)
-          const groupMatches = tournament.matches.filter((m: any) => 
-            !m.isPlayoff && m.groupIndex === groupIndex + 1 &&
-            groupTeams.includes(m.homeTeamId) && groupTeams.includes(m.awayTeamId)
-          )
+          // Match by groupIndex first (most reliable), with fallback to team matching
+          const groupMatches = tournament.matches.filter((m: any) => {
+            if (m.isPlayoff) return false
+            
+            // Primary check: match by groupIndex (1-based: 1, 2, 3, 4 for groups A, B, C, D)
+            if (m.groupIndex === groupIndex + 1) {
+              return true // Trust groupIndex if it's set
+            }
+            
+            // Fallback: if groupIndex is missing or doesn't match, check by teams
+            // This handles cases where groupIndex might not be set correctly
+            if (!m.groupIndex && groupTeams.includes(m.homeTeamId) && groupTeams.includes(m.awayTeamId)) {
+              return true
+            }
+            
+            return false
+          })
           
           for (const m of groupMatches) {
             if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
