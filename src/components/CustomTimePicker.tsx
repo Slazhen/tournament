@@ -12,7 +12,7 @@ export default function CustomTimePicker({
   value, 
   onChange, 
   className = '', 
-  placeholder = 'HH:MM (24h)',
+  placeholder = 'HH:MM',
   disabled = false 
 }: CustomTimePickerProps) {
   const [inputValue, setInputValue] = useState('')
@@ -118,13 +118,8 @@ export default function CustomTimePicker({
           }
           ${className}
         `}
-        style={{ fontFamily: 'monospace' }}
+        style={{ fontFamily: 'monospace', minWidth: '80px' }}
       />
-      {!disabled && (
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-          24h
-        </div>
-      )}
     </div>
   )
 }

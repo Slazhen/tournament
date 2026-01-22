@@ -1409,7 +1409,7 @@ export default function TournamentPage() {
                                   const currentDate = match.dateISO ? match.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
                                   setDate(match.id, new Date(`${currentDate}T${time}`).toISOString())
                                 }}
-                                className="w-24"
+                                className="w-32"
                                 placeholder="Time"
                               />
                             </div>
@@ -1533,7 +1533,7 @@ export default function TournamentPage() {
                             currentDate.setHours(hours || 12, minutes || 0)
                             setDate(mid, currentDate.toISOString())
                           }}
-                          className="w-24 text-xs"
+                          className="w-32 text-xs"
                           placeholder="Time"
                         />
                       </div>
@@ -2115,7 +2115,7 @@ export default function TournamentPage() {
                                               const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
                                               setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
                                             }}
-                                            className="w-24 text-xs"
+                                            className="w-32 text-xs"
                                             placeholder="Time"
                                           />
                                         </div>
@@ -2222,7 +2222,7 @@ export default function TournamentPage() {
                                               const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
                                               setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
                                             }}
-                                            className="w-24 text-xs"
+                                            className="w-32 text-xs"
                                             placeholder="Time"
                                           />
                                         </div>
@@ -2344,7 +2344,7 @@ export default function TournamentPage() {
                                 const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
                                 setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
                               }}
-                              className="w-24 text-xs"
+                              className="w-32 text-xs"
                               placeholder="Time"
                             />
                           </div>
