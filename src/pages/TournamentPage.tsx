@@ -1749,8 +1749,8 @@ export default function TournamentPage() {
                 
                 const div1Rounds = Object.keys(div1ByRound).map(Number).sort((a, b) => a - b)
                 const div2Rounds = Object.keys(div2ByRound).map(Number).sort((a, b) => a - b)
-                const maxDiv1Rounds = div1Rounds.length > 0 ? Math.max(...div1Rounds) + 1 : 0
-                const maxDiv2Rounds = div2Rounds.length > 0 ? Math.max(...div2Rounds) + 1 : 0
+                const totalDiv1Rounds = div1Rounds.length
+                const totalDiv2Rounds = div2Rounds.length
                 
                 return (
                   <>
@@ -1760,7 +1760,7 @@ export default function TournamentPage() {
                         <h3 className="text-xl font-bold mb-4 text-green-400">Division 1 Playoffs</h3>
                         {div1Rounds.map(roundIndex => {
                           const roundMatches = div1ByRound[roundIndex] || []
-                          const roundName = getPlayoffRoundName(roundIndex, maxDiv1Rounds)
+                          const roundName = getPlayoffRoundName(roundIndex, totalDiv1Rounds)
                           
                           return (
                             <div key={`div1-${roundIndex}`} className="mb-6">
@@ -1867,7 +1867,7 @@ export default function TournamentPage() {
                         <h3 className="text-xl font-bold mb-4 text-blue-400">Division 2 Playoffs</h3>
                         {div2Rounds.map(roundIndex => {
                           const roundMatches = div2ByRound[roundIndex] || []
-                          const roundName = getPlayoffRoundName(roundIndex, maxDiv2Rounds)
+                          const roundName = getPlayoffRoundName(roundIndex, totalDiv2Rounds)
                           
                           return (
                             <div key={`div2-${roundIndex}`} className="mb-6">

@@ -1041,12 +1041,11 @@ export default function PublicTournamentPage() {
                       <div className="text-center mb-4">
                         <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Division 1 Playoffs</h3>
                       </div>
-                      {Object.keys(div1MatchesByRound)
-                        .map(Number)
-                        .sort((a, b) => a - b)
-                        .map(roundNumber => {
+                      {(() => {
+                        const div1RoundKeys = Object.keys(div1MatchesByRound).map(Number).sort((a, b) => a - b)
+                        const totalRounds = div1RoundKeys.length
+                        return div1RoundKeys.map(roundNumber => {
                           const roundMatches = div1MatchesByRound[roundNumber]
-                          const totalRounds = Math.max(...Object.keys(div1MatchesByRound).map(Number)) + 1
                           const roundName = getPlayoffRoundName(roundNumber, totalRounds)
                           
                           return (
@@ -1072,7 +1071,8 @@ export default function PublicTournamentPage() {
                               </div>
                             </div>
                           )
-                        })}
+                        })
+                      })()}
                     </div>
                   )}
                   
@@ -1082,12 +1082,11 @@ export default function PublicTournamentPage() {
                       <div className="text-center mb-4">
                         <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Division 2 Playoffs</h3>
                       </div>
-                      {Object.keys(div2MatchesByRound)
-                        .map(Number)
-                        .sort((a, b) => a - b)
-                        .map(roundNumber => {
+                      {(() => {
+                        const div2RoundKeys = Object.keys(div2MatchesByRound).map(Number).sort((a, b) => a - b)
+                        const totalRounds = div2RoundKeys.length
+                        return div2RoundKeys.map(roundNumber => {
                           const roundMatches = div2MatchesByRound[roundNumber]
-                          const totalRounds = Math.max(...Object.keys(div2MatchesByRound).map(Number)) + 1
                           const roundName = getPlayoffRoundName(roundNumber, totalRounds)
                           
                           return (
@@ -1113,7 +1112,8 @@ export default function PublicTournamentPage() {
                               </div>
                             </div>
                           )
-                        })}
+                        })
+                      })()}
                     </div>
                   )}
                 </>
