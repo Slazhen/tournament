@@ -915,21 +915,51 @@ export default function PublicTournamentPage() {
             
             // For groups_with_divisions format, organize differently
             if (tournament.format?.mode === 'groups_with_divisions') {
-              // Group stage matches by round (one round = one set of games across all groups)
-              const groupMatchesByRound: Record<number, any[]> = {}
+              // Separate group and playoff matches
+              const groupMatches: any[] = []
               const playoffMatches: any[] = []
               
               tournament.matches?.forEach((match: any) => {
                 if (!match.isPlayoff) {
-                  const round = match.round || 0
-                  if (!groupMatchesByRound[round]) {
-                    groupMatchesByRound[round] = []
-                  }
-                  groupMatchesByRound[round].push(match)
+                  groupMatches.push(match)
                 } else {
                   playoffMatches.push(match)
                 }
               })
+              
+              // Reorganize group matches: Round 1 = first games from all groups, Round 2 = second games, etc.
+              // Group matches by groupIndex first
+              const matchesByGroup: Record<number, any[]> = {}
+              groupMatches.forEach(match => {
+                const groupIndex = match.groupIndex || 1
+                if (!matchesByGroup[groupIndex]) {
+                  matchesByGroup[groupIndex] = []
+                }
+                matchesByGroup[groupIndex].push(match)
+              })
+              
+              // Sort matches within each group by their original round
+              Object.keys(matchesByGroup).forEach(groupKey => {
+                const groupIndex = Number(groupKey)
+                matchesByGroup[groupIndex].sort((a, b) => (a.round || 0) - (b.round || 0))
+              })
+              
+              // Now reorganize into rounds: Round 1 = first match from each group, Round 2 = second match, etc.
+              const groupMatchesByRound: Record<number, any[]> = {}
+              const maxMatchesPerGroup = Math.max(...Object.values(matchesByGroup).map(matches => matches.length), 0)
+              
+              for (let roundIndex = 0; roundIndex < maxMatchesPerGroup; roundIndex++) {
+                Object.keys(matchesByGroup).forEach(groupKey => {
+                  const groupIndex = Number(groupKey)
+                  const groupMatchesList = matchesByGroup[groupIndex]
+                  if (groupMatchesList[roundIndex]) {
+                    if (!groupMatchesByRound[roundIndex]) {
+                      groupMatchesByRound[roundIndex] = []
+                    }
+                    groupMatchesByRound[roundIndex].push(groupMatchesList[roundIndex])
+                  }
+                })
+              }
               
               // Sort group rounds
               const sortedGroupRounds = Object.keys(groupMatchesByRound)
@@ -960,11 +990,14 @@ export default function PublicTournamentPage() {
               // Helper function to get playoff round name
               const getPlayoffRoundName = (roundIndex: number, totalRounds: number): string => {
                 if (totalRounds === 1) return 'Final'
-                if (totalRounds === 2) return roundIndex === 0 ? '1/2 Final' : 'Final'
+                if (totalRounds === 2) {
+                  if (roundIndex === 0) return '1/2 Final'
+                  return 'Final'
+                }
                 if (totalRounds === 3) {
                   if (roundIndex === 0) return '1/4 Final'
                   if (roundIndex === 1) return '1/2 Final'
-                  return 'Final'
+                  if (roundIndex === 2) return 'Final'
                 }
                 return `Round ${roundIndex + 1}`
               }

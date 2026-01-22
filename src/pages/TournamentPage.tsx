@@ -1676,12 +1676,267 @@ export default function TournamentPage() {
         {/* Playoff Matches in Fixtures - Divided by Stage */}
         {playoffMatches.length > 0 && (
           <div className="space-y-6">
-            {Array.from({ length: playoffStructure?.rounds || 0 }, (_, roundIndex) => {
-              const roundMatches = playoffMatches.filter(m => m.playoffRound === roundIndex)
-              const roundName = playoffStructure?.customRounds?.[roundIndex]?.name || 
-                               getPlayoffRoundName(roundIndex, playoffStructure?.rounds || 0)
+            {(() => {
+              // For groups_with_divisions, organize playoffs by division
+              if (tournament.format?.mode === 'groups_with_divisions') {
+                const div1Matches: any[] = []
+                const div2Matches: any[] = []
+                
+                playoffMatches.forEach(m => {
+                  if (m.division === 1) {
+                    div1Matches.push(m)
+                  } else if (m.division === 2) {
+                    div2Matches.push(m)
+                  }
+                })
+                
+                // Group by round for each division
+                const div1ByRound: Record<number, any[]> = {}
+                const div2ByRound: Record<number, any[]> = {}
+                
+                div1Matches.forEach(m => {
+                  const round = m.playoffRound !== undefined ? m.playoffRound : (m.round || 0)
+                  if (!div1ByRound[round]) div1ByRound[round] = []
+                  div1ByRound[round].push(m)
+                })
+                
+                div2Matches.forEach(m => {
+                  const round = m.playoffRound !== undefined ? m.playoffRound : (m.round || 0)
+                  if (!div2ByRound[round]) div2ByRound[round] = []
+                  div2ByRound[round].push(m)
+                })
+                
+                const div1Rounds = Object.keys(div1ByRound).map(Number).sort((a, b) => a - b)
+                const div2Rounds = Object.keys(div2ByRound).map(Number).sort((a, b) => a - b)
+                const maxDiv1Rounds = div1Rounds.length > 0 ? Math.max(...div1Rounds) + 1 : 0
+                const maxDiv2Rounds = div2Rounds.length > 0 ? Math.max(...div2Rounds) + 1 : 0
+                
+                return (
+                  <>
+                    {/* Division 1 Playoffs */}
+                    {div1Rounds.length > 0 && (
+                      <div className="mb-8">
+                        <h3 className="text-xl font-bold mb-4 text-green-400">Division 1 Playoffs</h3>
+                        {div1Rounds.map(roundIndex => {
+                          const roundMatches = div1ByRound[roundIndex] || []
+                          const roundName = getPlayoffRoundName(roundIndex, maxDiv1Rounds)
+                          
+                          return (
+                            <div key={`div1-${roundIndex}`} className="mb-6">
+                              <div className="glass rounded-xl p-4 border border-green-500/20">
+                                <div className="font-bold text-lg mb-4 text-center text-green-400">Division 1 - {roundName}</div>
+                                <div className="grid gap-3">
+                                  {roundMatches.map((m) => (
+                                    <div key={m.id} className="grid md:grid-cols-6 gap-3 items-center p-3 glass rounded-lg">
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Home Team</label>
+                                        <select
+                                          value={m.homeTeamId || ''}
+                                          onChange={(e) => setPlayoffTeams(m.id, e.target.value, m.awayTeamId || '')}
+                                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                                        >
+                                          <option value="">Select Team</option>
+                                          {teams.map(team => (
+                                            <option key={team.id} value={team.id}>{team.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="text-lg font-bold opacity-50">vs</div>
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Away Team</label>
+                                        <select
+                                          value={m.awayTeamId || ''}
+                                          onChange={(e) => setPlayoffTeams(m.id, m.homeTeamId || '', e.target.value)}
+                                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                                        >
+                                          <option value="">Select Team</option>
+                                          {teams.map(team => (
+                                            <option key={team.id} value={team.id}>{team.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Score</label>
+                                        <div className="flex gap-1 items-center">
+                                          <input 
+                                            inputMode="numeric" 
+                                            pattern="[0-9]*" 
+                                            className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
+                                            value={m.homeGoals ?? ''} 
+                                            onChange={(e) => setScore(m.id, e.target.value === '' ? NaN : Number(e.target.value), m.awayGoals ?? NaN)} 
+                                          />
+                                          <span className="text-sm">:</span>
+                                          <input 
+                                            inputMode="numeric" 
+                                            pattern="[0-9]*" 
+                                            className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
+                                            value={m.awayGoals ?? ''} 
+                                            onChange={(e) => setScore(m.id, m.homeGoals ?? NaN, e.target.value === '' ? NaN : Number(e.target.value))} 
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Date & Time</label>
+                                        <div className="flex gap-2">
+                                          <CustomDatePicker
+                                            value={m.dateISO ? m.dateISO.split('T')[0] : ''}
+                                            onChange={(date) => {
+                                              const currentTime = m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'
+                                              setDate(m.id, new Date(`${date}T${currentTime}`).toISOString())
+                                            }}
+                                            className="flex-1 text-xs"
+                                            placeholder="Select Date"
+                                          />
+                                          <CustomTimePicker
+                                            value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'}
+                                            onChange={(time) => {
+                                              const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
+                                              setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
+                                            }}
+                                            className="w-24 text-xs"
+                                            placeholder="Time"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Actions</label>
+                                        <Link 
+                                          to={`/tournaments/${tournament.id}/matches/${m.id}`}
+                                          className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
+                                          title="View match statistics"
+                                        >
+                                          📊 Stats
+                                        </Link>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    
+                    {/* Division 2 Playoffs */}
+                    {div2Rounds.length > 0 && (
+                      <div className="mb-8">
+                        <h3 className="text-xl font-bold mb-4 text-blue-400">Division 2 Playoffs</h3>
+                        {div2Rounds.map(roundIndex => {
+                          const roundMatches = div2ByRound[roundIndex] || []
+                          const roundName = getPlayoffRoundName(roundIndex, maxDiv2Rounds)
+                          
+                          return (
+                            <div key={`div2-${roundIndex}`} className="mb-6">
+                              <div className="glass rounded-xl p-4 border border-blue-500/20">
+                                <div className="font-bold text-lg mb-4 text-center text-blue-400">Division 2 - {roundName}</div>
+                                <div className="grid gap-3">
+                                  {roundMatches.map((m) => (
+                                    <div key={m.id} className="grid md:grid-cols-6 gap-3 items-center p-3 glass rounded-lg">
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Home Team</label>
+                                        <select
+                                          value={m.homeTeamId || ''}
+                                          onChange={(e) => setPlayoffTeams(m.id, e.target.value, m.awayTeamId || '')}
+                                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                                        >
+                                          <option value="">Select Team</option>
+                                          {teams.map(team => (
+                                            <option key={team.id} value={team.id}>{team.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="text-lg font-bold opacity-50">vs</div>
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Away Team</label>
+                                        <select
+                                          value={m.awayTeamId || ''}
+                                          onChange={(e) => setPlayoffTeams(m.id, m.homeTeamId || '', e.target.value)}
+                                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                                        >
+                                          <option value="">Select Team</option>
+                                          {teams.map(team => (
+                                            <option key={team.id} value={team.id}>{team.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Score</label>
+                                        <div className="flex gap-1 items-center">
+                                          <input 
+                                            inputMode="numeric" 
+                                            pattern="[0-9]*" 
+                                            className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
+                                            value={m.homeGoals ?? ''} 
+                                            onChange={(e) => setScore(m.id, e.target.value === '' ? NaN : Number(e.target.value), m.awayGoals ?? NaN)} 
+                                          />
+                                          <span className="text-sm">:</span>
+                                          <input 
+                                            inputMode="numeric" 
+                                            pattern="[0-9]*" 
+                                            className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
+                                            value={m.awayGoals ?? ''} 
+                                            onChange={(e) => setScore(m.id, m.homeGoals ?? NaN, e.target.value === '' ? NaN : Number(e.target.value))} 
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Date & Time</label>
+                                        <div className="flex gap-2">
+                                          <CustomDatePicker
+                                            value={m.dateISO ? m.dateISO.split('T')[0] : ''}
+                                            onChange={(date) => {
+                                              const currentTime = m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'
+                                              setDate(m.id, new Date(`${date}T${currentTime}`).toISOString())
+                                            }}
+                                            className="flex-1 text-xs"
+                                            placeholder="Select Date"
+                                          />
+                                          <CustomTimePicker
+                                            value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'}
+                                            onChange={(time) => {
+                                              const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
+                                              setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
+                                            }}
+                                            className="w-24 text-xs"
+                                            placeholder="Time"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-xs opacity-70">Actions</label>
+                                        <Link 
+                                          to={`/tournaments/${tournament.id}/matches/${m.id}`}
+                                          className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
+                                          title="View match statistics"
+                                        >
+                                          📊 Stats
+                                        </Link>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
+                )
+              }
               
-              if (roundMatches.length === 0) return null
+              // Regular playoff display for other formats
+              return Array.from({ length: playoffStructure?.rounds || 0 }, (_, roundIndex) => {
+                const roundMatches = playoffMatches.filter(m => m.playoffRound === roundIndex)
+                const roundName = playoffStructure?.customRounds?.[roundIndex]?.name || 
+                                 getPlayoffRoundName(roundIndex, playoffStructure?.rounds || 0)
+                
+                if (roundMatches.length === 0) return null
               
               return (
                 <div key={roundIndex} className="glass rounded-xl p-4">
@@ -1791,7 +2046,8 @@ export default function TournamentPage() {
                   </div>
                 </div>
               )
-            })}
+            })
+            })()}
           </div>
         )}
       </section>
