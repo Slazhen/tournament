@@ -42,32 +42,68 @@ export default function TournamentPage() {
     // Only include league matches (non-playoff matches)
     const leagueMatches = tournament.matches.filter(m => !m.isPlayoff)
     
-    // For groups_with_divisions, reorganize rounds like public page
+    // For groups_with_divisions, check if rounds have been fixed (all groups share same round numbers)
+    // If rounds are already fixed (0, 1, 2 for all groups), use them directly
+    // Otherwise, reorganize like before
     if (tournament.format?.mode === 'groups_with_divisions') {
-      // Group matches by groupIndex first
-      const matchesByGroup: Record<number, any[]> = {}
+      // Check if all groups have the same set of round numbers (indicating rounds are fixed)
+      const matchesByGroup: Record<number, Set<number>> = {}
       leagueMatches.forEach(match => {
         const groupIndex = match.groupIndex || 1
         if (!matchesByGroup[groupIndex]) {
-          matchesByGroup[groupIndex] = []
+          matchesByGroup[groupIndex] = new Set()
         }
-        matchesByGroup[groupIndex].push(match)
+        matchesByGroup[groupIndex].add(match.round || 0)
+      })
+      
+      // Check if all groups have the same set of round numbers
+      const groupRoundSets = Object.values(matchesByGroup)
+      if (groupRoundSets.length > 0) {
+        const firstGroupRounds = Array.from(groupRoundSets[0] || []).sort((a, b) => a - b)
+        const allGroupsHaveSameRounds = groupRoundSets.every(rounds => {
+          const sorted = Array.from(rounds).sort((a, b) => a - b)
+          return JSON.stringify(sorted) === JSON.stringify(firstGroupRounds)
+        })
+        
+        // If all groups share the same round numbers (already fixed), use them directly
+        // This means rounds are 0, 1, 2 (or similar small range) for all groups
+        if (allGroupsHaveSameRounds && firstGroupRounds.length <= 6) {
+          const groups: Record<number, string[]> = {}
+          for (const m of leagueMatches) {
+            const r = m.round ?? 0
+            groups[r] = groups[r] || []
+            groups[r].push(m.id)
+          }
+          return Object.entries(groups)
+            .map(([r, ids]) => ({ round: Number(r), matchIds: ids }))
+            .sort((a, b) => a.round - b.round)
+        }
+      }
+      
+      // Otherwise, reorganize rounds (for old tournaments that haven't been fixed yet)
+      const matchesByGroupForReorg: Record<number, any[]> = {}
+      leagueMatches.forEach(match => {
+        const groupIndex = match.groupIndex || 1
+        if (!matchesByGroupForReorg[groupIndex]) {
+          matchesByGroupForReorg[groupIndex] = []
+        }
+        matchesByGroupForReorg[groupIndex].push(match)
       })
       
       // Sort matches within each group by their original round
-      Object.keys(matchesByGroup).forEach(groupKey => {
+      Object.keys(matchesByGroupForReorg).forEach(groupKey => {
         const groupIndex = Number(groupKey)
-        matchesByGroup[groupIndex].sort((a, b) => (a.round || 0) - (b.round || 0))
+        matchesByGroupForReorg[groupIndex].sort((a, b) => (a.round || 0) - (b.round || 0))
       })
       
       // Reorganize into rounds: Round 1 = first match from each group, Round 2 = second match, etc.
       const groupMatchesByRound: Record<number, string[]> = {}
-      const maxMatchesPerGroup = Math.max(...Object.values(matchesByGroup).map(matches => matches.length), 0)
+      const maxMatchesPerGroup = Math.max(...Object.values(matchesByGroupForReorg).map(matches => matches.length), 0)
       
       for (let roundIndex = 0; roundIndex < maxMatchesPerGroup; roundIndex++) {
-        Object.keys(matchesByGroup).forEach(groupKey => {
+        Object.keys(matchesByGroupForReorg).forEach(groupKey => {
           const groupIndex = Number(groupKey)
-          const groupMatchesList = matchesByGroup[groupIndex]
+          const groupMatchesList = matchesByGroupForReorg[groupIndex]
           if (groupMatchesList[roundIndex]) {
             if (!groupMatchesByRound[roundIndex]) {
               groupMatchesByRound[roundIndex] = []
