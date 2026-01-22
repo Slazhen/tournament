@@ -927,44 +927,81 @@ export default function PublicTournamentPage() {
                 }
               })
               
-              // Reorganize group matches: Round 1 = first games from all groups, Round 2 = second games, etc.
-              // Group matches by groupIndex first
-              const matchesByGroup: Record<number, any[]> = {}
+              // Check if rounds are already fixed (all groups share same round numbers)
+              // If fixed, use round numbers directly (like admin page)
+              // Otherwise, reorganize (for backwards compatibility with old tournaments)
+              const matchesByGroup: Record<number, Set<number>> = {}
               groupMatches.forEach(match => {
                 const groupIndex = match.groupIndex || 1
                 if (!matchesByGroup[groupIndex]) {
-                  matchesByGroup[groupIndex] = []
+                  matchesByGroup[groupIndex] = new Set()
                 }
-                matchesByGroup[groupIndex].push(match)
+                matchesByGroup[groupIndex].add(match.round || 0)
               })
               
-              // Sort matches within each group by their original round
-              Object.keys(matchesByGroup).forEach(groupKey => {
-                const groupIndex = Number(groupKey)
-                matchesByGroup[groupIndex].sort((a, b) => (a.round || 0) - (b.round || 0))
-              })
+              // Check if all groups have the same set of round numbers
+              const groupRoundSets = Object.values(matchesByGroup)
+              let allGroupsHaveSameRounds = false
+              let groupMatchesByRound: Record<number, any[]> = {}
+              let sortedGroupRounds: number[] = []
               
-              // Now reorganize into rounds: Round 1 = first match from each group, Round 2 = second match, etc.
-              const groupMatchesByRound: Record<number, any[]> = {}
-              const maxMatchesPerGroup = Math.max(...Object.values(matchesByGroup).map(matches => matches.length), 0)
-              
-              for (let roundIndex = 0; roundIndex < maxMatchesPerGroup; roundIndex++) {
-                Object.keys(matchesByGroup).forEach(groupKey => {
-                  const groupIndex = Number(groupKey)
-                  const groupMatchesList = matchesByGroup[groupIndex]
-                  if (groupMatchesList[roundIndex]) {
-                    if (!groupMatchesByRound[roundIndex]) {
-                      groupMatchesByRound[roundIndex] = []
-                    }
-                    groupMatchesByRound[roundIndex].push(groupMatchesList[roundIndex])
-                  }
+              if (groupRoundSets.length > 0) {
+                const firstGroupRounds = Array.from(groupRoundSets[0] || []).sort((a, b) => a - b)
+                allGroupsHaveSameRounds = groupRoundSets.every(rounds => {
+                  const sorted = Array.from(rounds).sort((a, b) => a - b)
+                  return JSON.stringify(sorted) === JSON.stringify(firstGroupRounds)
                 })
               }
               
-              // Sort group rounds
-              const sortedGroupRounds = Object.keys(groupMatchesByRound)
-                .map(Number)
-                .sort((a, b) => a - b)
+              if (allGroupsHaveSameRounds && groupRoundSets.length > 0) {
+                // Rounds are already fixed - use them directly (like admin page)
+                groupMatches.forEach(match => {
+                  const round = match.round || 0
+                  if (!groupMatchesByRound[round]) {
+                    groupMatchesByRound[round] = []
+                  }
+                  groupMatchesByRound[round].push(match)
+                })
+                sortedGroupRounds = Object.keys(groupMatchesByRound)
+                  .map(Number)
+                  .sort((a, b) => a - b)
+              } else {
+                // Rounds not fixed - reorganize (for old tournaments)
+                const matchesByGroupForReorg: Record<number, any[]> = {}
+                groupMatches.forEach(match => {
+                  const groupIndex = match.groupIndex || 1
+                  if (!matchesByGroupForReorg[groupIndex]) {
+                    matchesByGroupForReorg[groupIndex] = []
+                  }
+                  matchesByGroupForReorg[groupIndex].push(match)
+                })
+                
+                // Sort matches within each group by their original round
+                Object.keys(matchesByGroupForReorg).forEach(groupKey => {
+                  const groupIndex = Number(groupKey)
+                  matchesByGroupForReorg[groupIndex].sort((a, b) => (a.round || 0) - (b.round || 0))
+                })
+                
+                // Reorganize into rounds: Round 1 = first match from each group, Round 2 = second match, etc.
+                const maxMatchesPerGroup = Math.max(...Object.values(matchesByGroupForReorg).map(matches => matches.length), 0)
+                
+                for (let roundIndex = 0; roundIndex < maxMatchesPerGroup; roundIndex++) {
+                  Object.keys(matchesByGroupForReorg).forEach(groupKey => {
+                    const groupIndex = Number(groupKey)
+                    const groupMatchesList = matchesByGroupForReorg[groupIndex]
+                    if (groupMatchesList[roundIndex]) {
+                      if (!groupMatchesByRound[roundIndex]) {
+                        groupMatchesByRound[roundIndex] = []
+                      }
+                      groupMatchesByRound[roundIndex].push(groupMatchesList[roundIndex])
+                    }
+                  })
+                }
+                
+                sortedGroupRounds = Object.keys(groupMatchesByRound)
+                  .map(Number)
+                  .sort((a, b) => a - b)
+              }
               
               // Group playoff matches by division and round
               const div1MatchesByRound: Record<number, any[]> = {}
