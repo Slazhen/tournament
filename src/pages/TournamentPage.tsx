@@ -182,6 +182,40 @@ export default function TournamentPage() {
     updateTournament(tournament.id, { matches })
   }
 
+  // Get teams from current tournament only
+  const tournamentTeams = useMemo(() => {
+    if (!tournament) return []
+    return teams.filter(team => tournament.teamIds.includes(team.id))
+  }, [teams, tournament])
+
+  // Get available teams for opponent selection based on selected team and match type
+  const getAvailableOpponents = (selectedTeamId: string | undefined, match: any): any[] => {
+    if (!tournament) return []
+    
+    // Always filter to tournament teams only
+    let availableTeams = tournamentTeams
+
+    // For non-playoff matches in groups_with_divisions format
+    if (!match.isPlayoff && tournament.format?.mode === 'groups_with_divisions' && selectedTeamId) {
+      const groups = tournament.format?.groupsWithDivisionsConfig?.groups || []
+      
+      // Find which group the selected team belongs to
+      const teamGroupIndex = groups.findIndex(group => group.includes(selectedTeamId))
+      
+      if (teamGroupIndex !== -1) {
+        // Filter to only teams from the same group
+        availableTeams = tournamentTeams.filter(team => groups[teamGroupIndex].includes(team.id))
+      }
+    }
+
+    // Exclude the selected team from opponent list
+    if (selectedTeamId) {
+      availableTeams = availableTeams.filter(team => team.id !== selectedTeamId)
+    }
+
+    return availableTeams
+  }
+
   function setDate(mid: string, dateISO: string) {
     if (!tournament) return
     const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, dateISO } : m))
@@ -1449,11 +1483,22 @@ export default function TournamentPage() {
                       <label className="text-xs opacity-70">Home Team</label>
                       <select
                         value={m.homeTeamId || ''}
-                        onChange={(e) => setPlayoffTeams(mid, e.target.value, m.awayTeamId || '')}
+                        onChange={(e) => {
+                          const newHomeTeamId = e.target.value
+                          // If away team is from different group, clear it
+                          let newAwayTeamId = m.awayTeamId || ''
+                          if (newHomeTeamId && newAwayTeamId && !m.isPlayoff && tournament.format?.mode === 'groups_with_divisions') {
+                            const availableOpponents = getAvailableOpponents(newHomeTeamId, m)
+                            if (!availableOpponents.find(t => t.id === newAwayTeamId)) {
+                              newAwayTeamId = ''
+                            }
+                          }
+                          setPlayoffTeams(mid, newHomeTeamId, newAwayTeamId)
+                        }}
                         className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
                       >
                         <option value="">Select Team</option>
-                        {teams.map(team => (
+                        {tournamentTeams.map(team => (
                           <option key={team.id} value={team.id}>
                             {team.name}
                           </option>
@@ -1475,7 +1520,7 @@ export default function TournamentPage() {
                         className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
                       >
                         <option value="">Select Team</option>
-                        {teams.map(team => (
+                        {getAvailableOpponents(m.homeTeamId, m).map(team => (
                           <option key={team.id} value={team.id}>
                             {team.name}
                           </option>
@@ -1778,7 +1823,16 @@ export default function TournamentPage() {
                                     onChange={(e) => {
                                       const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
                                       const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                      updatedMatches[matchIndex] = { ...match, homeTeamId: e.target.value }
+                                      const newHomeTeamId = e.target.value
+                                      // If away team is from different group, clear it
+                                      let newAwayTeamId = match.awayTeamId || ''
+                                      if (newHomeTeamId && newAwayTeamId && tournament.format?.mode === 'groups_with_divisions') {
+                                        const availableOpponents = getAvailableOpponents(newHomeTeamId, { isPlayoff: true })
+                                        if (!availableOpponents.find(t => t.id === newAwayTeamId)) {
+                                          newAwayTeamId = ''
+                                        }
+                                      }
+                                      updatedMatches[matchIndex] = { ...match, homeTeamId: newHomeTeamId, awayTeamId: newAwayTeamId }
                                       updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
                                       updateTournament(tournament.id, {
                                         format: {
@@ -1796,7 +1850,7 @@ export default function TournamentPage() {
                                     className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                                   >
                                     <option value="">Select Team</option>
-                                    {teams.map(team => (
+                                    {tournamentTeams.map(team => (
                                       <option key={team.id} value={team.id}>{team.name}</option>
                                     ))}
                                   </select>
@@ -1826,7 +1880,7 @@ export default function TournamentPage() {
                                     className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                                   >
                                     <option value="">Select Team</option>
-                                    {teams.map(team => (
+                                    {getAvailableOpponents(match.homeTeamId, { isPlayoff: true }).map(team => (
                                       <option key={team.id} value={team.id}>{team.name}</option>
                                     ))}
                                   </select>
@@ -2056,7 +2110,7 @@ export default function TournamentPage() {
                                           className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
                                         >
                                           <option value="">Select Team</option>
-                                          {teams.map(team => (
+                                          {tournamentTeams.map(team => (
                                             <option key={team.id} value={team.id}>{team.name}</option>
                                           ))}
                                         </select>
@@ -2072,7 +2126,7 @@ export default function TournamentPage() {
                                           className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
                                         >
                                           <option value="">Select Team</option>
-                                          {teams.map(team => (
+                                          {getAvailableOpponents(m.homeTeamId, m).map(team => (
                                             <option key={team.id} value={team.id}>{team.name}</option>
                                           ))}
                                         </select>
@@ -2163,7 +2217,7 @@ export default function TournamentPage() {
                                           className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
                                         >
                                           <option value="">Select Team</option>
-                                          {teams.map(team => (
+                                          {tournamentTeams.map(team => (
                                             <option key={team.id} value={team.id}>{team.name}</option>
                                           ))}
                                         </select>
@@ -2179,7 +2233,7 @@ export default function TournamentPage() {
                                           className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
                                         >
                                           <option value="">Select Team</option>
-                                          {teams.map(team => (
+                                          {getAvailableOpponents(m.homeTeamId, m).map(team => (
                                             <option key={team.id} value={team.id}>{team.name}</option>
                                           ))}
                                         </select>
