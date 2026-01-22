@@ -927,34 +927,19 @@ export default function PublicTournamentPage() {
                 }
               })
               
-              // Check if rounds are already fixed (all groups share same round numbers)
-              // If fixed, use round numbers directly (like admin page)
-              // Otherwise, reorganize (for backwards compatibility with old tournaments)
-              const matchesByGroup: Record<number, Set<number>> = {}
-              groupMatches.forEach(match => {
-                const groupIndex = match.groupIndex || 1
-                if (!matchesByGroup[groupIndex]) {
-                  matchesByGroup[groupIndex] = new Set()
-                }
-                matchesByGroup[groupIndex].add(match.round || 0)
-              })
+              // For groups_with_divisions, use round numbers directly if they're in a reasonable range (0-5)
+              // Otherwise, reorganize (for old tournaments that haven't been fixed yet)
+              const allRounds = new Set(groupMatches.map(m => m.round || 0))
+              const maxRound = Math.max(...Array.from(allRounds), 0)
+              const minRound = Math.min(...Array.from(allRounds), 0)
               
-              // Check if all groups have the same set of round numbers
-              const groupRoundSets = Object.values(matchesByGroup)
-              let allGroupsHaveSameRounds = false
               let groupMatchesByRound: Record<number, any[]> = {}
               let sortedGroupRounds: number[] = []
               
-              if (groupRoundSets.length > 0) {
-                const firstGroupRounds = Array.from(groupRoundSets[0] || []).sort((a, b) => a - b)
-                allGroupsHaveSameRounds = groupRoundSets.every(rounds => {
-                  const sorted = Array.from(rounds).sort((a, b) => a - b)
-                  return JSON.stringify(sorted) === JSON.stringify(firstGroupRounds)
-                })
-              }
-              
-              if (allGroupsHaveSameRounds && groupRoundSets.length > 0) {
-                // Rounds are already fixed - use them directly (like admin page)
+              // If rounds are in a small range (0-5), use them directly (they're fixed)
+              // Otherwise, reorganize (old tournaments with offset rounds)
+              if (maxRound <= 5 && minRound >= 0) {
+                // Rounds are fixed - use them directly (like admin page)
                 groupMatches.forEach(match => {
                   const round = match.round || 0
                   if (!groupMatchesByRound[round]) {
