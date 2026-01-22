@@ -42,6 +42,47 @@ export default function TournamentPage() {
     // Only include league matches (non-playoff matches)
     const leagueMatches = tournament.matches.filter(m => !m.isPlayoff)
     
+    // For groups_with_divisions, reorganize rounds like public page
+    if (tournament.format?.mode === 'groups_with_divisions') {
+      // Group matches by groupIndex first
+      const matchesByGroup: Record<number, any[]> = {}
+      leagueMatches.forEach(match => {
+        const groupIndex = match.groupIndex || 1
+        if (!matchesByGroup[groupIndex]) {
+          matchesByGroup[groupIndex] = []
+        }
+        matchesByGroup[groupIndex].push(match)
+      })
+      
+      // Sort matches within each group by their original round
+      Object.keys(matchesByGroup).forEach(groupKey => {
+        const groupIndex = Number(groupKey)
+        matchesByGroup[groupIndex].sort((a, b) => (a.round || 0) - (b.round || 0))
+      })
+      
+      // Reorganize into rounds: Round 1 = first match from each group, Round 2 = second match, etc.
+      const groupMatchesByRound: Record<number, string[]> = {}
+      const maxMatchesPerGroup = Math.max(...Object.values(matchesByGroup).map(matches => matches.length), 0)
+      
+      for (let roundIndex = 0; roundIndex < maxMatchesPerGroup; roundIndex++) {
+        Object.keys(matchesByGroup).forEach(groupKey => {
+          const groupIndex = Number(groupKey)
+          const groupMatchesList = matchesByGroup[groupIndex]
+          if (groupMatchesList[roundIndex]) {
+            if (!groupMatchesByRound[roundIndex]) {
+              groupMatchesByRound[roundIndex] = []
+            }
+            groupMatchesByRound[roundIndex].push(groupMatchesList[roundIndex].id)
+          }
+        })
+      }
+      
+      return Object.entries(groupMatchesByRound)
+        .map(([r, ids]) => ({ round: Number(r), matchIds: ids }))
+        .sort((a, b) => a.round - b.round)
+    }
+    
+    // Regular tournament format
     const groups: Record<number, string[]> = {}
     for (const m of leagueMatches) {
       const r = m.round ?? 0

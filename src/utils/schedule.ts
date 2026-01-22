@@ -123,15 +123,17 @@ export function generatePlayoffBrackets(qualifiedTeamIds: string[]): PlayoffBrac
       matches: firstRoundMatches
     })
 
-    // Create final round if we have more than 1 team after first round
-    const winners = firstRoundMatches.map(m => m.winner || m.homeTeamId).filter(id => id)
-    if (winners.length > 1) {
-      round++
-      const finalMatches = []
-      for (let i = 0; i < winners.length; i += 2) {
-        if (i + 1 < winners.length) {
-          finalMatches.push({
-            matchId: `playoff-${round}-${i/2}`,
+    // Create subsequent rounds recursively until we have a final
+    let currentWinners = firstRoundMatches.map(m => m.winner || m.homeTeamId).filter(id => id && id !== 'BYE')
+    let currentRound = round
+    
+    while (currentWinners.length > 1) {
+      currentRound++
+      const nextRoundMatches = []
+      for (let i = 0; i < currentWinners.length; i += 2) {
+        if (i + 1 < currentWinners.length) {
+          nextRoundMatches.push({
+            matchId: `playoff-${currentRound}-${i/2}`,
             homeTeamId: `winner-${i + 1}`,
             awayTeamId: `winner-${i + 2}`,
             homeGoals: undefined,
@@ -141,8 +143,8 @@ export function generatePlayoffBrackets(qualifiedTeamIds: string[]): PlayoffBrac
           })
         } else {
           // Odd number of teams - bye to next round
-          finalMatches.push({
-            matchId: `playoff-${round}-${i/2}`,
+          nextRoundMatches.push({
+            matchId: `playoff-${currentRound}-${i/2}`,
             homeTeamId: `winner-${i + 1}`,
             awayTeamId: `winner-${i + 1}`,
             homeGoals: undefined,
@@ -153,11 +155,15 @@ export function generatePlayoffBrackets(qualifiedTeamIds: string[]): PlayoffBrac
         }
       }
       
-      if (finalMatches.length > 0) {
+      if (nextRoundMatches.length > 0) {
         brackets.push({
-          round,
-          matches: finalMatches
+          round: currentRound,
+          matches: nextRoundMatches
         })
+        // Update winners for next iteration
+        currentWinners = nextRoundMatches.map(m => m.winner || m.homeTeamId).filter(id => id && id !== 'BYE')
+      } else {
+        break
       }
     }
   }
