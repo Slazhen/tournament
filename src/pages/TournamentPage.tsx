@@ -303,8 +303,14 @@ export default function TournamentPage() {
       }
     })
     
-    updateTournament(tournament.id, { matches: updatedMatches })
-    alert('Group rounds have been fixed! The tournament now shows 3 rounds with 8 games each.')
+    updateTournament(tournament.id, { matches: updatedMatches }).then(() => {
+      alert('Group rounds have been fixed! The tournament now shows 3 rounds with 8 games each. Refreshing page...')
+      // Force a page refresh to ensure the changes are visible
+      window.location.reload()
+    }).catch((error) => {
+      console.error('Error updating tournament:', error)
+      alert('Error fixing group rounds. Please try again.')
+    })
   }
 
   // Regenerate playoff matches for groups_with_divisions tournaments
