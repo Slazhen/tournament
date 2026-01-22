@@ -313,6 +313,53 @@ export default function TournamentPage() {
     })
   }
 
+  // Fix groupIndex for all matches based on stored groups
+  const handleFixGroupIndexes = () => {
+    if (!tournament || tournament.format?.mode !== 'groups_with_divisions') return
+    
+    const groups = tournament.format?.groupsWithDivisionsConfig?.groups
+    if (!groups || groups.length === 0) {
+      alert('Cannot fix group indexes: Groups are not defined. Please edit groups first.')
+      return
+    }
+    
+    // Create a map of team ID to group index (1-based)
+    const teamToGroupMap: Record<string, number> = {}
+    groups.forEach((groupTeams, groupIndex) => {
+      groupTeams.forEach(teamId => {
+        teamToGroupMap[teamId] = groupIndex + 1
+      })
+    })
+    
+    // Update all group matches with correct groupIndex
+    const updatedMatches = tournament.matches.map(match => {
+      if (match.isPlayoff) return match
+      
+      // Get groupIndex from home team (both teams should be in same group)
+      const homeGroupIndex = teamToGroupMap[match.homeTeamId]
+      const awayGroupIndex = teamToGroupMap[match.awayTeamId]
+      
+      // Both teams should be in the same group
+      if (homeGroupIndex && awayGroupIndex && homeGroupIndex === awayGroupIndex) {
+        return {
+          ...match,
+          groupIndex: homeGroupIndex
+        }
+      }
+      
+      // If teams are in different groups or not found, keep original match
+      return match
+    })
+    
+    updateTournament(tournament.id, { matches: updatedMatches }).then(() => {
+      alert('Group indexes have been fixed! All matches now have correct groupIndex values. Refreshing page...')
+      window.location.reload()
+    }).catch((error) => {
+      console.error('Error updating tournament:', error)
+      alert('Error fixing group indexes. Please try again.')
+    })
+  }
+
   // Regenerate playoff matches for groups_with_divisions tournaments
   const handleRegeneratePlayoffs = () => {
     if (!tournament || tournament.format?.mode !== 'groups_with_divisions') return
@@ -732,6 +779,17 @@ export default function TournamentPage() {
                <div className="flex justify-center gap-4 mt-4 flex-wrap">
                  {tournament.format?.mode === 'groups_with_divisions' && (
                    <>
+                     <button
+                       onClick={() => {
+                         if (confirm('Fix group indexes? This will update all matches with correct groupIndex values so tables show results correctly.')) {
+                           handleFixGroupIndexes()
+                         }
+                       }}
+                       className="px-4 py-2 rounded-lg glass hover:bg-purple-500/20 hover:text-purple-300 transition-all font-medium border border-purple-500/30 text-purple-400 text-sm"
+                       title="Fix group indexes for all matches"
+                     >
+                       🏷️ Fix Group Indexes
+                     </button>
                      <button
                        onClick={() => {
                          if (confirm('Fix group round numbers? This will reorganize group matches into 3 rounds with 8 games each.')) {
