@@ -224,23 +224,37 @@ export default function TournamentPage() {
       matchesByGroup[groupIndex].push(match)
     })
     
-    // Sort matches within each group by their current round
+    // Sort matches within each group by their current round number
     Object.keys(matchesByGroup).forEach(groupKey => {
       const groupIndex = Number(groupKey)
       matchesByGroup[groupIndex].sort((a, b) => (a.round || 0) - (b.round || 0))
     })
     
+    // Calculate how many matches per group
+    const matchesPerGroup = Math.max(...Object.values(matchesByGroup).map(matches => matches.length), 0)
+    
+    // We want to organize into rounds where each round has one match from each group
+    // For 6 matches per group with 4 groups: we want 3 rounds with 2 matches per group per round
+    // Calculate how many rounds we need: typically 3 rounds for groupRounds=2
+    // But we'll calculate based on even distribution
+    const expectedRounds = 3 // For 2 rounds of round-robin, we typically get 3 display rounds
+    const matchesPerRoundPerGroup = Math.ceil(matchesPerGroup / expectedRounds)
+    
     // Create a map of match ID to new round number
+    // Distribute matches evenly: first N matches from each group = round 0, next N = round 1, etc.
     const matchRoundMap: Record<string, number> = {}
     Object.keys(matchesByGroup).forEach(groupKey => {
       const groupIndex = Number(groupKey)
       const groupMatches = matchesByGroup[groupIndex]
       groupMatches.forEach((match, index) => {
-        matchRoundMap[match.id] = index
+        // Calculate which round this match should be in
+        // For 6 matches per group: matches 0-1 → round 0, 2-3 → round 1, 4-5 → round 2
+        const newRound = Math.floor(index / matchesPerRoundPerGroup)
+        matchRoundMap[match.id] = newRound
       })
     })
     
-    // Reassign round numbers: first match from each group = round 0, second = round 1, etc.
+    // Reassign round numbers
     const updatedMatches = tournament.matches.map(match => {
       if (match.isPlayoff || !match.groupIndex) return match
       
