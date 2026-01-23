@@ -1,18 +1,32 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
+import { findTournamentBySlug } from '../utils/urls'
+import { organizerService } from '../lib/aws-database'
+import type { Organizer } from '../types'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 
 export default function PublicTournamentPage() {
-  const { id, tournamentId } = useParams()
+  const { id, tournamentId, orgSlug, tournamentSlug } = useParams()
   const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
+  const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
+  
+  // Load all organizers for slug-based lookup
+  useEffect(() => {
+    organizerService.getAll().then(setAllOrganizers)
+  }, [])
   
   // Handle both old and new URL structures
-  const actualTournamentId = tournamentId || id
+  const actualTournamentId = useMemo(() => {
+    if (tournamentId || id) {
+      return tournamentId || id
+    }
+    return null
+  }, [tournamentId, id])
 
   // Load data from AWS when component mounts
   useEffect(() => {
@@ -88,8 +102,14 @@ export default function PublicTournamentPage() {
     tournaments = getAllTournaments() || []
     teams = getAllTeams() || []
     
-    // Find the specific tournament by ID
-    tournament = tournaments.find(t => t && t.id === actualTournamentId)
+    // Find tournament by ID (old route) or by slug (new route)
+    if (actualTournamentId) {
+      // Old route: /public/tournaments/:id
+      tournament = tournaments.find(t => t && t.id === actualTournamentId)
+    } else if (orgSlug && tournamentSlug) {
+      // New route: /:orgSlug/:tournamentSlug
+      tournament = findTournamentBySlug(tournaments, orgSlug, tournamentSlug, allOrganizers)
+    }
   } catch (error) {
     console.error('Error accessing data in PublicTournamentPage:', error)
     return (

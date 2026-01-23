@@ -1,9 +1,12 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { generatePlayoffBrackets, createPlayoffMatches as createPlayoffMatchesFromBrackets } from '../utils/schedule'
 import { generateMatchUID } from '../utils/uid'
 import { generateGroupsWithDivisionsSchedule } from '../utils/tournament'
+import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
+import { organizerService } from '../lib/aws-database'
+import type { Organizer } from '../types'
 import LocationIcon from '../components/LocationIcon'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -13,15 +16,30 @@ import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
 
 export default function TournamentPage() {
-  const { id } = useParams()
+  const { id, orgSlug, tournamentSlug } = useParams()
   const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, deleteTournament, uploadTournamentLogo } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
   const teams = getOrganizerTeams()
+  const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
   
-  // Find the specific tournament by ID
-  const tournament = tournaments.find(t => t.id === id)
+  // Load all organizers for slug-based lookup
+  useEffect(() => {
+    organizerService.getAll().then(setAllOrganizers)
+  }, [])
+  
+  // Support both old ID-based route and new slug-based route
+  const tournament = useMemo(() => {
+    if (id) {
+      // Old route: /admin/tournaments/:id
+      return tournaments.find(t => t.id === id)
+    } else if (orgSlug && tournamentSlug) {
+      // New route: /admin/:orgSlug/:tournamentSlug
+      return findTournamentBySlug(tournaments, orgSlug, tournamentSlug, allOrganizers)
+    }
+    return undefined
+  }, [id, orgSlug, tournamentSlug, tournaments, allOrganizers])
   
   // State for new round configuration
   const [showNewRoundForm, setShowNewRoundForm] = useState(false)
@@ -1448,13 +1466,13 @@ export default function TournamentPage() {
                               />
                             </div>
                             <div>
-                              <Link 
-                                to={`/tournaments/${tournament.id}/matches/${match.id}`}
-                                className="px-3 py-1 rounded-md glass text-sm hover:bg-white/10 transition-all text-center block"
-                                title="View match statistics"
-                              >
-                                📊 Stats
-                              </Link>
+                      <Link 
+                        to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}` : `/tournaments/${tournament.id}/matches/${match.id}`}
+                        className="px-3 py-1 rounded-md glass text-sm hover:bg-white/10 transition-all text-center block"
+                        title="View match statistics"
+                      >
+                        📊 Stats
+                      </Link>
                             </div>
                           </div>
                         )
@@ -1588,7 +1606,7 @@ export default function TournamentPage() {
                     <div className="flex flex-col gap-1">
                       <label className="text-xs opacity-70">Actions</label>
                       <Link 
-                        to={`/tournaments/${tournament.id}/matches/${mid}`}
+                        to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${mid}` : `/tournaments/${tournament.id}/matches/${mid}`}
                         className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
                         title="View match statistics"
                       >
@@ -2023,7 +2041,10 @@ export default function TournamentPage() {
                                   <button
                                     onClick={() => {
                                       // Navigate to match page for stats
-                                      window.open(`/public/tournaments/${tournament.id}/matches/${match.id}`, '_blank')
+                                      const publicUrl = currentOrganizer 
+                                        ? `${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
+                                        : `/public/tournaments/${tournament.id}/matches/${match.id}`
+                                      window.open(publicUrl, '_blank')
                                     }}
                                     className="px-3 py-2 rounded-md bg-blue-500/20 hover:bg-blue-500/30 transition-all text-blue-400 text-sm"
                                     disabled={!match.homeTeamId || !match.awayTeamId}

@@ -1,19 +1,38 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { uid } from '../utils/uid'
+import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
+import { organizerService } from '../lib/aws-database'
+import type { Organizer } from '../types'
 import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
 
 export default function MatchPage() {
-  const { tournamentId, matchId } = useParams()
+  const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
   const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTournament } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
+  const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
+  
+  // Load all organizers for slug-based lookup
+  useEffect(() => {
+    organizerService.getAll().then(setAllOrganizers)
+  }, [])
 
-  const tournament = tournaments.find(t => t.id === tournamentId)
+  // Support both old ID-based route and new slug-based route
+  const tournament = useMemo(() => {
+    if (tournamentId) {
+      // Old route: /admin/tournaments/:tournamentId/matches/:matchId
+      return tournaments.find(t => t.id === tournamentId)
+    } else if (orgSlug && tournamentSlug) {
+      // New route: /admin/:orgSlug/:tournamentSlug/matches/:matchId
+      return findTournamentBySlug(tournaments, orgSlug, tournamentSlug, allOrganizers)
+    }
+    return undefined
+  }, [tournamentId, orgSlug, tournamentSlug, tournaments, allOrganizers])
   const match = tournament?.matches.find(m => m.id === matchId)
   
   const homeTeam = teams.find(t => t.id === match?.homeTeamId)
@@ -119,7 +138,10 @@ export default function MatchPage() {
       {/* Header */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <div className="flex items-center justify-between mb-6">
-          <Link to={`/tournaments/${tournament.id}`} className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2">
+          <Link 
+            to={currentOrganizer && tournament ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`} 
+            className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2"
+          >
             ← Back to {tournament.name}
           </Link>
         
@@ -130,11 +152,19 @@ export default function MatchPage() {
               <input
                 type="text"
                 readOnly
-                value={`${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`}
+                value={currentOrganizer && tournament 
+                  ? `${window.location.origin}${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
+                  : `${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`
+                }
                 className="px-3 py-2 rounded-md bg-transparent border border-white/20 text-center min-w-[300px] text-sm"
               />
               <button
-                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`)}
+                onClick={() => {
+                  const url = currentOrganizer && tournament 
+                    ? `${window.location.origin}${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
+                    : `${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`
+                  navigator.clipboard.writeText(url)
+                }}
                 className="px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
                 title="Copy to clipboard"
               >

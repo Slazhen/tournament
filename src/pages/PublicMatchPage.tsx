@@ -1,23 +1,30 @@
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { dynamoDB, TABLES } from '../lib/aws-config'
-import { GetCommand } from '@aws-sdk/lib-dynamodb'
-import { batchGetTeams } from '../lib/aws-database'
-import type { Tournament, Team, Match } from '../types'
+import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
+import { batchGetTeams, organizerService } from '../lib/aws-database'
+import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
+import type { Tournament, Team, Match, Organizer } from '../types'
 
 export default function PublicMatchPage() {
-  const { tournamentId, matchId } = useParams()
+  const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [homeTeam, setHomeTeam] = useState<Team | null>(null)
   const [awayTeam, setAwayTeam] = useState<Team | null>(null)
   const [match, setMatch] = useState<Match | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
+
+  // Load all organizers for slug-based lookup
+  useEffect(() => {
+    organizerService.getAll().then(setAllOrganizers)
+  }, [])
 
   // Load data directly from DynamoDB (no authentication required for public pages)
   useEffect(() => {
     const loadData = async () => {
-      if (!tournamentId || !matchId) {
+      if ((!tournamentId && (!orgSlug || !tournamentSlug)) || !matchId) {
         setError('Missing tournament or match ID')
         setIsLoading(false)
         return
@@ -27,19 +34,47 @@ export default function PublicMatchPage() {
         setIsLoading(true)
         setError(null)
 
-        // Load tournament
-        const tournamentResponse = await dynamoDB.send(new GetCommand({
-          TableName: TABLES.TOURNAMENTS,
-          Key: { id: tournamentId }
-        }))
+        let tournamentData: Tournament | null = null
 
-        if (!tournamentResponse.Item) {
+        if (tournamentId) {
+          // Old route: /public/tournaments/:tournamentId/matches/:matchId
+          const tournamentResponse = await dynamoDB.send(new GetCommand({
+            TableName: TABLES.TOURNAMENTS,
+            Key: { id: tournamentId }
+          }))
+
+          if (!tournamentResponse.Item) {
+            setError('Tournament not found')
+            setIsLoading(false)
+            return
+          }
+
+          tournamentData = tournamentResponse.Item as Tournament
+        } else if (orgSlug && tournamentSlug) {
+          // New route: /:orgSlug/:tournamentSlug/matches/:matchId
+          // Load all tournaments and find by slug
+          const tournamentsResponse = await dynamoDB.send(new ScanCommand({
+            TableName: TABLES.TOURNAMENTS
+          }))
+
+          const allTournaments = (tournamentsResponse.Items || []) as Tournament[]
+          const foundTournament = findTournamentBySlug(allTournaments, orgSlug, tournamentSlug, allOrganizers)
+
+          if (!foundTournament) {
+            setError('Tournament not found')
+            setIsLoading(false)
+            return
+          }
+          
+          tournamentData = foundTournament
+        }
+
+        if (!tournamentData) {
           setError('Tournament not found')
           setIsLoading(false)
           return
         }
 
-        const tournamentData = tournamentResponse.Item as Tournament
         setTournament(tournamentData)
 
         // Find the match
@@ -137,7 +172,16 @@ export default function PublicMatchPage() {
       {/* Header */}
       <section className={`glass rounded-xl p-6 w-full max-w-6xl ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
         <div className="flex items-center justify-between mb-6">
-          <Link to={`/public/tournaments/${tournament.id}`} className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2">
+          <Link 
+            to={tournament && allOrganizers.length > 0 
+              ? (() => {
+                  const organizer = allOrganizers.find(o => o.id === tournament.organizerId)
+                  return organizer ? getPublicTournamentUrl(tournament, organizer) : `/public/tournaments/${tournament.id}`
+                })()
+              : `/public/tournaments/${tournament.id}`
+            } 
+            className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2"
+          >
             ← Back to {tournament.name}
           </Link>
         </div>

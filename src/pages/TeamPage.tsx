@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useRef, useState } from 'react'
 import { uid } from '../utils/uid'
+import { getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
@@ -530,13 +531,13 @@ export default function TeamPage() {
                     <td className="py-3 px-4 text-center">
                       <div className="flex gap-2 justify-center">
                         <Link
-                          to={`/tournaments/${tournament.id}`}
+                          to={currentOrganizer ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`}
                           className="px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
                         >
                           🏆 View
                         </Link>
                         <Link
-                          to={`/public/tournaments/${tournament.id}`}
+                          to={currentOrganizer ? getPublicTournamentUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
                           target="_blank"
                           className="px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
                         >

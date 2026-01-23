@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useAppStore } from "../store"
 import { Link } from "react-router-dom"
+import { getAdminTournamentUrl, getPublicTournamentUrl } from "../utils/urls"
 import LogoUploader from "../components/LogoUploader"
 import { CompactVisibilityToggle } from "../components/VisibilityToggle"
 
@@ -406,13 +407,13 @@ export default function TournamentsPage() {
                   {/* Actions */}
                   <div className="flex flex-col gap-2">
                     <Link
-                      to={`/tournaments/${tournament.id}`}
+                      to={currentOrganizer ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`}
                       className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center"
                     >
                       🏆 View
                     </Link>
                     <Link
-                      to={`/public/tournaments/${tournament.id}`}
+                      to={currentOrganizer ? getPublicTournamentUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
                       target="_blank"
                       className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
                     >

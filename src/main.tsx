@@ -17,7 +17,6 @@ import TournamentPage from './pages/TournamentPage.tsx'
 import TeamPage from './pages/TeamPage.tsx'
 import PlayerPage from './pages/PlayerPage.tsx'
 import MatchPage from './pages/MatchPage.tsx'
-import NewPublicTournament from './pages/NewPublicTournament.tsx'
 import PublicTournamentPage from './pages/PublicTournamentPage.tsx'
 import NewPublicTeam from './pages/NewPublicTeam.tsx'
 import NewPublicPlayer from './pages/NewPublicPlayer.tsx'
@@ -65,7 +64,23 @@ const router = createBrowserRouter([
         ) 
       },
       { 
+        path: 'admin/:orgSlug/:tournamentSlug', 
+        element: (
+          <ProtectedRoute>
+            <TournamentPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
         path: 'admin/tournaments/:tournamentId/matches/:matchId', 
+        element: (
+          <ProtectedRoute>
+            <MatchPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/:orgSlug/:tournamentSlug/matches/:matchId', 
         element: (
           <ProtectedRoute>
             <MatchPage />
@@ -147,13 +162,17 @@ const router = createBrowserRouter([
       },
     ],
   },
-  // New URL structure: /orgname/tournamentid, /orgname/playerid
+  // New URL structure: /orgSlug/tournamentSlug, /orgSlug/players/playerId
   {
-    path: '/:orgName',
+    path: '/:orgSlug',
     children: [
       { 
-        path: ':tournamentId', 
-        element: <NewPublicTournament />
+        path: ':tournamentSlug', 
+        element: <PublicTournamentPage />
+      },
+      { 
+        path: ':tournamentSlug/matches/:matchId', 
+        element: <PublicMatchPage />
       },
       { 
         path: 'players/:playerId', 
