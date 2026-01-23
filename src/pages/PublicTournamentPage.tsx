@@ -714,8 +714,13 @@ export default function PublicTournamentPage() {
                   </thead>
                   <tbody>
                     {(() => {
+                      // Filter teams to only include teams from this tournament
+                      const tournamentTeams = teams.filter((team: any) => 
+                        tournament.teamIds && tournament.teamIds.includes(team.id)
+                      )
+                      
                       // Calculate player statistics
-                      const playerStats = teams.flatMap((team: any) => 
+                      const playerStats = tournamentTeams.flatMap((team: any) => 
                         (team.players || []).map((player: any) => {
                           const playerMatches = tournament.matches?.filter((match: any) => {
                             const isHome = match.homeTeamId === team.id
