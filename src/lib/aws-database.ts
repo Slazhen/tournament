@@ -86,10 +86,12 @@ export const organizerService = {
     }
 
     try {
-      // Use paginated scan to reduce read capacity consumption
+      // Use paginated scan with projection to reduce read capacity (fewer bytes = fewer RCUs)
       const items = await paginatedScan<any>(
         TABLES.ORGANIZERS,
-        readOnlyDynamoDB
+        readOnlyDynamoDB,
+        'id, #n, email, createdAtISO, logo, description',
+        { '#n': 'name' }
       )
       
       const organizers = items.map(item => ({
@@ -191,10 +193,12 @@ export const teamService = {
     }
 
     try {
-      // Use paginated scan to reduce read capacity consumption
+      // Use paginated scan with projection to reduce read capacity (fewer bytes = fewer RCUs)
       const items = await paginatedScan<any>(
         TABLES.TEAMS,
-        readOnlyDynamoDB
+        readOnlyDynamoDB,
+        'id, #n, colors, logo, photo, establishedDate, organizerId, createdAtISO, players, socialMedia',
+        { '#n': 'name' }
       )
       
       const teams = items.map(item => ({
@@ -436,10 +440,12 @@ export const tournamentService = {
     }
 
     try {
-      // Use paginated scan to reduce read capacity consumption
+      // Use paginated scan with projection to reduce read capacity (fewer bytes = fewer RCUs)
       const items = await paginatedScan<any>(
         TABLES.TOURNAMENTS,
-        readOnlyDynamoDB
+        readOnlyDynamoDB,
+        'id, #n, format, teamIds, organizerId, createdAtISO, matches, playoffBracket, #s, logo, backgroundImage, location, socialMedia, visibility',
+        { '#n': 'name', '#s': 'settings' }
       )
       
       const tournaments = items.map(item => ({

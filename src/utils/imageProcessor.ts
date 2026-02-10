@@ -79,33 +79,40 @@ async function uploadCompressedImage(compressedFile: File, originalUrl: string):
  * @param compressionType - Compression type to use
  * @returns Promise<ImageProcessingResult[]> - Processing results
  */
-// Helper function to perform paginated scan (more efficient than full scan)
+// Helper: paginated scan with optional projection to reduce read capacity (fewer attributes = fewer RCUs)
 async function paginatedScan(
   tableName: string,
-  client: typeof dynamoDB
+  client: typeof dynamoDB,
+  projectionExpression?: string,
+  expressionAttributeNames?: Record<string, string>
 ): Promise<any[]> {
   const allItems: any[] = []
   let lastEvaluatedKey: Record<string, any> | undefined = undefined
-  
+
   do {
     const scanParams: any = {
       TableName: tableName,
-      Limit: 100, // Process in smaller chunks to reduce capacity consumption
+      Limit: 100,
     }
-    
+    if (projectionExpression) {
+      scanParams.ProjectionExpression = projectionExpression
+    }
+    if (expressionAttributeNames) {
+      scanParams.ExpressionAttributeNames = expressionAttributeNames
+    }
     if (lastEvaluatedKey) {
       scanParams.ExclusiveStartKey = lastEvaluatedKey
     }
-    
+
     const result = await client.send(new ScanCommand(scanParams))
-    
+
     if (result.Items) {
       allItems.push(...result.Items)
     }
-    
+
     lastEvaluatedKey = result.LastEvaluatedKey
   } while (lastEvaluatedKey)
-  
+
   return allItems
 }
 
@@ -118,8 +125,13 @@ async function processEntityImages(
   const results: ImageProcessingResult[] = []
   
   try {
-    // Use paginated scan to reduce read capacity consumption
-    const items = await paginatedScan(tableName, dynamoDB)
+    // Project only id, name, and image field to minimize read capacity (DynamoDB charges per KB read)
+    const items = await paginatedScan(
+      tableName,
+      dynamoDB,
+      `id, #n, ${imageField}`,
+      { '#n': 'name' }
+    )
     console.log(`Found ${items.length} ${entityType}s to process`)
     
     for (const item of items) {
@@ -201,7 +213,9 @@ async function processEntityImages(
 }
 
 /**
- * Process all images in the database
+ * Process all images in the database.
+ * Uses full table scans — run sparingly (e.g. monthly) to avoid high DynamoDB read costs.
+ *
  * @param options - Processing options
  * @returns Promise<ImageProcessingStats> - Overall processing statistics
  */

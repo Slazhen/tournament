@@ -2,12 +2,14 @@ import type { Tournament } from '../types'
 import type { Organizer } from '../types'
 
 /**
- * Convert a string to a URL-friendly slug
- * Examples: "Homebush Futsal" -> "homebush_futsal", "Asian Cup 2026" -> "AsianCup2026"
+ * Convert a string to a URL-friendly slug (lowercase)
+ * Examples: "Homebush Futsal" -> "homebush_futsal", "Asian Cup 2026" -> "asian_cup_2026"
  */
 export function slugify(text: string): string {
   return text
     .trim()
+    // Convert to lowercase
+    .toLowerCase()
     // Replace spaces and special characters with underscores
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '_')
@@ -28,8 +30,8 @@ export function getTournamentYear(tournament: Tournament): string {
 }
 
 /**
- * Generate a tournament slug from tournament name and year
- * Example: "Asian Cup 2026" + 2026 -> "AsianCup2026_2026"
+ * Generate a tournament slug from tournament name and year (lowercase)
+ * Example: "Asian Cup 2026" + 2026 -> "asian_cup_2026_2026"
  */
 export function generateTournamentSlug(tournament: Tournament): string {
   const nameSlug = slugify(tournament.name)
@@ -66,7 +68,7 @@ export function getPublicTournamentUrl(tournament: Tournament, organizer: Organi
 }
 
 /**
- * Find tournament by slug and organizer slug
+ * Find tournament by slug and organizer slug (case-insensitive for backward compatibility)
  */
 export function findTournamentBySlug(
   tournaments: Tournament[],
@@ -74,14 +76,21 @@ export function findTournamentBySlug(
   tournamentSlug: string,
   organizers: Organizer[]
 ): Tournament | undefined {
-  // Find organizer by slug
-  const organizer = organizers.find(org => generateOrganizerSlug(org) === orgSlug)
+  // Normalize input slugs to lowercase for comparison
+  const normalizedOrgSlug = orgSlug.toLowerCase()
+  const normalizedTournamentSlug = tournamentSlug.toLowerCase()
+  
+  // Find organizer by slug (case-insensitive)
+  const organizer = organizers.find(org => {
+    const orgSlugLower = generateOrganizerSlug(org).toLowerCase()
+    return orgSlugLower === normalizedOrgSlug
+  })
   if (!organizer) return undefined
 
-  // Find tournament by slug and organizer
+  // Find tournament by slug and organizer (case-insensitive)
   return tournaments.find(t => {
     if (t.organizerId !== organizer.id) return false
-    const tSlug = generateTournamentSlug(t)
-    return tSlug === tournamentSlug
+    const tSlug = generateTournamentSlug(t).toLowerCase()
+    return tSlug === normalizedTournamentSlug
   })
 }

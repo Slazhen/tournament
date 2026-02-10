@@ -1,8 +1,9 @@
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { dynamoDB, TABLES } from '../lib/aws-config'
-import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
-import { batchGetTeams, organizerService } from '../lib/aws-database'
+import { TABLES } from '../lib/aws-config'
+import { GetCommand } from '@aws-sdk/lib-dynamodb'
+import { readOnlyDynamoDB } from '../lib/aws-config'
+import { batchGetTeams, organizerService, tournamentService } from '../lib/aws-database'
 import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
 import type { Tournament, Team, Match, Organizer } from '../types'
 
@@ -37,8 +38,8 @@ export default function PublicMatchPage() {
         let tournamentData: Tournament | null = null
 
         if (tournamentId) {
-          // Old route: /public/tournaments/:tournamentId/matches/:matchId
-          const tournamentResponse = await dynamoDB.send(new GetCommand({
+          // Old route: /public/tournaments/:tournamentId/matches/:matchId — single GetItem (no scan)
+          const tournamentResponse = await readOnlyDynamoDB.send(new GetCommand({
             TableName: TABLES.TOURNAMENTS,
             Key: { id: tournamentId }
           }))
@@ -52,13 +53,13 @@ export default function PublicMatchPage() {
           tournamentData = tournamentResponse.Item as Tournament
         } else if (orgSlug && tournamentSlug) {
           // New route: /:orgSlug/:tournamentSlug/matches/:matchId
-          // Load all tournaments and find by slug
-          const tournamentsResponse = await dynamoDB.send(new ScanCommand({
-            TableName: TABLES.TOURNAMENTS
-          }))
-
-          const allTournaments = (tournamentsResponse.Items || []) as Tournament[]
-          const foundTournament = findTournamentBySlug(allTournaments, orgSlug, tournamentSlug, allOrganizers)
+          // Use cached services instead of full table scan — avoids expensive DynamoDB scans on every visit
+          const [organizers, allTournaments] = await Promise.all([
+            organizerService.getAll(),
+            tournamentService.getAll(),
+          ])
+          setAllOrganizers(organizers)
+          const foundTournament = findTournamentBySlug(allTournaments, orgSlug, tournamentSlug, organizers)
 
           if (!foundTournament) {
             setError('Tournament not found')
@@ -108,7 +109,7 @@ export default function PublicMatchPage() {
     }
 
     loadData()
-  }, [tournamentId, matchId])
+  }, [tournamentId, matchId, orgSlug, tournamentSlug])
 
   if (isLoading) {
     return (
