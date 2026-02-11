@@ -444,8 +444,8 @@ export const tournamentService = {
       const items = await paginatedScan<any>(
         TABLES.TOURNAMENTS,
         readOnlyDynamoDB,
-        'id, #n, #fmt, teamIds, organizerId, createdAtISO, matches, playoffBracket, #s, logo, backgroundImage, location, socialMedia, visibility',
-        { '#n': 'name', '#s': 'settings', '#fmt': 'format' }
+        'id, #n, #fmt, teamIds, organizerId, createdAtISO, #mat, playoffBracket, #s, logo, backgroundImage, #loc, socialMedia, #vis',
+        { '#n': 'name', '#s': 'settings', '#fmt': 'format', '#mat': 'matches', '#loc': 'location', '#vis': 'visibility' }
       )
       
       const tournaments = items.map(item => ({
