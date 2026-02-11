@@ -15,11 +15,6 @@ export default function PublicTournamentPage() {
   const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
   const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
   
-  // Load all organizers for slug-based lookup
-  useEffect(() => {
-    organizerService.getAll().then(setAllOrganizers)
-  }, [])
-  
   // Handle both old and new URL structures
   const actualTournamentId = useMemo(() => {
     if (tournamentId || id) {
@@ -28,17 +23,26 @@ export default function PublicTournamentPage() {
     return null
   }, [tournamentId, id])
 
-  // Load data from AWS when component mounts
+  // Load data from AWS when component mounts (tournaments, teams, and organizers for slug lookup)
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Check if data is already available in store before loading
         const existingTournaments = getAllTournaments()
         const existingTeams = getAllTeams()
-        
-        // Only load if we don't have data
-        if (existingTournaments.length === 0 || existingTeams.length === 0) {
-          await Promise.all([loadTournaments(), loadTeams()])
+        const needTournaments = existingTournaments.length === 0
+        const needTeams = existingTeams.length === 0
+        // Slug routes need organizers to resolve tournament; load with the rest so they're ready before we render
+        const needOrganizers = !!(orgSlug && tournamentSlug)
+
+        if (needTournaments || needTeams) {
+          await Promise.all([
+            needTournaments ? loadTournaments() : Promise.resolve(),
+            needTeams ? loadTeams() : Promise.resolve(),
+            organizerService.getAll().then(setAllOrganizers),
+          ])
+        } else if (needOrganizers) {
+          // Store already has data but we're on a slug route — still need organizers for findTournamentBySlug
+          await organizerService.getAll().then(setAllOrganizers)
         }
         setDataLoaded(true)
       } catch (error) {
@@ -48,7 +52,7 @@ export default function PublicTournamentPage() {
       }
     }
     loadData()
-  }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams])
+  }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams, orgSlug, tournamentSlug])
     
   // Reload data when page becomes visible (handles tab switching)
   useEffect(() => {
