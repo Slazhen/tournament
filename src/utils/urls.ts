@@ -76,18 +76,17 @@ export function findTournamentBySlug(
   tournamentSlug: string,
   organizers: Organizer[]
 ): Tournament | undefined {
-  // Normalize input slugs to lowercase for comparison
-  const normalizedOrgSlug = orgSlug.toLowerCase()
-  const normalizedTournamentSlug = tournamentSlug.toLowerCase()
-  
-  // Find organizer by slug (case-insensitive)
+  if (!tournaments?.length || !organizers?.length) return undefined
+  // Normalize: decode, trim, lowercase
+  const normalizedOrgSlug = decodeURIComponent(orgSlug).trim().toLowerCase()
+  const normalizedTournamentSlug = decodeURIComponent(tournamentSlug).trim().toLowerCase()
+
   const organizer = organizers.find(org => {
     const orgSlugLower = generateOrganizerSlug(org).toLowerCase()
     return orgSlugLower === normalizedOrgSlug
   })
   if (!organizer) return undefined
 
-  // Find tournament by slug and organizer (case-insensitive)
   return tournaments.find(t => {
     if (t.organizerId !== organizer.id) return false
     const tSlug = generateTournamentSlug(t).toLowerCase()

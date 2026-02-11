@@ -14,6 +14,9 @@ export default function PublicTournamentPage() {
   const [dataLoaded, setDataLoaded] = useState(false)
   const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
   const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
+  // For slug routes: use the data we loaded in the effect so lookup never runs on stale/empty data
+  const [slugLookupTournaments, setSlugLookupTournaments] = useState<any[] | null>(null)
+  const [slugLookupOrganizers, setSlugLookupOrganizers] = useState<Organizer[] | null>(null)
   
   // Handle both old and new URL structures
   const actualTournamentId = useMemo(() => {
@@ -31,18 +34,27 @@ export default function PublicTournamentPage() {
         const existingTeams = getAllTeams()
         const needTournaments = existingTournaments.length === 0
         const needTeams = existingTeams.length === 0
-        // Slug routes need organizers to resolve tournament; load with the rest so they're ready before we render
         const needOrganizers = !!(orgSlug && tournamentSlug)
 
         if (needTournaments || needTeams) {
-          await Promise.all([
+          const [, , organizers] = await Promise.all([
             needTournaments ? loadTournaments() : Promise.resolve(),
             needTeams ? loadTeams() : Promise.resolve(),
-            organizerService.getAll().then(setAllOrganizers),
+            organizerService.getAll(),
           ])
+          setAllOrganizers(organizers || [])
+          if (needOrganizers) {
+            setSlugLookupTournaments(getAllTournaments())
+            setSlugLookupOrganizers(organizers || [])
+          }
         } else if (needOrganizers) {
-          // Store already has data but we're on a slug route — still need organizers for findTournamentBySlug
-          await organizerService.getAll().then(setAllOrganizers)
+          const [tournaments, orgs] = await Promise.all([
+            Promise.resolve(getAllTournaments()),
+            organizerService.getAll(),
+          ])
+          setAllOrganizers(orgs)
+          setSlugLookupTournaments(Array.isArray(tournaments) ? tournaments : [])
+          setSlugLookupOrganizers(orgs)
         }
         setDataLoaded(true)
       } catch (error) {
@@ -111,8 +123,12 @@ export default function PublicTournamentPage() {
       // Old route: /public/tournaments/:id
       tournament = tournaments.find(t => t && t.id === actualTournamentId)
     } else if (orgSlug && tournamentSlug) {
-      // New route: /:orgSlug/:tournamentSlug
-      tournament = findTournamentBySlug(tournaments, orgSlug, tournamentSlug, allOrganizers)
+      // New route: /:orgSlug/:tournamentSlug — use slug lookup data so we have the same data we just loaded
+      const slugTournaments = slugLookupTournaments != null ? slugLookupTournaments : tournaments
+      const slugOrganizers = slugLookupOrganizers != null ? slugLookupOrganizers : allOrganizers
+      const decodedOrg = decodeURIComponent(orgSlug).trim()
+      const decodedTournament = decodeURIComponent(tournamentSlug).trim()
+      tournament = findTournamentBySlug(slugTournaments, decodedOrg, decodedTournament, slugOrganizers)
     }
   } catch (error) {
     console.error('Error accessing data in PublicTournamentPage:', error)
