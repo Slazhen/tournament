@@ -1,8 +1,5 @@
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { TABLES } from '../lib/aws-config'
-import { GetCommand } from '@aws-sdk/lib-dynamodb'
-import { readOnlyDynamoDB } from '../lib/aws-config'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/aws-database'
 import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
 import type { Tournament, Team, Match, Organizer } from '../types'
@@ -39,35 +36,38 @@ export default function PublicMatchPage() {
 
         if (tournamentId) {
           // Old route: /public/tournaments/:tournamentId/matches/:matchId — single GetItem (no scan)
-          const tournamentResponse = await readOnlyDynamoDB.send(new GetCommand({
-            TableName: TABLES.TOURNAMENTS,
-            Key: { id: tournamentId }
-          }))
+          tournamentData = await tournamentService.getById(tournamentId)
 
-          if (!tournamentResponse.Item) {
+          if (!tournamentData) {
             setError('Tournament not found')
             setIsLoading(false)
             return
           }
-
-          tournamentData = tournamentResponse.Item as Tournament
         } else if (orgSlug && tournamentSlug) {
           // New route: /:orgSlug/:tournamentSlug/matches/:matchId
-          // Use cached services instead of full table scan — avoids expensive DynamoDB scans on every visit
-          const [organizers, allTournaments] = await Promise.all([
+          // Resolve the id from lightweight summaries (no match data), then GetItem the one tournament.
+          const [organizers, summaries] = await Promise.all([
             organizerService.getAll(),
-            tournamentService.getAll(),
+            tournamentService.getAllSummaries(),
           ])
           setAllOrganizers(organizers)
-          const foundTournament = findTournamentBySlug(allTournaments, orgSlug, tournamentSlug, organizers)
+          const decodedOrg = decodeURIComponent(orgSlug).trim()
+          const decodedTournament = decodeURIComponent(tournamentSlug).trim()
+          const summary = findTournamentBySlug(summaries, decodedOrg, decodedTournament, organizers)
 
-          if (!foundTournament) {
+          if (!summary) {
             setError('Tournament not found')
             setIsLoading(false)
             return
           }
-          
-          tournamentData = foundTournament
+
+          tournamentData = await tournamentService.getById(summary.id)
+
+          if (!tournamentData) {
+            setError('Tournament not found')
+            setIsLoading(false)
+            return
+          }
         }
 
         if (!tournamentData) {

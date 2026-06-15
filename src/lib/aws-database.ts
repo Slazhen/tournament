@@ -473,6 +473,87 @@ export const tournamentService = {
     }
   },
 
+  // Lightweight list for public listing and slug resolution.
+  // Excludes the heavy fields (matches, settings, playoffBracket) so a full-table
+  // scan reads far fewer bytes (= far fewer read units) than getAll().
+  async getAllSummaries(): Promise<any[]> {
+    const cached = cache.get<any[]>(cacheKeys.tournaments.summaries)
+    if (cached) {
+      return cached
+    }
+
+    try {
+      const items = await paginatedScan<any>(
+        TABLES.TOURNAMENTS,
+        readOnlyDynamoDB,
+        'id, #n, organizerId, createdAtISO, logo, backgroundImage, #loc, socialMedia, #vis',
+        { '#n': 'name', '#loc': 'location', '#vis': 'visibility' }
+      )
+
+      const summaries = items.map(item => ({
+        id: item.id,
+        name: item.name,
+        organizerId: item.organizerId,
+        createdAtISO: item.createdAtISO,
+        logo: item.logo,
+        backgroundImage: item.backgroundImage,
+        location: item.location,
+        socialMedia: item.socialMedia,
+        visibility: item.visibility,
+      }))
+
+      cache.set(cacheKeys.tournaments.summaries, summaries)
+      return summaries
+    } catch (error) {
+      console.error('Error fetching tournament summaries:', error)
+      return []
+    }
+  },
+
+  // Fetch a single full tournament (including matches) by id via GetItem.
+  // Much cheaper than scanning all tournaments when only one is needed.
+  async getById(id: string): Promise<Tournament | null> {
+    const cached = cache.get<Tournament>(cacheKeys.tournaments.byId(id))
+    if (cached) {
+      return cached
+    }
+
+    try {
+      const result = await readOnlyDynamoDB.send(new GetCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id },
+      }))
+
+      if (!result.Item) {
+        return null
+      }
+
+      const item = result.Item
+      const tournament: Tournament = {
+        id: item.id,
+        name: item.name,
+        format: item.format,
+        teamIds: item.teamIds || [],
+        organizerId: item.organizerId,
+        createdAtISO: item.createdAtISO,
+        matches: item.matches || [],
+        playoffBracket: item.playoffBracket,
+        settings: item.settings,
+        logo: item.logo,
+        backgroundImage: item.backgroundImage,
+        location: item.location,
+        socialMedia: item.socialMedia,
+        visibility: item.visibility,
+      } as Tournament
+
+      cache.set(cacheKeys.tournaments.byId(id), tournament)
+      return tournament
+    } catch (error) {
+      console.error('Error fetching tournament by id:', error)
+      return null
+    }
+  },
+
   async getByOrganizer(organizerId: string): Promise<Tournament[]> {
     const cacheKey = cacheKeys.tournaments.byOrganizer(organizerId)
     const cached = cache.get<Tournament[]>(cacheKey)
@@ -539,6 +620,7 @@ export const tournamentService = {
       
       // Targeted cache invalidation - only clear relevant caches
       cache.clear(cacheKeys.tournaments.all)
+      cache.clear(cacheKeys.tournaments.summaries)
       cache.clear(cacheKeys.tournaments.byOrganizer(newTournament.organizerId))
       console.log('AWS: Tournament created successfully in DynamoDB:', newTournament.id)
       return newTournament
@@ -584,6 +666,7 @@ export const tournamentService = {
       // Targeted cache invalidation
       cache.clear(cacheKeys.tournaments.byId(id))
       cache.clear(cacheKeys.tournaments.all)
+      cache.clear(cacheKeys.tournaments.summaries)
       if (organizerId) {
         cache.clear(cacheKeys.tournaments.byOrganizer(organizerId))
       }
@@ -613,6 +696,7 @@ export const tournamentService = {
       // Targeted cache invalidation
       cache.clear(cacheKeys.tournaments.byId(id))
       cache.clear(cacheKeys.tournaments.all)
+      cache.clear(cacheKeys.tournaments.summaries)
       if (organizerId) {
         cache.clear(cacheKeys.tournaments.byOrganizer(organizerId))
       }
@@ -660,6 +744,7 @@ export const matchService = {
       // Targeted cache invalidation - only clear relevant caches
       cache.clear(cacheKeys.tournaments.byId(tournamentId))
       cache.clear(cacheKeys.tournaments.all)
+      cache.clear(cacheKeys.tournaments.summaries)
       cache.clear(cacheKeys.tournaments.byOrganizer(tournament.organizerId))
       return true
     } catch (error) {

@@ -2,22 +2,19 @@ import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useEffect, useState, useMemo } from 'react'
 import { findTournamentBySlug } from '../utils/urls'
-import { organizerService } from '../lib/aws-database'
-import type { Organizer } from '../types'
+import { organizerService, tournamentService } from '../lib/aws-database'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 
 export default function PublicTournamentPage() {
   const { id, tournamentId, orgSlug, tournamentSlug } = useParams()
-  const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
+  const { getAllTeams, loadTeams } = useAppStore()
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
-  const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
-  // For slug routes: use the data we loaded in the effect so lookup never runs on stale/empty data
-  const [slugLookupTournaments, setSlugLookupTournaments] = useState<any[] | null>(null)
-  const [slugLookupOrganizers, setSlugLookupOrganizers] = useState<Organizer[] | null>(null)
-  
+  // The single full tournament being viewed (loaded via GetItem, not a full-table scan)
+  const [tournament, setTournament] = useState<any>(null)
+
   // Handle both old and new URL structures
   const actualTournamentId = useMemo(() => {
     if (tournamentId || id) {
@@ -26,59 +23,45 @@ export default function PublicTournamentPage() {
     return null
   }, [tournamentId, id])
 
-  // Load data from AWS when component mounts (tournaments, teams, and organizers for slug lookup)
+  // Load only what this page needs: organizers, teams, and the ONE tournament being viewed.
+  // The tournament is fetched by id (GetItem). For slug routes we resolve the id from a
+  // lightweight summaries list first, so we never scan every tournament's full match data.
   useEffect(() => {
     const loadData = async () => {
       try {
-        const existingTournaments = getAllTournaments()
-        const existingTeams = getAllTeams()
-        const needTournaments = existingTournaments.length === 0
-        const needTeams = existingTeams.length === 0
-        const needOrganizers = !!(orgSlug && tournamentSlug)
+        const [orgs] = await Promise.all([
+          organizerService.getAll(),
+          getAllTeams().length === 0 ? loadTeams() : Promise.resolve(),
+        ])
 
-        if (needTournaments || needTeams) {
-          const [, , organizers] = await Promise.all([
-            needTournaments ? loadTournaments() : Promise.resolve(),
-            needTeams ? loadTeams() : Promise.resolve(),
-            organizerService.getAll(),
-          ])
-          setAllOrganizers(organizers || [])
-          if (needOrganizers) {
-            setSlugLookupTournaments(getAllTournaments())
-            setSlugLookupOrganizers(organizers || [])
+        let full: any = null
+        if (actualTournamentId) {
+          // Old route: /public/tournaments/:id — direct GetItem
+          full = await tournamentService.getById(actualTournamentId)
+        } else if (orgSlug && tournamentSlug) {
+          // New route: /:orgSlug/:tournamentSlug — resolve id from lightweight summaries, then GetItem
+          const summaries = await tournamentService.getAllSummaries()
+          const decodedOrg = decodeURIComponent(orgSlug).trim()
+          const decodedTournament = decodeURIComponent(tournamentSlug).trim()
+          const summary = findTournamentBySlug(summaries, decodedOrg, decodedTournament, orgs || [])
+          if (summary) {
+            full = await tournamentService.getById(summary.id)
           }
-        } else if (needOrganizers) {
-          const [tournaments, orgs] = await Promise.all([
-            Promise.resolve(getAllTournaments()),
-            organizerService.getAll(),
-          ])
-          setAllOrganizers(orgs)
-          setSlugLookupTournaments(Array.isArray(tournaments) ? tournaments : [])
-          setSlugLookupOrganizers(orgs)
         }
-        setDataLoaded(true)
+        setTournament(full)
       } catch (error) {
         console.error('Error loading data for public tournament page:', error)
       } finally {
+        setDataLoaded(true)
         setIsLoading(false)
       }
     }
     loadData()
-  }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams, orgSlug, tournamentSlug])
-    
-  // Reload data when page becomes visible (handles tab switching)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadTournaments().catch(console.error)
-        loadTeams().catch(console.error)
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams])
+  }, [actualTournamentId, orgSlug, tournamentSlug, getAllTeams, loadTeams])
+
+  // Note: we intentionally do NOT reload data on tab focus/visibility change.
+  // Public tournament data changes infrequently and the cache (localStorage-backed)
+  // already serves it; reloading on every focus caused unnecessary DynamoDB scans.
 
   if (isLoading || !dataLoaded) {
     return (
@@ -109,27 +92,11 @@ export default function PublicTournamentPage() {
     )
   }
 
-  // Only access data after it's loaded with error handling
-  let tournaments: any[] = []
+  // Teams are read from the store (cached); the single tournament is already in state.
   let teams: any[] = []
-  let tournament: any = null
-  
+
   try {
-    tournaments = getAllTournaments() || []
     teams = getAllTeams() || []
-    
-    // Find tournament by ID (old route) or by slug (new route)
-    if (actualTournamentId) {
-      // Old route: /public/tournaments/:id
-      tournament = tournaments.find(t => t && t.id === actualTournamentId)
-    } else if (orgSlug && tournamentSlug) {
-      // New route: /:orgSlug/:tournamentSlug — use slug lookup data so we have the same data we just loaded
-      const slugTournaments = slugLookupTournaments != null ? slugLookupTournaments : tournaments
-      const slugOrganizers = slugLookupOrganizers != null ? slugLookupOrganizers : allOrganizers
-      const decodedOrg = decodeURIComponent(orgSlug).trim()
-      const decodedTournament = decodeURIComponent(tournamentSlug).trim()
-      tournament = findTournamentBySlug(slugTournaments, decodedOrg, decodedTournament, slugOrganizers)
-    }
   } catch (error) {
     console.error('Error accessing data in PublicTournamentPage:', error)
     return (

@@ -49,11 +49,11 @@ export default function HomePage() {
       try {
         setLoading(true)
         
-        // Use cached service methods instead of direct Scan operations
-        // This significantly reduces DynamoDB costs by leveraging cache
+        // Use lightweight summaries (no match data) for the public listing.
+        // This avoids scanning every tournament's full match arrays on each homepage visit.
         const [organizers, tournaments] = await Promise.all([
           organizerService.getAll(),
-          tournamentService.getAll()
+          tournamentService.getAllSummaries()
         ])
         
         setAllOrganizers(organizers as Organizer[])

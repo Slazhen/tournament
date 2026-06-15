@@ -15,6 +15,10 @@ import VisibilityToggle from '../components/VisibilityToggle'
 import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
 
+// Tracks tournaments whose reconstructed groups we've already persisted this session,
+// so we never rewrite the (large) tournament item more than once during rendering.
+const persistedReconstructedGroups = new Set<string>()
+
 export default function TournamentPage() {
   const { id, orgSlug, tournamentSlug } = useParams()
   const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, deleteTournament, uploadTournamentLogo } = useAppStore()
@@ -527,8 +531,15 @@ export default function TournamentPage() {
           }
         }
         
-        // If we reconstructed groups, save them (only if they were missing)
-        if (groups.length > 0 && groups.some(g => g.length > 0) && !tournament.format.groupsWithDivisionsConfig.groups) {
+        // If we reconstructed groups, save them once (only if they were missing).
+        // Guarded so re-renders don't repeatedly rewrite the whole tournament item.
+        if (
+          groups.length > 0 &&
+          groups.some(g => g.length > 0) &&
+          !tournament.format.groupsWithDivisionsConfig.groups &&
+          !persistedReconstructedGroups.has(tournament.id)
+        ) {
+          persistedReconstructedGroups.add(tournament.id)
           tournament.format.groupsWithDivisionsConfig.groups = groups
           // Save updated format asynchronously to avoid blocking
           setTimeout(() => {
