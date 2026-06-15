@@ -13,6 +13,9 @@ export default function PlayerPage() {
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
   
+  // Hooks must run on every render (before any early return) to keep hook order stable.
+  const photoFileRef = useRef<HTMLInputElement>(null)
+
   // Find the player across all teams
   let player: any = null
   let currentTeam: any = null
@@ -55,8 +58,6 @@ export default function PlayerPage() {
       </div>
     )
   }
-
-  const photoFileRef = useRef<HTMLInputElement>(null)
 
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -104,7 +105,7 @@ export default function PlayerPage() {
           playerStats.goalsFor += teamGoals
           playerStats.goalsAgainst += opponentGoals
           
-          if (teamGoals && opponentGoals) {
+          if (teamGoals != null && opponentGoals != null) {
             if (teamGoals > opponentGoals) playerStats.wins++
             else if (teamGoals < opponentGoals) playerStats.losses++
             else playerStats.draws++
@@ -391,7 +392,7 @@ export default function PlayerPage() {
                                 const isHome = match.homeTeamId === currentTeam.id
                                 const teamGoals = isHome ? match.homeGoals : match.awayGoals
                                 const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals && opponentGoals) {
+                                if (teamGoals != null && opponentGoals != null) {
                                   if (teamGoals > opponentGoals) points += 3
                                   else if (teamGoals === opponentGoals) points += 1
                                 }

@@ -27,6 +27,12 @@ export default function PublicTournamentPage() {
   // The tournament is fetched by id (GetItem). For slug routes we resolve the id from a
   // lightweight summaries list first, so we never scan every tournament's full match data.
   useEffect(() => {
+    let cancelled = false
+    // Reset view state when the route changes so we don't flash the previous tournament.
+    setIsLoading(true)
+    setDataLoaded(false)
+    setTournament(null)
+
     const loadData = async () => {
       try {
         const [orgs] = await Promise.all([
@@ -48,15 +54,20 @@ export default function PublicTournamentPage() {
             full = await tournamentService.getById(summary.id)
           }
         }
-        setTournament(full)
+        if (!cancelled) setTournament(full)
       } catch (error) {
         console.error('Error loading data for public tournament page:', error)
       } finally {
-        setDataLoaded(true)
-        setIsLoading(false)
+        if (!cancelled) {
+          setDataLoaded(true)
+          setIsLoading(false)
+        }
       }
     }
     loadData()
+    return () => {
+      cancelled = true
+    }
   }, [actualTournamentId, orgSlug, tournamentSlug, getAllTeams, loadTeams])
 
   // Note: we intentionally do NOT reload data on tab focus/visibility change.

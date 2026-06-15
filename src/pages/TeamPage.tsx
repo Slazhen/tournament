@@ -17,6 +17,9 @@ export default function TeamPage() {
   
   // State for upload feedback
   const [uploadMessage, setUploadMessage] = useState('')
+  // Hooks must run on every render (before any early return) to keep hook order stable.
+  const logoFileRef = useRef<HTMLInputElement>(null)
+  const photoFileRef = useRef<HTMLInputElement>(null)
   
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)
@@ -50,9 +53,6 @@ export default function TeamPage() {
       </div>
     )
   }
-
-  const logoFileRef = useRef<HTMLInputElement>(null)
-  const photoFileRef = useRef<HTMLInputElement>(null)
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
