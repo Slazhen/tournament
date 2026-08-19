@@ -1,19 +1,19 @@
 import { useParams, Link } from 'react-router-dom'
-import { useAppStore } from '../store'
 import { useEffect, useState, useMemo } from 'react'
 import { findTournamentBySlug } from '../utils/urls'
-import { organizerService, tournamentService } from '../lib/aws-database'
+import { organizerService, tournamentService, batchGetTeams } from '../lib/aws-database'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 
 export default function PublicTournamentPage() {
   const { id, tournamentId, orgSlug, tournamentSlug } = useParams()
-  const { getAllTeams, loadTeams } = useAppStore()
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
   // The single full tournament being viewed (loaded via GetItem, not a full-table scan)
   const [tournament, setTournament] = useState<any>(null)
+  // Only the teams this tournament references, fetched by key (BatchGetItem).
+  const [teams, setTeams] = useState<any[]>([])
 
   // Handle both old and new URL structures
   const actualTournamentId = useMemo(() => {
@@ -32,13 +32,11 @@ export default function PublicTournamentPage() {
     setIsLoading(true)
     setDataLoaded(false)
     setTournament(null)
+    setTeams([])
 
     const loadData = async () => {
       try {
-        const [orgs] = await Promise.all([
-          organizerService.getAll(),
-          getAllTeams().length === 0 ? loadTeams() : Promise.resolve(),
-        ])
+        const orgs = await organizerService.getAll()
 
         let full: any = null
         if (actualTournamentId) {
@@ -55,6 +53,18 @@ export default function PublicTournamentPage() {
           }
         }
         if (!cancelled) setTournament(full)
+
+        // Fetch only the teams this tournament references, by key. Scanning the whole
+        // teams table here read every team of every organizer to render one page.
+        if (full) {
+          const referenced = new Set<string>(full.teamIds || [])
+          for (const match of full.matches || []) {
+            if (match?.homeTeamId) referenced.add(match.homeTeamId)
+            if (match?.awayTeamId) referenced.add(match.awayTeamId)
+          }
+          const loadedTeams = await batchGetTeams([...referenced])
+          if (!cancelled) setTeams(loadedTeams)
+        }
       } catch (error) {
         console.error('Error loading data for public tournament page:', error)
       } finally {
@@ -68,7 +78,7 @@ export default function PublicTournamentPage() {
     return () => {
       cancelled = true
     }
-  }, [actualTournamentId, orgSlug, tournamentSlug, getAllTeams, loadTeams])
+  }, [actualTournamentId, orgSlug, tournamentSlug])
 
   // Note: we intentionally do NOT reload data on tab focus/visibility change.
   // Public tournament data changes infrequently and the cache (localStorage-backed)
@@ -103,29 +113,6 @@ export default function PublicTournamentPage() {
     )
   }
 
-  // Teams are read from the store (cached); the single tournament is already in state.
-  let teams: any[] = []
-
-  try {
-    teams = getAllTeams() || []
-  } catch (error) {
-    console.error('Error accessing data in PublicTournamentPage:', error)
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center relative overflow-hidden">
-        <div className="glass rounded-2xl p-8 max-w-md w-full text-center relative z-10 shadow-2xl border border-white/20">
-          <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Error Loading Data</h1>
-          <p className="text-lg opacity-80 text-gray-300 mb-6">There was an error loading the tournament data. Please try again.</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="inline-block px-6 py-3 rounded-xl glass hover:bg-white/10 transition-all duration-300 text-white font-medium border border-white/20 hover:border-white/30 hover:shadow-lg hover:shadow-white/5"
-          >
-            Refresh Page
-          </button>
-        </div>
-      </div>
-    )
-  }
-  
   // Show tournament not found if it doesn't exist
   if (!tournament) {
     return (

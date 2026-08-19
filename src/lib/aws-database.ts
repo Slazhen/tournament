@@ -37,7 +37,15 @@ export const deleteImageFromS3 = async (url: string): Promise<void> => {
   }))
 }
 
-// Helper function to perform paginated scan (more efficient than full scan)
+// Reads an entire table.
+//
+// Cost warning: a Scan is billed on the total size of every item it evaluates,
+// so this is the most expensive way to read data here and it gets more expensive
+// as the table grows. ProjectionExpression does NOT reduce that cost — DynamoDB
+// reads the whole item from storage, meters it, then drops the unlisted
+// attributes on the way out. The projection only shrinks the response payload.
+// To actually reduce read cost, query by key or use a GSI that projects only the
+// needed attributes.
 async function paginatedScan<T>(
   tableName: string,
   client: typeof readOnlyDynamoDB,
@@ -48,9 +56,10 @@ async function paginatedScan<T>(
   let lastEvaluatedKey: Record<string, any> | undefined = undefined
   
   do {
+    // No Limit: capping items per page does not lower the total bytes scanned,
+    // it just splits one read into many requests, each with its own minimum charge.
     const scanParams: any = {
       TableName: tableName,
-      Limit: 100, // Process in smaller chunks to reduce capacity consumption
     }
     
     if (projectionExpression) {
@@ -86,7 +95,6 @@ export const organizerService = {
     }
 
     try {
-      // Use paginated scan with projection to reduce read capacity (fewer bytes = fewer RCUs)
       const items = await paginatedScan<any>(
         TABLES.ORGANIZERS,
         readOnlyDynamoDB,
@@ -193,7 +201,7 @@ export const teamService = {
     }
 
     try {
-      // Use paginated scan with projection to reduce read capacity (fewer bytes = fewer RCUs)
+      // Prefer batchGetTeams() or getByOrganizer() where possible; this reads every team.
       const items = await paginatedScan<any>(
         TABLES.TEAMS,
         readOnlyDynamoDB,
@@ -440,7 +448,6 @@ export const tournamentService = {
     }
 
     try {
-      // Use paginated scan with projection to reduce read capacity (fewer bytes = fewer RCUs)
       const items = await paginatedScan<any>(
         TABLES.TOURNAMENTS,
         readOnlyDynamoDB,
@@ -474,8 +481,10 @@ export const tournamentService = {
   },
 
   // Lightweight list for public listing and slug resolution.
-  // Excludes the heavy fields (matches, settings, playoffBracket) so a full-table
-  // scan reads far fewer bytes (= far fewer read units) than getAll().
+  //
+  // This returns a smaller payload than getAll() but costs the SAME in read units:
+  // the underlying Scan is metered on full item size regardless of the projection.
+  // Making slug resolution genuinely cheap needs a GSI keyed on the slug fields.
   async getAllSummaries(): Promise<any[]> {
     const cached = cache.get<any[]>(cacheKeys.tournaments.summaries)
     if (cached) {

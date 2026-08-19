@@ -79,7 +79,9 @@ async function uploadCompressedImage(compressedFile: File, originalUrl: string):
  * @param compressionType - Compression type to use
  * @returns Promise<ImageProcessingResult[]> - Processing results
  */
-// Helper: paginated scan with optional projection to reduce read capacity (fewer attributes = fewer RCUs)
+// Helper: paginated scan.
+// Note: the projection shrinks the response, not the bill — a Scan is metered on
+// full item size. Run the callers of this sparingly.
 async function paginatedScan(
   tableName: string,
   client: typeof dynamoDB,
@@ -92,7 +94,6 @@ async function paginatedScan(
   do {
     const scanParams: any = {
       TableName: tableName,
-      Limit: 100,
     }
     if (projectionExpression) {
       scanParams.ProjectionExpression = projectionExpression
@@ -125,7 +126,6 @@ async function processEntityImages(
   const results: ImageProcessingResult[] = []
   
   try {
-    // Project only id, name, and image field to minimize read capacity (DynamoDB charges per KB read)
     const items = await paginatedScan(
       tableName,
       dynamoDB,
@@ -326,7 +326,6 @@ export async function getProcessingPreview(): Promise<{entityType: string, count
           TableName: tableName,
           ProjectionExpression: projectionExpression,
           ExpressionAttributeNames: expressionAttributeNames,
-          Limit: 100, // Process in smaller chunks
         }
         
         if (lastEvaluatedKey) {
