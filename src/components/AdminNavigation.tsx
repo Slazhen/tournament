@@ -1,123 +1,175 @@
-import { Link, useLocation } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useAuth } from '../contexts/AuthContext'
 
+const NAV_ITEMS = [
+  { to: '/tournaments', label: 'Tournaments' },
+  { to: '/teams', label: 'Teams' },
+  { to: '/calendar', label: 'Calendar' },
+]
+
+/**
+ * The admin bar.
+ *
+ * It used to open with a boxed "Logged in as / Homebush Futsal" panel wide
+ * enough to crowd the navigation — information the organiser already knows,
+ * repeated on every page. Identity is now one avatar in the corner, and what
+ * sits behind it (switching organiser, theme, signing out) opens on demand.
+ */
 export default function AdminNavigation() {
   const { getCurrentOrganizer, setCurrentOrganizer, settings, updateSettings } = useAppStore()
-  const { isSuperAdmin } = useAuth()
+  const { isSuperAdmin, user, logout } = useAuth()
   const currentOrganizer = getCurrentOrganizer()
   const location = useLocation()
+  const navigate = useNavigate()
 
-  if (!currentOrganizer && !isSuperAdmin) {
-    return null
-  }
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
-  const handleSwitchOrganizer = () => {
-    setCurrentOrganizer('')
-  }
+  // Close on an outside click or Escape, the way a menu is expected to behave.
+  useEffect(() => {
+    if (!menuOpen) return
 
-  const handleThemeToggle = () => {
-    updateSettings({ theme: settings.theme === 'dark' ? 'bright' : 'dark' })
-  }
+    const onPointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
 
-  const isActive = (path: string) => {
-    return location.pathname === path || location.pathname.startsWith(path + '/')
-  }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menuOpen])
+
+  // Close the menu when the route changes.
+  useEffect(() => setMenuOpen(false), [location.pathname])
+
+  if (!currentOrganizer && !isSuperAdmin) return null
+
+  const isActive = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(path + '/')
+
+  const accountName = isSuperAdmin ? 'Super admin' : currentOrganizer?.name ?? 'Account'
+  const initial = (isSuperAdmin ? 'S' : currentOrganizer?.name ?? '?').charAt(0).toUpperCase()
 
   return (
     <header className="sticky top-0 z-50 glass-header">
-      <div className="mx-auto container-max px-6 py-4">
-        <div className="flex items-center justify-between">
-          {/* Left: User Info */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 px-4 py-2 glass rounded-lg">
-              {isSuperAdmin ? (
-                <>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center text-white font-bold text-sm">
-                    S
-                  </div>
-                  <div>
-                    <div className="font-medium text-sm">Logged in as</div>
-                    <div className="font-semibold flex items-center gap-2">
-                      <span className="px-2 py-1 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-400/30 rounded-full text-xs text-yellow-400 font-bold">
-                        SUPERADMIN
-                      </span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                    {currentOrganizer?.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="font-medium text-sm">Logged in as</div>
-                    <div className="font-semibold">{currentOrganizer?.name}</div>
-                  </div>
-                  <button
-                    onClick={handleSwitchOrganizer}
-                    className="ml-2 p-1 rounded hover:bg-white/10 transition-colors"
-                    title="Switch organizer"
-                  >
-                    <span className="text-lg">🔄</span>
-                  </button>
-                </>
-              )}
+      <div className="mx-auto container-max px-4 h-14 flex items-center justify-between gap-4">
+        <Link
+          to="/"
+          className="font-semibold tracking-tight shrink-0 hover:opacity-80 transition-opacity"
+        >
+          MFTournament
+        </Link>
+
+        <nav className="flex items-center gap-1">
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+                isActive(item.to)
+                  ? 'bg-white/10 text-white font-medium'
+                  : 'text-white/60 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="relative shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title={accountName}
+            className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold text-white transition-transform hover:scale-105 ${
+              isSuperAdmin
+                ? 'bg-gradient-to-br from-yellow-500 to-orange-600'
+                : 'bg-gradient-to-br from-blue-500 to-purple-600'
+            }`}
+          >
+            {initial}
+          </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 mt-2 w-60 rounded-xl border border-white/10 bg-[rgb(var(--bg))] shadow-2xl overflow-hidden"
+            >
+              <div className="px-4 py-3 border-b border-white/10">
+                <div className="font-medium truncate">{accountName}</div>
+                {user?.email && <div className="text-xs opacity-60 truncate">{user.email}</div>}
+                {isSuperAdmin && (
+                  <span className="mt-1 inline-block text-[10px] uppercase tracking-wide text-yellow-400">
+                    Super admin
+                  </span>
+                )}
+              </div>
+
+              <div className="py-1 text-sm">
+                {!isSuperAdmin && currentOrganizer && (
+                  <MenuItem onClick={() => setCurrentOrganizer('')}>Switch organizer</MenuItem>
+                )}
+                {isSuperAdmin && (
+                  <MenuItem onClick={() => navigate('/admin/organizers')}>Organizers</MenuItem>
+                )}
+                <MenuItem
+                  onClick={() =>
+                    updateSettings({ theme: settings.theme === 'dark' ? 'bright' : 'dark' })
+                  }
+                >
+                  {settings.theme === 'dark' ? 'Light theme' : 'Dark theme'}
+                </MenuItem>
+                <MenuItem onClick={() => navigate('/')}>Public site</MenuItem>
+              </div>
+
+              <div className="py-1 border-t border-white/10 text-sm">
+                <MenuItem
+                  onClick={async () => {
+                    await logout()
+                    navigate('/admin/login')
+                  }}
+                  tone="danger"
+                >
+                  Sign out
+                </MenuItem>
+              </div>
             </div>
-          </div>
-
-          {/* Center: Navigation Tabs */}
-          <nav className="flex items-center gap-1 glass rounded-lg p-1">
-            <Link
-              to="/tournaments"
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                isActive('/tournaments')
-                  ? 'bg-white/20 text-white shadow-sm'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              🏆 Tournaments
-            </Link>
-            <Link
-              to="/teams"
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                isActive('/teams')
-                  ? 'bg-white/20 text-white shadow-sm'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              👥 Teams
-            </Link>
-            <Link
-              to="/calendar"
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                isActive('/calendar')
-                  ? 'bg-white/20 text-white shadow-sm'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              📅 Calendar
-            </Link>
-          </nav>
-
-          {/* Right: Home Link and Theme Toggle */}
-          <div className="flex items-center gap-2">
-            <Link
-              to="/"
-              className="px-3 py-2 rounded-md text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all"
-            >
-              🏠 Home
-            </Link>
-            <button
-              onClick={handleThemeToggle}
-              className="p-2 rounded-md text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all"
-              title={`Switch to ${settings.theme === 'dark' ? 'bright' : 'dark'} theme`}
-            >
-              {settings.theme === 'dark' ? '☀️' : '🌙'}
-            </button>
-          </div>
+          )}
         </div>
       </div>
     </header>
+  )
+}
+
+function MenuItem({
+  children,
+  onClick,
+  tone = 'normal',
+}: {
+  children: ReactNode
+  onClick: () => void
+  tone?: 'normal' | 'danger'
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className={`w-full text-left px-4 py-2 transition-colors ${
+        tone === 'danger' ? 'text-red-300 hover:bg-red-500/10' : 'hover:bg-white/5'
+      }`}
+    >
+      {children}
+    </button>
   )
 }

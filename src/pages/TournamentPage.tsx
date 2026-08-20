@@ -24,7 +24,7 @@ const persistedReconstructedGroups = new Set<string>()
 
 export default function TournamentPage() {
   const { id, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, deleteTournament, uploadTournamentLogo } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, uploadTournamentLogo } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
@@ -861,60 +861,54 @@ export default function TournamentPage() {
                  </div>
                </div>
                
-               {/* Quick Actions */}
-               <div className="flex justify-center gap-4 mt-4 flex-wrap">
-                 {tournament.format?.mode === 'groups_with_divisions' && (
-                   <>
-                     <button
-                       onClick={() => {
-                         if (confirm('Fix group indexes? This will update all matches with correct groupIndex values so tables show results correctly.')) {
-                           handleFixGroupIndexes()
-                         }
-                       }}
-                       className="px-4 py-2 rounded-lg glass hover:bg-purple-500/20 hover:text-purple-300 transition-all font-medium border border-purple-500/30 text-purple-400 text-sm"
-                       title="Fix group indexes for all matches"
-                     >
-                       🏷️ Fix Group Indexes
-                     </button>
-                     <button
-                       onClick={() => {
-                         if (confirm('Fix group round numbers? This will reorganize group matches into 3 rounds with 8 games each.')) {
-                           handleFixGroupRounds()
-                         }
-                       }}
-                       className="px-4 py-2 rounded-lg glass hover:bg-blue-500/20 hover:text-blue-300 transition-all font-medium border border-blue-500/30 text-blue-400 text-sm"
-                       title="Fix group rounds (6 rounds → 3 rounds)"
-                     >
-                       🔧 Fix Group Rounds
-                     </button>
-                     <button
-                       onClick={() => {
-                         if (confirm('Regenerate playoff matches? This will remove existing playoff matches and create new ones with all 3 rounds (1/4 Final, 1/2 Final, Final).')) {
-                           handleRegeneratePlayoffs()
-                         }
-                       }}
-                       className="px-4 py-2 rounded-lg glass hover:bg-green-500/20 hover:text-green-300 transition-all font-medium border border-green-500/30 text-green-400 text-sm"
-                       title="Regenerate playoff matches with all rounds"
-                     >
-                       🔄 Regenerate Playoffs
-                     </button>
-                   </>
-                 )}
-                 <button
-                   onClick={() => {
-                     if (confirm(`Are you sure you want to delete the tournament "${tournament.name}"?\n\nThis will permanently remove:\n• All match results\n• Tournament standings\n• Playoff brackets\n• Tournament data\n\nThis action cannot be undone.`)) {
-                       deleteTournament(tournament.id)
-                       window.location.href = '/tournaments'
-                     }
-                   }}
-                   className="px-4 py-2 rounded-lg glass hover:bg-red-500/20 hover:text-red-300 transition-all font-medium border border-red-500/30 text-red-400 text-sm"
-                   title="Delete tournament"
-                 >
-                   🗑️ Delete Tournament
-                 </button>
-               </div>
-               
-               {/* Public Link */}
+               {/* Repair tools. These rewrite fixtures in place and exist for
+                  data that predates a schema change — they are not part of
+                  running a tournament, so they stay folded away. Deleting moved
+                  to the settings screen, where it asks for the name first. */}
+              {tournament.format?.mode === 'groups_with_divisions' && (
+                <details className="mt-4 mx-auto max-w-xl">
+                  <summary className="cursor-pointer text-sm opacity-60 hover:opacity-100 transition-opacity text-center">
+                    Repair tools
+                  </summary>
+                  <div className="flex justify-center gap-3 mt-3 flex-wrap">
+                    <button
+                      onClick={() => {
+                        if (confirm('Fix group indexes? This will update all matches with correct groupIndex values so tables show results correctly.')) {
+                          handleFixGroupIndexes()
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-xs opacity-80"
+                      title="Fix group indexes for all matches"
+                    >
+                      Fix group indexes
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('Fix group round numbers? This will reorganize group matches into 3 rounds with 8 games each.')) {
+                          handleFixGroupRounds()
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-xs opacity-80"
+                      title="Fix group rounds (6 rounds → 3 rounds)"
+                    >
+                      Fix group rounds
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('Regenerate playoff matches? This will remove existing playoff matches and create new ones with all 3 rounds (1/4 Final, 1/2 Final, Final).')) {
+                          handleRegeneratePlayoffs()
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-xs opacity-80"
+                      title="Regenerate playoff matches with all rounds"
+                    >
+                      Regenerate playoffs
+                    </button>
+                  </div>
+                </details>
+              )}
+              
+              {/* Public Link */}
                <div className="mt-4 flex justify-center">
                  <div className="text-center">
                    <label className="block text-sm font-medium mb-2">Public Link</label>

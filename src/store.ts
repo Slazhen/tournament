@@ -34,7 +34,7 @@ type AppStore = {
   updateOrganizer: (organizerId: string, updates: Partial<Organizer>) => Promise<void>
   deleteOrganizer: (organizerId: string) => Promise<void>
   
-  createTeam: (name: string, colors: string[], logo?: string) => Promise<void>
+  createTeam: (name: string, colors: string[], logo?: string) => Promise<Team | null>
   updateTeam: (teamId: string, updates: Partial<Team>) => Promise<void>
   deleteTeam: (teamId: string) => Promise<void>
 
@@ -163,7 +163,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Team actions
   createTeam: async (name: string, colors: string[], logo?: string) => {
     const currentOrganizerId = get().currentOrganizerId
-    if (!currentOrganizerId) return
+    if (!currentOrganizerId) return null
 
     set(state => ({ loading: { ...state.loading, teams: true } }))
     
@@ -182,11 +182,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           teams: [...state.teams, team],
           loading: { ...state.loading, teams: false }
         }))
+        // Returned so the caller can attach a logo without searching for the
+        // team it just made in a list that has not re-rendered yet.
+        return team
       }
     } catch (error) {
       console.error('Error creating team:', error)
       set(state => ({ loading: { ...state.loading, teams: false } }))
     }
+
+    return null
   },
 
   updateTeam: async (teamId: string, updates: Partial<Team>) => {

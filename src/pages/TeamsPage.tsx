@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useAppStore } from "../store"
 import { Link } from "react-router-dom"
 import LogoUploader from "../components/LogoUploader"
+import { checkTeamName, parseBulkNames } from "../utils/teams"
 
 export default function TeamsPage() {
   const [teamName, setTeamName] = useState("")
@@ -9,6 +10,12 @@ export default function TeamsPage() {
   const [teamLogoFile, setTeamLogoFile] = useState<File | null>(null)
   const [teamLogoPreview, setTeamLogoPreview] = useState("")
   const [bulkTeams, setBulkTeams] = useState("")
+  // Adding several teams at once was the quickest way to set up a season and it
+  // sat below the single-team form looking like an afterthought.
+  const [addMode, setAddMode] = useState<'one' | 'many'>('one')
+  // Creating a team used to happen in silence — no confirmation, and the new
+  // card landed somewhere in a grid of thirty.
+  const [result, setResult] = useState<string>("")
   // With thirty-odd teams in an unordered grid, finding one meant scrolling.
   const [teamSearch, setTeamSearch] = useState("")
   
@@ -40,38 +47,40 @@ export default function TeamsPage() {
     )
   }
   
+  const nameCheck = checkTeamName(teamName, teams)
+  const bulkPlan = parseBulkNames(bulkTeams, teams)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (teamName.trim()) {
-      // Create team first
-      await createTeam(teamName.trim(), teamColors)
-      
-      // Upload logo if provided
-      if (teamLogoFile) {
-        const newTeam = teams.find(t => t.name === teamName.trim())
-        if (newTeam) {
-          await uploadTeamLogo(newTeam.id, teamLogoFile)
-        }
-      }
-      
-      setTeamName("")
-      setTeamColors(["#3B82F6"])
-      setTeamLogoFile(null)
-      setTeamLogoPreview("")
+    const name = teamName.trim()
+    if (!name || nameCheck.duplicate) return
+
+    const created = await createTeam(name, teamColors)
+
+    if (created && teamLogoFile) {
+      await uploadTeamLogo(created.id, teamLogoFile)
     }
+
+    setResult(`${name} added.`)
+    setTeamName("")
+    setTeamColors(["#3B82F6"])
+    setTeamLogoFile(null)
+    setTeamLogoPreview("")
   }
-  
-  const handleBulkAdd = () => {
-    const teamNames = bulkTeams
-      .split("\n")
-      .map((name) => name.trim())
-      .filter((name) => name.length > 0)
-    
-    teamNames.forEach((name) => {
-      const randomColor = `#${Math.floor(Math.random() * 16777215).toString(16)}`
-      createTeam(name, [randomColor])
-    })
-    
+
+  const handleBulkAdd = async () => {
+    if (bulkPlan.toCreate.length === 0) return
+
+    for (const name of bulkPlan.toCreate) {
+      const randomColor = `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`
+      await createTeam(name, [randomColor])
+    }
+
+    const skipped = bulkPlan.duplicates.length + bulkPlan.repeated.length
+    setResult(
+      `${bulkPlan.toCreate.length} ${bulkPlan.toCreate.length === 1 ? 'team' : 'teams'} added` +
+        (skipped > 0 ? `, ${skipped} skipped as already on the list.` : '.')
+    )
     setBulkTeams("")
   }
   
@@ -102,85 +111,151 @@ export default function TeamsPage() {
         <p className="opacity-80">Create and manage your teams</p>
       </div>
 
-      {/* Create Team Form */}
+      {/* Adding teams. One card, two ways in — pasting a list is how a season
+          actually gets set up, so it is a tab rather than a separate box below. */}
       <div className="glass rounded-xl p-6 w-full max-w-md">
-        <h2 className="text-xl font-semibold mb-4">Create New Team</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Team Name</label>
-            <input
-              type="text"
-              value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
-              placeholder="Enter team name"
-              required
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-2">Team Colors</label>
-            <div className="flex gap-2">
-              {teamColors.map((color, index) => (
-                <input
-                  key={index}
-                  type="color"
-                  value={color}
-                  onChange={(e) => {
-                    const newColors = [...teamColors]
-                    newColors[index] = e.target.value
-                    setTeamColors(newColors)
-                  }}
-                  className="w-12 h-10 rounded border border-white/20"
-                />
-              ))}
-              {teamColors.length < 2 && (
-                <button
-                  type="button"
-                  onClick={() => setTeamColors([...teamColors, "#3B82F6"])}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
-                >
-                  +
-                </button>
+        <div className="flex items-center gap-1 mb-5 p-1 rounded-lg bg-white/5 w-fit">
+          <button
+            type="button"
+            onClick={() => setAddMode('one')}
+            className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+              addMode === 'one' ? 'bg-white/15 font-medium' : 'opacity-60 hover:opacity-100'
+            }`}
+          >
+            One team
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddMode('many')}
+            className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+              addMode === 'many' ? 'bg-white/15 font-medium' : 'opacity-60 hover:opacity-100'
+            }`}
+          >
+            Several at once
+          </button>
+        </div>
+
+        {addMode === 'one' ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Team name</label>
+              <input
+                type="text"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
+                placeholder="FC Volna"
+                required
+              />
+
+              {/* Two clubs with the same name split their fixtures and results
+                  between them, and nothing used to stop it happening. */}
+              {nameCheck.duplicate && (
+                <p className="mt-2 text-sm text-red-300">
+                  “{nameCheck.duplicate.name}” already exists.
+                </p>
+              )}
+              {!nameCheck.duplicate && nameCheck.similar.length > 0 && (
+                <p className="mt-2 text-sm text-amber-300/90">
+                  Similar to {nameCheck.similar.map((team) => team.name).join(', ')} — same club?
+                </p>
               )}
             </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-2">Team Logo</label>
-            <LogoUploader
-              onLogoUpload={async (file) => {
-                setTeamLogoFile(file)
-                setTeamLogoPreview(URL.createObjectURL(file))
-              }}
-              currentLogo={teamLogoPreview}
-            />
-          </div>
-          
-          <button
-            type="submit"
-            className="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors"
-          >
-            Create Team
-          </button>
-        </form>
-      </div>
 
-      {/* Bulk Add Teams */}
-      <div className="glass rounded-xl p-6 w-full max-w-md">
-        <h2 className="text-xl font-semibold mb-4">Bulk Add Teams</h2>
-        <textarea
-          value={bulkTeams}
-          onChange={(e) => setBulkTeams(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none h-32"
-          placeholder="Enter team names, one per line"
-        />
-        <button
-          onClick={handleBulkAdd}
-          className="w-full mt-4 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 transition-colors"
-        >
-          Add All Teams
-        </button>
+            <div>
+              <label className="block text-sm font-medium mb-2">Team colours</label>
+              <div className="flex gap-2">
+                {teamColors.map((color, index) => (
+                  <input
+                    key={index}
+                    type="color"
+                    value={color}
+                    onChange={(e) => {
+                      const newColors = [...teamColors]
+                      newColors[index] = e.target.value
+                      setTeamColors(newColors)
+                    }}
+                    className="w-12 h-10 rounded border border-white/20"
+                  />
+                ))}
+                {teamColors.length < 2 && (
+                  <button
+                    type="button"
+                    onClick={() => setTeamColors([...teamColors, "#3B82F6"])}
+                    className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20 transition-colors"
+                    title="Add a second colour"
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Logo</label>
+              <LogoUploader
+                onLogoUpload={async (file) => {
+                  setTeamLogoFile(file)
+                  setTeamLogoPreview(URL.createObjectURL(file))
+                }}
+                currentLogo={teamLogoPreview}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={!teamName.trim() || Boolean(nameCheck.duplicate)}
+              className="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Add team
+            </button>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">One name per line</label>
+              <textarea
+                value={bulkTeams}
+                onChange={(e) => setBulkTeams(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none h-40"
+                placeholder={"FC Volna\nSydney United\nAspire FC"}
+              />
+            </div>
+
+            {bulkTeams.trim() && (
+              <div className="text-sm space-y-1">
+                <p className="opacity-80">
+                  {bulkPlan.toCreate.length} to add
+                  {bulkPlan.duplicates.length > 0 && `, ${bulkPlan.duplicates.length} already exist`}
+                  {bulkPlan.repeated.length > 0 && `, ${bulkPlan.repeated.length} repeated in the list`}
+                </p>
+                {bulkPlan.duplicates.length > 0 && (
+                  <p className="text-amber-300/90">Skipping: {bulkPlan.duplicates.join(', ')}</p>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleBulkAdd}
+              disabled={bulkPlan.toCreate.length === 0}
+              className="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {bulkPlan.toCreate.length > 0
+                ? `Add ${bulkPlan.toCreate.length} ${bulkPlan.toCreate.length === 1 ? 'team' : 'teams'}`
+                : 'Add teams'}
+            </button>
+            <p className="text-xs opacity-60">
+              Colours are assigned at random and the logo can be added afterwards from the team card.
+            </p>
+          </div>
+        )}
+
+        {result && (
+          <p className="mt-4 text-sm text-green-400" role="status">
+            {result}
+          </p>
+        )}
       </div>
 
       {/* Teams List */}
