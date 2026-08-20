@@ -1,0 +1,26 @@
+{
+  "name": "mftournament-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend API for MFTournament - all DynamoDB and S3 access lives here, never in the browser",
+  "scripts": {
+    "build": "tsc --noEmit && node scripts/bundle.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.879.0",
+    "@aws-sdk/client-s3": "^3.879.0",
+    "@aws-sdk/lib-dynamodb": "^3.879.0",
+    "@aws-sdk/s3-presigned-post": "^3.879.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^20.14.10",
+    "esbuild": "^0.23.0",
+    "typescript": "~5.8.3",
+    "vitest": "^2.1.0"
+  }
+}

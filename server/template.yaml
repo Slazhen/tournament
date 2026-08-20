@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  MFTournament API. All DynamoDB and S3 access happens here, under the Lambda
+  execution role below. The browser gets no AWS credentials of any kind.
+
+Parameters:
+  AllowedOrigins:
+    Type: String
+    Description: Comma-separated list of site origins allowed to call this API.
+    Default: https://myfootballtournament.com,https://www.myfootballtournament.com
+  ImagesBucket:
+    Type: String
+    Default: football-tournaments-images
+  TablePrefix:
+    Type: String
+    Default: football-tournaments
+  PublicCacheSeconds:
+    Type: String
+    Default: '60'
+  ServerCacheSeconds:
+    Type: String
+    Default: '60'
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Architectures: [arm64]
+    MemorySize: 512
+    Timeout: 15
+    Tracing: Active
+
+Resources:
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      # CORS is answered in application code so the allow-list can be checked
+      # per request against ALLOWED_ORIGINS rather than hard-coded here.
+      Tags:
+        Project: mftournament
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: esm
+        Minify: true
+        Target: node20
+        Sourcemap: true
+        OutExtension:
+          - .js=.mjs
+        EntryPoints:
+          - src/handler.ts
+        # The AWS SDK v3 clients call require() internally; ESM has no global
+        # require, so esbuild's bundled output crashes at runtime without this.
+        Banner:
+          - js=import { createRequire } from 'module';const require = createRequire(import.meta.url);
+    Properties:
+      Handler: handler.handler
+      CodeUri: .
+      Description: MFTournament HTTP API
+      Environment:
+        Variables:
+          NODE_OPTIONS: --enable-source-maps
+          ALLOWED_ORIGINS: !Ref AllowedOrigins
+          PUBLIC_CACHE_SECONDS: !Ref PublicCacheSeconds
+          SERVER_CACHE_SECONDS: !Ref ServerCacheSeconds
+          S3_BUCKET: !Ref ImagesBucket
+          TABLE_ORGANIZERS: !Sub '${TablePrefix}-organizers'
+          TABLE_TEAMS: !Sub '${TablePrefix}-teams'
+          TABLE_TOURNAMENTS: !Sub '${TablePrefix}-tournaments'
+          TABLE_MATCHES: !Sub '${TablePrefix}-matches'
+          TABLE_AUTH_USERS: !Sub '${TablePrefix}-auth-users'
+          TABLE_AUTH_SESSIONS: !Sub '${TablePrefix}-auth-sessions'
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Sid: AppTables
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:BatchGetItem
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-organizers'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-organizers/index/*'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-teams'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-teams/index/*'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-tournaments'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-tournaments/index/*'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-auth-users'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-auth-users/index/*'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-auth-sessions'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-auth-sessions/index/*'
+            - Sid: Images
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:DeleteObject
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${ImagesBucket}/*'
+      Events:
+        AnyRequest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /{proxy+}
+            Method: ANY
+
+# Note: sessions last seven days and the API deletes an expired one the moment
+# it is presented. If you later add a numeric "expiresAtEpoch" attribute, turn on
+# DynamoDB TTL for the auth-sessions table so dead rows also disappear on their own.
+
+Outputs:
+  ApiUrl:
+    Description: Base URL for the API. Put this in the frontend as VITE_API_BASE_URL.
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  FunctionRole:
+    Description: Execution role the API runs as.
+    Value: !GetAtt ApiFunctionRole.Arn

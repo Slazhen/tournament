@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { batchGetTeams, organizerService, tournamentService } from '../lib/aws-database'
+import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
 import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
 import type { Tournament, Team, Match, Organizer } from '../types'
 

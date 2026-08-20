@@ -1,0 +1,13 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "mftournament-api"
+resolve_s3 = true
+s3_prefix = "mftournament-api"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "AllowedOrigins=\"https://myfootballtournament.com,https://www.myfootballtournament.com\" ImagesBucket=\"football-tournaments-images\" TablePrefix=\"football-tournaments\" PublicCacheSeconds=\"60\" ServerCacheSeconds=\"60\""
+image_repositories = []
+
+[default.global.parameters]
+region = "us-east-1"

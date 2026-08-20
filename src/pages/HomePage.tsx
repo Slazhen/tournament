@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAppStore } from '../store'
 import { useNavigate, Link } from 'react-router-dom'
-import { organizerService, tournamentService } from '../lib/aws-database'
+import { organizerService, tournamentService } from '../lib/data'
 
 interface Organizer {
   id: string

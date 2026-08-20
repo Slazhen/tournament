@@ -3,6 +3,9 @@ dist/
 .DS_Store
 .env
 *.log
+CLI_user_accessKeys.csv
+*_accessKeys.csv
+.aws-sam/
 .vite/
 .vercel/
 .idea/

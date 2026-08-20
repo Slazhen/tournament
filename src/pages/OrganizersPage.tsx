@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
-import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword, syncOrganizerEmails } from '../lib/auth'
-import { organizerService } from '../lib/aws-database'
+import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword } from '../lib/auth'
+import { organizerService } from '../lib/data'
 
 interface Organizer {
   id: string
@@ -278,24 +278,6 @@ export default function OrganizersPage() {
         <div className="glass rounded-2xl p-8 shadow-2xl border border-white/20">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-white">All Organizers</h2>
-            <button
-              onClick={async () => {
-                if (confirm('This will sync all organizer emails with their auth accounts. Continue?')) {
-                  try {
-                    await syncOrganizerEmails()
-                    alert('Organizer emails synced successfully!')
-                    loadOrganizers() // Reload to show updated data
-                  } catch (error) {
-                    console.error('Error syncing emails:', error)
-                    alert('Failed to sync emails. Please try again.')
-                  }
-                }
-              }}
-              className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg transition-all text-blue-400 text-sm"
-              title="Sync organizer emails with auth accounts"
-            >
-              🔄 Sync Emails
-            </button>
           </div>
           
           {loading ? (

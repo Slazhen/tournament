@@ -1,7 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { dynamoDB, TABLES } from '../lib/aws-config'
-import { GetCommand } from '@aws-sdk/lib-dynamodb'
+import { api } from '../lib/api'
 
 interface Team {
   id: string
@@ -36,17 +35,8 @@ export default function NewPublicTeam() {
         setLoading(true)
         setError(null)
 
-        const response = await dynamoDB.send(new GetCommand({
-          TableName: TABLES.TEAMS,
-          Key: { id }
-        }))
-
-        if (!response.Item) {
-          setError('Team not found')
-          return
-        }
-
-        setTeam(response.Item as Team)
+        const team = await api.get<Team>(`/public/teams/${encodeURIComponent(id!)}`)
+        setTeam(team)
 
       } catch (err) {
         console.error('Error loading team:', err)

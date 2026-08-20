@@ -1,8 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { dynamoDB, TABLES } from '../lib/aws-config'
-import { GetCommand } from '@aws-sdk/lib-dynamodb'
-import { batchGetTeams } from '../lib/aws-database'
+import { api } from '../lib/api'
+import { batchGetTeams } from '../lib/data'
 import ErrorBoundary from '../components/ErrorBoundary'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -43,22 +42,10 @@ export default function NewPublicTournament() {
         setLoading(true)
         setError(null)
         
-        console.log('NewPublicTournament: Loading data for tournament ID:', id)
-
-        // Load tournament
-        const tournamentResponse = await dynamoDB.send(new GetCommand({
-          TableName: TABLES.TOURNAMENTS,
-          Key: { id }
-        }))
-
-        if (!tournamentResponse.Item) {
-          setError('Tournament not found')
-          return
-        }
-
-        const tournamentData = tournamentResponse.Item as Tournament
-        console.log('Tournament data loaded:', tournamentData)
-        console.log('Social media data:', tournamentData.socialMedia)
+        // A private tournament is not served by this endpoint at all.
+        const tournamentData = await api.get<Tournament>(
+          `/public/tournaments/${encodeURIComponent(id!)}`,
+        )
         setTournament(tournamentData)
 
         // Load teams using batch operation (much more efficient)

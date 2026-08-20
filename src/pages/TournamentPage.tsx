@@ -5,7 +5,7 @@ import { generatePlayoffBrackets, createPlayoffMatches as createPlayoffMatchesFr
 import { generateMatchUID } from '../utils/uid'
 import { generateGroupsWithDivisionsSchedule } from '../utils/tournament'
 import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
-import { organizerService } from '../lib/aws-database'
+import { organizerService } from '../lib/data'
 import type { Organizer } from '../types'
 import LocationIcon from '../components/LocationIcon'
 import FacebookIcon from '../components/FacebookIcon'

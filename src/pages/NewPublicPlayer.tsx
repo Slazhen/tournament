@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { teamService } from '../lib/aws-database'
+import { teamService } from '../lib/data'
 
 interface Player {
   id: string

@@ -1,29 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
-import { initializeSuperAdmin } from '../lib/auth'
 
 export default function AdminPage() {
   const { user, isSuperAdmin, isOrganizer, logout } = useAuth()
   const { getOrganizerTeams, getOrganizerTournaments, getAllTeams, getAllTournaments, organizers } = useAppStore()
-  const [isInitialized, setIsInitialized] = useState(false)
+  const [isInitialized] = useState(true)
 
-  // Initialize super admin on first load
-  useEffect(() => {
-    const init = async () => {
-      try {
-        console.log('Initializing super admin...')
-        await initializeSuperAdmin()
-        console.log('Super admin initialized successfully')
-        setIsInitialized(true)
-      } catch (error) {
-        console.error('Failed to initialize super admin:', error)
-        setIsInitialized(true)
-      }
-    }
-    init()
-  }, [])
 
   // Show all data for super admin, organizer-specific data for organizers
   const teams = isSuperAdmin ? getAllTeams() : getOrganizerTeams()

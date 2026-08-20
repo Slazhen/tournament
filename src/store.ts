@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import type { Team, Tournament, Match, Organizer, AppSettings } from './types'
 import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule, generateGroupsWithDivisionsSchedule } from './utils/tournament'
-import { organizerService, teamService, tournamentService, matchService, uploadImageToS3 } from './lib/aws-database'
-import { cache, cacheKeys } from './lib/cache'
+import { organizerService, teamService, tournamentService, matchService, uploadImage } from './lib/data'
 
 type AppStore = {
   // Organizers
@@ -466,14 +465,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return
     }
     
-    // For public pages (no organizer), check if we already have all teams loaded
-    if (!currentOrganizerId) {
-      // If we have teams in store and cache is likely fresh, skip DB call
-      const cached = cache.get<Team[]>(cacheKeys.teams.all)
-      if (cached && state.teams.length > 0) {
-        // Data is already loaded and cached, no need to reload
-        return
-      }
+    // Already loaded for a public page in this session: nothing to re-fetch.
+    if (!currentOrganizerId && state.teams.length > 0) {
+      return
     }
     
     set(state => ({ loading: { ...state.loading, teams: true } }))
@@ -515,14 +509,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return
     }
     
-    // For public pages (no organizer), check if we already have all tournaments loaded
-    if (!currentOrganizerId) {
-      // If we have tournaments in store and cache is likely fresh, skip DB call
-      const cached = cache.get<Tournament[]>(cacheKeys.tournaments.all)
-      if (cached && state.tournaments.length > 0) {
-        // Data is already loaded and cached, no need to reload
-        return
-      }
+    // Already loaded for a public page in this session: nothing to re-fetch.
+    if (!currentOrganizerId && state.tournaments.length > 0) {
+      return
     }
     
     set(state => ({ loading: { ...state.loading, tournaments: true } }))
@@ -557,8 +546,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   uploadTeamLogo: async (teamId: string, file: File) => {
     try {
-      const key = `teams/${teamId}/logo-${Date.now()}.${file.name.split('.').pop()}`
-      const url = await uploadImageToS3(file, key)
+      const url = await uploadImage(file, { kind: 'team', id: teamId })
       
       await get().updateTeam(teamId, { logo: url })
     } catch (error) {
@@ -568,8 +556,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   uploadTeamPhoto: async (teamId: string, file: File) => {
     try {
-      const key = `teams/${teamId}/photo-${Date.now()}.${file.name.split('.').pop()}`
-      const url = await uploadImageToS3(file, key)
+      const url = await uploadImage(file, { kind: 'team', id: teamId })
       
       await get().updateTeam(teamId, { photo: url })
     } catch (error) {
@@ -579,8 +566,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   uploadPlayerPhoto: async (teamId: string, playerId: string, file: File) => {
     try {
-      const key = `teams/${teamId}/players/${playerId}/photo-${Date.now()}.${file.name.split('.').pop()}`
-      const url = await uploadImageToS3(file, key)
+      const url = await uploadImage(file, { kind: 'player', id: teamId })
       
       // Update the specific player's photo in the team
       const team = get().teams.find(t => t.id === teamId)
@@ -597,18 +583,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   uploadTournamentLogo: async (tournamentId: string, file: File) => {
     try {
-      console.log('Store: Starting tournament logo upload:', { tournamentId, fileName: file.name })
-      
-      const key = `tournaments/${tournamentId}/logo-${Date.now()}.${file.name.split('.').pop()}`
-      console.log('Store: Generated S3 key:', key)
-      
-      const url = await uploadImageToS3(file, key)
-      console.log('Store: Uploaded to S3, got URL:', url)
-      
-      console.log('Store: Updating tournament with logo URL:', { tournamentId, logo: url })
+      const url = await uploadImage(file, { kind: 'tournament', id: tournamentId })
       await get().updateTournament(tournamentId, { logo: url })
-      
-      console.log('Store: Tournament logo upload completed successfully')
     } catch (error) {
       console.error('Store: Error uploading tournament logo:', error)
     }
@@ -616,8 +592,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   uploadTournamentBackground: async (tournamentId: string, file: File) => {
     try {
-      const key = `tournaments/${tournamentId}/background-${Date.now()}.${file.name.split('.').pop()}`
-      const url = await uploadImageToS3(file, key)
+      const url = await uploadImage(file, { kind: 'tournament', id: tournamentId })
       
       await get().updateTournament(tournamentId, { backgroundImage: url })
     } catch (error) {

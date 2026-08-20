@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState, useMemo } from 'react'
 import { findTournamentBySlug } from '../utils/urls'
-import { organizerService, tournamentService, batchGetTeams } from '../lib/aws-database'
+import { organizerService, tournamentService, batchGetTeams } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 

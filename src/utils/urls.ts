@@ -20,9 +20,18 @@ export function slugify(text: string): string {
 }
 
 /**
+ * The minimum a tournament-like object needs for slug and URL helpers.
+ *
+ * Listing pages only ever load summaries (no matches, no lineups), so these
+ * helpers accept that lighter shape rather than forcing a full tournament to be
+ * fetched just to build a link.
+ */
+export type SluggableTournament = Pick<Tournament, 'id' | 'name' | 'organizerId' | 'createdAtISO'>
+
+/**
  * Get the year from a tournament's creation date
  */
-export function getTournamentYear(tournament: Tournament): string {
+export function getTournamentYear(tournament: SluggableTournament): string {
   if (!tournament.createdAtISO) {
     return new Date().getFullYear().toString()
   }
@@ -33,7 +42,7 @@ export function getTournamentYear(tournament: Tournament): string {
  * Generate a tournament slug from tournament name and year (lowercase)
  * Example: "Asian Cup 2026" + 2026 -> "asian_cup_2026_2026"
  */
-export function generateTournamentSlug(tournament: Tournament): string {
+export function generateTournamentSlug(tournament: SluggableTournament): string {
   const nameSlug = slugify(tournament.name)
   const year = getTournamentYear(tournament)
   return `${nameSlug}_${year}`
@@ -51,7 +60,7 @@ export function generateOrganizerSlug(organizer: Organizer | { name: string }): 
  * Generate admin tournament URL
  * Format: /admin/:orgSlug/:tournamentSlug
  */
-export function getAdminTournamentUrl(tournament: Tournament, organizer: Organizer | { name: string }): string {
+export function getAdminTournamentUrl(tournament: SluggableTournament, organizer: Organizer | { name: string }): string {
   const orgSlug = generateOrganizerSlug(organizer)
   const tournamentSlug = generateTournamentSlug(tournament)
   return `/admin/${orgSlug}/${tournamentSlug}`
@@ -61,7 +70,7 @@ export function getAdminTournamentUrl(tournament: Tournament, organizer: Organiz
  * Generate public tournament URL
  * Format: /:orgSlug/:tournamentSlug
  */
-export function getPublicTournamentUrl(tournament: Tournament, organizer: Organizer | { name: string }): string {
+export function getPublicTournamentUrl(tournament: SluggableTournament, organizer: Organizer | { name: string }): string {
   const orgSlug = generateOrganizerSlug(organizer)
   const tournamentSlug = generateTournamentSlug(tournament)
   return `/${orgSlug}/${tournamentSlug}`
@@ -70,12 +79,12 @@ export function getPublicTournamentUrl(tournament: Tournament, organizer: Organi
 /**
  * Find tournament by slug and organizer slug (case-insensitive for backward compatibility)
  */
-export function findTournamentBySlug(
-  tournaments: Tournament[],
+export function findTournamentBySlug<T extends SluggableTournament>(
+  tournaments: T[],
   orgSlug: string,
   tournamentSlug: string,
   organizers: Organizer[]
-): Tournament | undefined {
+): T | undefined {
   if (!tournaments?.length || !organizers?.length) return undefined
   // Normalize: decode, trim, lowercase
   const normalizedOrgSlug = decodeURIComponent(orgSlug).trim().toLowerCase()
