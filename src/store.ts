@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import type { Team, Tournament, Match, Organizer, AppSettings } from './types'
+import type { Team, Tournament, Match, Organizer, Player, AppSettings } from './types'
 import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule, generateGroupsWithDivisionsSchedule } from './utils/tournament'
-import { organizerService, teamService, tournamentService, matchService, uploadImage } from './lib/data'
+import { organizerService, teamService, tournamentService, matchService, playerService, uploadImage } from './lib/data'
 
 type AppStore = {
   // Organizers
@@ -31,6 +31,10 @@ type AppStore = {
   createTeam: (name: string, colors: string[], logo?: string) => Promise<void>
   updateTeam: (teamId: string, updates: Partial<Team>) => Promise<void>
   deleteTeam: (teamId: string) => Promise<void>
+
+  addPlayer: (teamId: string, player?: Partial<Player>) => Promise<Player | null>
+  updatePlayer: (teamId: string, playerId: string, updates: Partial<Player>) => Promise<void>
+  removePlayer: (teamId: string, playerId: string) => Promise<void>
   
   createTournament: (name: string, teamIds: string[], format?: Tournament['format']) => Promise<void>
   updateTournament: (tournamentId: string, updates: Partial<Tournament>) => Promise<void>
@@ -200,6 +204,86 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
     } catch (error) {
       console.error('Error deleting team:', error)
+    }
+  },
+
+  // Player actions.
+  //
+  // Each of these saves one player. Sending the team's whole squad back on every
+  // edit is what used to make two quick changes overwrite each other.
+  addPlayer: async (teamId: string, player: Partial<Player> = {}) => {
+    try {
+      const created = await playerService.add(teamId, {
+        firstName: '',
+        lastName: '',
+        position: 'Forward',
+        isPublic: true,
+        ...player,
+      })
+      set(state => ({
+        teams: state.teams.map(team =>
+          team.id === teamId
+            ? { ...team, players: [...(team.players || []), created] }
+            : team
+        )
+      }))
+      return created
+    } catch (error) {
+      console.error('Error adding player:', error)
+      return null
+    }
+  },
+
+  updatePlayer: async (teamId: string, playerId: string, updates: Partial<Player>) => {
+    const previous = get().teams.find(t => t.id === teamId)?.players?.find(p => p.id === playerId)
+
+    // Show the change straight away, then confirm it with the server.
+    set(state => ({
+      teams: state.teams.map(team =>
+        team.id === teamId
+          ? {
+              ...team,
+              players: (team.players || []).map(p =>
+                p.id === playerId ? { ...p, ...updates } : p
+              )
+            }
+          : team
+      )
+    }))
+
+    try {
+      await playerService.update(teamId, playerId, updates)
+    } catch (error) {
+      console.error('Error updating player:', error)
+      // The save failed, so put the old values back rather than showing the user
+      // an edit that only exists in their browser.
+      if (previous) {
+        set(state => ({
+          teams: state.teams.map(team =>
+            team.id === teamId
+              ? {
+                  ...team,
+                  players: (team.players || []).map(p => (p.id === playerId ? previous : p))
+                }
+              : team
+          )
+        }))
+      }
+    }
+  },
+
+  removePlayer: async (teamId: string, playerId: string) => {
+    try {
+      await playerService.remove(teamId, playerId)
+      set(state => ({
+        teams: state.teams.map(team =>
+          team.id === teamId
+            ? { ...team, players: (team.players || []).filter(p => p.id !== playerId) }
+            : team
+        )
+      }))
+    } catch (error) {
+      console.error('Error removing player:', error)
     }
   },
 
@@ -567,15 +651,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   uploadPlayerPhoto: async (teamId: string, playerId: string, file: File) => {
     try {
       const url = await uploadImage(file, { kind: 'player', id: teamId })
-      
-      // Update the specific player's photo in the team
-      const team = get().teams.find(t => t.id === teamId)
-      if (team && team.players) {
-        const updatedPlayers = team.players.map(p => 
-          p.id === playerId ? { ...p, photo: url } : p
-        )
-        await get().updateTeam(teamId, { players: updatedPlayers })
-      }
+      await get().updatePlayer(teamId, playerId, { photo: url })
     } catch (error) {
       console.error('Error uploading player photo:', error)
     }

@@ -1,15 +1,15 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useRef, useState } from 'react'
-import { uid } from '../utils/uid'
 import { getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
+import InlineInput from '../components/InlineInput'
 
 export default function TeamPage() {
   const { teamId } = useParams()
-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam, uploadTeamLogo, uploadTeamPhoto } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -86,34 +86,27 @@ export default function TeamPage() {
     }
   }
 
+  // Each of these touches one player on the server rather than rewriting the
+  // whole squad, so two edits made close together no longer overwrite each other.
   const addPlayer = () => {
     if (!team) return
-    const newPlayer: any = {
-      id: uid(),
-      firstName: 'New',
-      lastName: 'Player',
+    void createPlayer(team.id, {
+      firstName: '',
+      lastName: '',
       position: 'Forward',
-      number: 1,
+      number: (team.players?.length || 0) + 1,
       isPublic: true,
-      createdAtISO: new Date().toISOString()
-    }
-    updateTeam(team.id, { 
-      players: [...(team.players || []), newPlayer] 
     })
   }
 
-  const updatePlayer = (playerId: string, updates: any) => {
-    if (!team?.players) return
-    const updatedPlayers = team.players.map(p => 
-      p.id === playerId ? { ...p, ...updates } : p
-    )
-    updateTeam(team.id, { players: updatedPlayers })
+  const updatePlayer = (playerId: string, updates: Record<string, unknown>) => {
+    if (!team) return
+    void savePlayer(team.id, playerId, updates)
   }
 
   const removePlayer = (playerId: string) => {
-    if (!team?.players) return
-    const updatedPlayers = team.players.filter(p => p.id !== playerId)
-    updateTeam(team.id, { players: updatedPlayers })
+    if (!team) return
+    void deletePlayer(team.id, playerId)
   }
 
   // Find tournaments where this team participates
@@ -185,10 +178,10 @@ export default function TeamPage() {
           {/* Team Details */}
           <div className="flex-1">
             <div className="mb-4">
-              <input
+              <InlineInput
                 type="text"
                 value={team.name}
-                onChange={(e) => updateTeam(team.id, { name: e.target.value })}
+                onCommit={(value) => updateTeam(team.id, { name: value })}
                 className="text-3xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all"
                 placeholder="Team Name"
               />
@@ -294,14 +287,14 @@ export default function TeamPage() {
             {team.socialMedia?.facebook && (
               <div className="flex items-center gap-2">
                 <FacebookIcon size={16} />
-                <input
+                <InlineInput
                   type="url"
                   placeholder="Facebook page..."
                   value={team.socialMedia.facebook}
-                                    onChange={(e) => updateTeam(team.id, { 
+                                    onCommit={(value) => updateTeam(team.id, { 
                     socialMedia: { 
                       ...team.socialMedia, 
-                      facebook: e.target.value || undefined 
+                      facebook: value || undefined 
                     }
                   })}
                   className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
@@ -311,14 +304,14 @@ export default function TeamPage() {
             {team.socialMedia?.instagram && (
               <div className="flex items-center gap-2">
                 <InstagramIcon size={16} />
-                <input
+                <InlineInput
                   type="url"
                   placeholder="Instagram profile..."
                   value={team.socialMedia.instagram}
-                                    onChange={(e) => updateTeam(team.id, { 
+                                    onCommit={(value) => updateTeam(team.id, { 
                     socialMedia: { 
                       ...team.socialMedia, 
-                      instagram: e.target.value || undefined 
+                      instagram: value || undefined 
                     }
                   })}
                   className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
@@ -420,7 +413,7 @@ export default function TeamPage() {
                               to={`/players/${player.id}`}
                               className="hover:opacity-80 transition-opacity"
                             >
-                              {`${player.firstName} ${player.lastName}`}
+                              {`${player.firstName} ${player.lastName}`.trim() || 'Unnamed player'}
                             </Link>
                           </div>
                           <div className="text-xs opacity-70">ID: {player.id.slice(-6)}</div>
@@ -428,19 +421,19 @@ export default function TeamPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <input
+                      <InlineInput
                         type="text"
                         value={player.position || ''}
-                        onChange={(e) => updatePlayer(player.id, { position: e.target.value })}
+                        onCommit={(value) => updatePlayer(player.id, { position: value })}
                         className="w-full px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                         placeholder="Position"
                       />
                     </td>
                     <td className="py-3 px-4">
-                      <input
+                      <InlineInput
                         type="number"
                         value={player.number || ''}
-                        onChange={(e) => updatePlayer(player.id, { number: e.target.value ? Number(e.target.value) : undefined })}
+                        onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : undefined })}
                         className="w-full px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                         placeholder="#"
                       />

@@ -7,6 +7,7 @@ import { organizerService } from '../lib/data'
 import type { Organizer } from '../types'
 import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
+import InlineInput from '../components/InlineInput'
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
@@ -251,20 +252,20 @@ export default function MatchPage() {
             </div>
             <div>
               <span className="opacity-70">Venue:</span>
-          <input
+          <InlineInput
                 type="text"
                 value={match.venue || ''}
-                onChange={(e) => updateMatch({ venue: e.target.value || undefined })}
+                onCommit={(value) => updateMatch({ venue: value || undefined })}
                 placeholder="Enter venue"
                 className="ml-2 px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
           />
         </div>
             <div>
               <span className="opacity-70">Referee:</span>
-          <input
+          <InlineInput
                 type="text"
                 value={match.referee || ''}
-                onChange={(e) => updateMatch({ referee: e.target.value || undefined })}
+                onCommit={(value) => updateMatch({ referee: value || undefined })}
                 placeholder="Enter referee"
                 className="ml-2 px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
               />
@@ -674,12 +675,12 @@ export default function MatchPage() {
                         <div className="grid md:grid-cols-4 gap-4">
                           <div>
                             <label className="block text-sm font-medium mb-2">Minute</label>
-                            <input
+                            <InlineInput
                               type="number"
                               min="1"
                               max="120"
                               value={goal.minute || ''}
-                              onChange={(e) => updateGoal(goal.id, { minute: Number(e.target.value) })}
+                              onCommit={(value) => updateGoal(goal.id, { minute: Number(value) })}
                               className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
                                 isHomeTeam 
                                   ? 'focus:border-blue-400/50 focus:ring-blue-400/20' 
@@ -786,10 +787,10 @@ export default function MatchPage() {
 
               <div>
                 <label className="block text-sm font-medium mb-2">Video URL</label>
-                <input
+                <InlineInput
                   type="url"
                   value={match.videoUrl || ''}
-                  onChange={(e) => updateMatch({ videoUrl: e.target.value || undefined })}
+                  onCommit={(value) => updateMatch({ videoUrl: value || undefined })}
                   placeholder="Enter video URL..."
                   className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                 />

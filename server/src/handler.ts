@@ -42,7 +42,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     // Public reads may be held by the browser and any CDN for a short window.
     // Everything else stays no-store, which json() applies by default.
-    const cacheHeaders =
+    const cacheHeaders: Record<string, string> =
       method === 'GET' && path.startsWith('/public/')
         ? { 'cache-control': `public, max-age=${PUBLIC_CACHE_SECONDS}` }
         : {}

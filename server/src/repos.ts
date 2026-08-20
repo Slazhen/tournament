@@ -101,7 +101,7 @@ export const teams = {
       ...input,
       id: generateId(),
       createdAtISO: new Date().toISOString(),
-    } as Team
+    } as unknown as Team
     await ddb.send(new PutCommand({ TableName: TABLES.TEAMS, Item: team }))
     invalidate('teams:')
     return team
@@ -123,6 +123,92 @@ export const teams = {
 
   async remove(id: string): Promise<void> {
     await ddb.send(new DeleteCommand({ TableName: TABLES.TEAMS, Key: { id } }))
+    invalidate('teams:')
+  },
+
+  async getOrThrow(id: string): Promise<Team> {
+    const team = await this.get(id)
+    if (!team) throw notFound('Team not found')
+    return team
+  },
+
+  async addPlayer(teamId: string, player: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const created = {
+      ...player,
+      id: generateId(),
+      createdAtISO: new Date().toISOString(),
+    }
+
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TEAMS,
+        Key: { id: teamId },
+        // list_append appends to whatever is stored right now, so two people
+        // adding a player at the same time both get theirs.
+        UpdateExpression:
+          'SET #players = list_append(if_not_exists(#players, :empty), :player)',
+        ExpressionAttributeNames: { '#players': 'players' },
+        ExpressionAttributeValues: { ':player': [created], ':empty': [] },
+        ConditionExpression: 'attribute_exists(id)',
+      }),
+    )
+    invalidate('teams:')
+    return created
+  },
+
+  /**
+   * Updates ONE player inside a team.
+   *
+   * The whole point is the UpdateExpression below: it writes a single element of
+   * the players list instead of sending the entire array back. When the old code
+   * saved a player it rewrote every player on the team, so two edits in flight at
+   * once — or two tabs, or two people — silently overwrote each other. The
+   * condition re-checks that the element at this index is still the player we
+   * looked up, so a concurrent insert or delete makes the write fail loudly
+   * rather than land on somebody else's row.
+   */
+  async updatePlayer(
+    teamId: string,
+    playerId: string,
+    updates: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const team = await this.getOrThrow(teamId)
+    const players = (Array.isArray(team.players) ? team.players : []) as Record<string, unknown>[]
+    const index = players.findIndex((player) => player?.id === playerId)
+    if (index === -1) throw notFound('Player not found in this team')
+
+    const merged = { ...players[index], ...updates, id: playerId }
+
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TEAMS,
+        Key: { id: teamId },
+        UpdateExpression: `SET #players[${index}] = :player`,
+        ConditionExpression: `#players[${index}].#playerId = :playerId`,
+        ExpressionAttributeNames: { '#players': 'players', '#playerId': 'id' },
+        ExpressionAttributeValues: { ':player': merged, ':playerId': playerId },
+      }),
+    )
+    invalidate('teams:')
+    return merged
+  },
+
+  async removePlayer(teamId: string, playerId: string): Promise<void> {
+    const team = await this.getOrThrow(teamId)
+    const players = (Array.isArray(team.players) ? team.players : []) as Record<string, unknown>[]
+    const index = players.findIndex((player) => player?.id === playerId)
+    if (index === -1) throw notFound('Player not found in this team')
+
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TEAMS,
+        Key: { id: teamId },
+        UpdateExpression: `REMOVE #players[${index}]`,
+        ConditionExpression: `#players[${index}].#playerId = :playerId`,
+        ExpressionAttributeNames: { '#players': 'players', '#playerId': 'id' },
+        ExpressionAttributeValues: { ':playerId': playerId },
+      }),
+    )
     invalidate('teams:')
   },
 }

@@ -4,10 +4,11 @@ import { useRef } from 'react'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
+import InlineInput from '../components/InlineInput'
 
 export default function PlayerPage() {
   const { playerId } = useParams()
-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam, uploadPlayerPhoto } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updatePlayer: savePlayer, uploadPlayerPhoto } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -70,12 +71,10 @@ export default function PlayerPage() {
     }
   }
 
-  const updatePlayer = (playerId: string, updates: any) => {
-    if (!currentTeam.players) return
-    const updatedPlayers = currentTeam.players.map((p: any) => 
-      p.id === playerId ? { ...p, ...updates } : p
-    )
-    updateTeam(currentTeam.id, { players: updatedPlayers })
+  // Saves this one player. The store updates the screen straight away and rolls
+  // back if the server rejects the change.
+  const updatePlayer = (playerId: string, updates: Record<string, unknown>) => {
+    void savePlayer(currentTeam.id, playerId, updates)
   }
 
   // Find all tournaments this player has participated in
@@ -181,17 +180,17 @@ export default function PlayerPage() {
           {/* Player Details */}
           <div className="flex-1">
             <div className="mb-4">
-              <input
+              <InlineInput
                 type="text"
                 value={player.firstName}
-                onChange={(e) => updatePlayer(player.id, { firstName: e.target.value })}
+                onCommit={(value) => updatePlayer(player.id, { firstName: value })}
                 className="text-2xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all mr-2"
                 placeholder="First Name"
               />
-              <input
+              <InlineInput
                 type="text"
                 value={player.lastName}
-                onChange={(e) => updatePlayer(player.id, { lastName: e.target.value })}
+                onCommit={(value) => updatePlayer(player.id, { lastName: value })}
                 className="text-2xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all"
                 placeholder="Last Name"
               />
@@ -200,10 +199,10 @@ export default function PlayerPage() {
               <div>
                 <span className="opacity-70">Number:</span>
                 <div className="flex items-center gap-2">
-                  <input
+                  <InlineInput
                     type="number"
                     value={player.number || ''}
-                    onChange={(e) => updatePlayer(player.id, { number: e.target.value ? Number(e.target.value) : undefined })}
+                    onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : undefined })}
                     className="w-16 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
                     placeholder="#"
                   />
@@ -212,10 +211,10 @@ export default function PlayerPage() {
               <div>
                 <span className="opacity-70">Position:</span>
                 <div className="flex items-center gap-2">
-                  <input
+                  <InlineInput
                     type="text"
                     value={player.position || ''}
-                    onChange={(e) => updatePlayer(player.id, { position: e.target.value })}
+                    onCommit={(value) => updatePlayer(player.id, { position: value })}
                     className="px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
                     placeholder="Position"
                   />
@@ -278,14 +277,14 @@ export default function PlayerPage() {
         <div className="flex items-center justify-center gap-6 text-sm">
           <div className="flex items-center gap-2">
             <FacebookIcon size={16} />
-            <input
+            <InlineInput
               type="url"
               placeholder="Facebook profile..."
               value={player.socialMedia?.facebook || ''}
-              onChange={(e) => updatePlayer(player.id, { 
+              onCommit={(value) => updatePlayer(player.id, { 
                 socialMedia: { 
                   ...player.socialMedia, 
-                  facebook: e.target.value || undefined 
+                  facebook: value || undefined 
                 } 
               })}
               className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
@@ -293,14 +292,14 @@ export default function PlayerPage() {
           </div>
           <div className="flex items-center gap-2">
             <InstagramIcon size={16} />
-            <input
+            <InlineInput
               type="url"
               placeholder="Instagram profile..."
               value={player.socialMedia?.instagram || ''}
-              onChange={(e) => updatePlayer(player.id, { 
+              onCommit={(value) => updatePlayer(player.id, { 
                 socialMedia: { 
                   ...player.socialMedia, 
-                  instagram: e.target.value || undefined 
+                  instagram: value || undefined 
                 } 
               })}
               className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"

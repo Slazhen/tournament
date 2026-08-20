@@ -121,6 +121,49 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     return { ok: true }
   })
 
+  /* ---------------- players ---------------- */
+
+  /**
+   * Players live inside their team's record, but they are edited one at a time.
+   * These three routes exist so the client never has to send the whole squad
+   * back to save one field.
+   */
+  router.post('/admin/teams/:id/players', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, team.organizerId)
+
+    return teams.addPlayer(params.id!, {
+      firstName: typeof ctx.body.firstName === 'string' ? ctx.body.firstName : '',
+      lastName: typeof ctx.body.lastName === 'string' ? ctx.body.lastName : '',
+      position: typeof ctx.body.position === 'string' ? ctx.body.position : '',
+      number: typeof ctx.body.number === 'number' ? ctx.body.number : undefined,
+      isPublic: ctx.body.isPublic !== false,
+    })
+  })
+
+  router.patch('/admin/teams/:id/players/:playerId', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, team.organizerId)
+
+    const updates = { ...ctx.body }
+    // The id is the anchor for the targeted write; it is never a field to change.
+    delete updates.id
+    delete updates.createdAtISO
+
+    return teams.updatePlayer(params.id!, params.playerId!, updates)
+  })
+
+  router.delete('/admin/teams/:id/players/:playerId', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, team.organizerId)
+
+    await teams.removePlayer(params.id!, params.playerId!)
+    return { ok: true }
+  })
+
   /* ---------------- tournaments ---------------- */
 
   router.post('/admin/tournaments', async (ctx) => {

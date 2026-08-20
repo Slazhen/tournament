@@ -41,17 +41,43 @@ const organizerUser: AuthUser = {
 
 const otherTeam = { id: 'team-other', name: 'Rivals', organizerId: 'org-2' }
 
+const ownTeam = {
+  id: 'team-own',
+  name: 'FC Volna',
+  organizerId: 'org-1',
+  players: [
+    { id: 'p-1', firstName: 'Vasily', lastName: 'Esipov' },
+    { id: 'p-2', firstName: 'Other', lastName: 'Player' },
+  ],
+}
+
 vi.mock('../src/repos.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/repos.js')>()
   return {
     ...actual,
     organizers: { list: vi.fn(async () => []) },
     teams: {
-      get: vi.fn(async (id: string) => (id === 'team-other' ? otherTeam : null)),
+      get: vi.fn(async (id: string) =>
+        id === 'team-other' ? otherTeam : id === 'team-own' ? ownTeam : null,
+      ),
+      getOrThrow: vi.fn(async (id: string) => {
+        if (id === 'team-other') return otherTeam
+        if (id === 'team-own') return ownTeam
+        throw new (await import('../src/lib/http.js')).HttpError(404, 'Team not found')
+      }),
       update: vi.fn(async () => undefined),
       listByOrganizer: vi.fn(async () => []),
       listAll: vi.fn(async () => []),
       getMany: vi.fn(async () => []),
+      addPlayer: vi.fn(async (_teamId: string, player: Record<string, unknown>) => ({
+        ...player,
+        id: 'p-new',
+      })),
+      updatePlayer: vi.fn(async (_teamId: string, playerId: string, updates: object) => ({
+        id: playerId,
+        ...updates,
+      })),
+      removePlayer: vi.fn(async () => undefined),
     },
     tournaments: {
       listAll: vi.fn(async () => [publicTournament, privateTournament]),
@@ -190,12 +216,70 @@ describe('authorization', () => {
     expect(repos.teams.update).not.toHaveBeenCalled()
   })
 
+  it("refuses to edit a player on another organizer's team", async () => {
+    const response = await request('PATCH', '/admin/teams/team-other/players/p-1', {
+      token: 'good-token',
+      body: { lastName: 'Hijacked' },
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
+  })
+
   it('refuses super-admin-only routes to an organizer', async () => {
     const response = await request('POST', '/admin/organizers', {
       token: 'good-token',
       body: { name: 'New org', email: 'new@example.com' },
     })
     expect(response.statusCode).toBe(403)
+  })
+})
+
+describe('player editing', () => {
+  it('saves only the fields that changed, not the whole squad', async () => {
+    const response = await request('PATCH', '/admin/teams/team-own/players/p-1', {
+      token: 'good-token',
+      body: { lastName: 'Esipov' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(repos.teams.updatePlayer).toHaveBeenCalledWith('team-own', 'p-1', {
+      lastName: 'Esipov',
+    })
+    // The old path rewrote the team record — that is what lost concurrent edits.
+    expect(repos.teams.update).not.toHaveBeenCalled()
+  })
+
+  it('will not let a client change a player id or creation date', async () => {
+    await request('PATCH', '/admin/teams/team-own/players/p-1', {
+      token: 'good-token',
+      body: { id: 'p-2', createdAtISO: '1999-01-01', number: 10 },
+    })
+
+    expect(repos.teams.updatePlayer).toHaveBeenCalledWith('team-own', 'p-1', { number: 10 })
+  })
+
+  it('adds and removes a player on an own team', async () => {
+    const added = await request('POST', '/admin/teams/team-own/players', {
+      token: 'good-token',
+      body: { firstName: 'New', lastName: 'Player' },
+    })
+    expect(added.statusCode).toBe(200)
+    expect(parse(added.body).id).toBe('p-new')
+
+    const removed = await request('DELETE', '/admin/teams/team-own/players/p-2', {
+      token: 'good-token',
+    })
+    expect(removed.statusCode).toBe(200)
+    expect(repos.teams.removePlayer).toHaveBeenCalledWith('team-own', 'p-2')
+  })
+
+  it('refuses player edits with no token', async () => {
+    const response = await request('PATCH', '/admin/teams/team-own/players/p-1', {
+      body: { lastName: 'Nope' },
+    })
+    expect(response.statusCode).toBe(401)
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
   })
 })
 

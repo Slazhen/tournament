@@ -1,5 +1,5 @@
 import { api, isSignedIn } from './api'
-import type { Team, Tournament, Organizer, Match } from '../types'
+import type { Team, Tournament, Organizer, Match, Player } from '../types'
 
 /**
  * Data access for the whole app.
@@ -121,6 +121,33 @@ export const tournamentService = {
   async delete(id: string): Promise<boolean> {
     await api.delete(`/admin/tournaments/${encodeURIComponent(id)}`)
     return true
+  },
+}
+
+/**
+ * Players are stored inside their team, but they are edited one at a time.
+ *
+ * Saving a player used to mean sending the team's whole squad back, so two edits
+ * made close together overwrote each other — a surname typed right after a first
+ * name could simply vanish. These calls touch one player and leave the rest of
+ * the list alone.
+ */
+export const playerService = {
+  async add(teamId: string, player: Partial<Player>): Promise<Player> {
+    return api.post<Player>(`/admin/teams/${encodeURIComponent(teamId)}/players`, player)
+  },
+
+  async update(teamId: string, playerId: string, updates: Partial<Player>): Promise<Player> {
+    return api.patch<Player>(
+      `/admin/teams/${encodeURIComponent(teamId)}/players/${encodeURIComponent(playerId)}`,
+      updates,
+    )
+  },
+
+  async remove(teamId: string, playerId: string): Promise<void> {
+    await api.delete(
+      `/admin/teams/${encodeURIComponent(teamId)}/players/${encodeURIComponent(playerId)}`,
+    )
   },
 }
 

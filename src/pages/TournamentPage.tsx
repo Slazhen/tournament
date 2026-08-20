@@ -14,6 +14,7 @@ import LogoUploader from '../components/LogoUploader'
 import VisibilityToggle from '../components/VisibilityToggle'
 import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
+import InlineInput from '../components/InlineInput'
 
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
 // so we never rewrite the (large) tournament item more than once during rendering.
@@ -919,14 +920,14 @@ export default function TournamentPage() {
                <div className="flex items-center justify-center gap-4 text-sm mb-3">
                  <div className="flex items-center gap-2">
                    <LocationIcon size={16} />
-                   <input
+                   <InlineInput
                      type="text"
                      placeholder="Tournament location name..."
                      value={tournament.location?.name || ''}
-                                          onChange={(e) => updateTournament(tournament.id, { 
+                                          onCommit={(value) => updateTournament(tournament.id, { 
                        location: { 
                          ...tournament.location, 
-                         name: e.target.value || undefined 
+                         name: value || undefined 
                        }
                      })}
                      className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
@@ -934,14 +935,14 @@ export default function TournamentPage() {
                  </div>
                  <div className="flex items-center gap-2">
                    <span>🔗</span>
-                   <input
+                   <InlineInput
                      type="url"
                      placeholder="Location link..."
                      value={tournament.location?.link || ''}
-                                          onChange={(e) => updateTournament(tournament.id, { 
+                                          onCommit={(value) => updateTournament(tournament.id, { 
                        location: { 
                          ...tournament.location, 
-                         link: e.target.value || undefined 
+                         link: value || undefined 
                        }
                      })}
                      className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
@@ -952,14 +953,14 @@ export default function TournamentPage() {
                        <div className="flex items-center justify-center gap-4 text-sm mb-3">
                  <div className="flex items-center gap-2">
                    <FacebookIcon size={16} />
-                   <input
+                   <InlineInput
                      type="url"
                      placeholder="Facebook page..."
                      value={tournament.socialMedia?.facebook || ''}
-                                          onChange={(e) => updateTournament(tournament.id, { 
+                                          onCommit={(value) => updateTournament(tournament.id, { 
                        socialMedia: { 
                          ...tournament.socialMedia, 
-                         facebook: e.target.value || undefined 
+                         facebook: value || undefined 
                        }
                      })}
                      className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
@@ -967,14 +968,14 @@ export default function TournamentPage() {
                  </div>
                  <div className="flex items-center gap-2">
                    <InstagramIcon size={16} />
-                   <input
+                   <InlineInput
                      type="url"
                      placeholder="Instagram profile..."
                      value={tournament.socialMedia?.instagram || ''}
-                                          onChange={(e) => updateTournament(tournament.id, { 
+                                          onCommit={(value) => updateTournament(tournament.id, { 
                        socialMedia: { 
                          ...tournament.socialMedia, 
-                         instagram: e.target.value || undefined 
+                         instagram: value || undefined 
                        }
                      })}
                      className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
