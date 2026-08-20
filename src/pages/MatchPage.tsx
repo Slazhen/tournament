@@ -189,7 +189,9 @@ export default function MatchPage() {
               <div className="flex justify-center mb-2">
                 {homeTeam.logo ? (
                   <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                    <img src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
+                    <img
+              loading="lazy"
+              decoding="async" src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
                   </div>
                 ) : (
                   <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: homeTeam.colors?.[0] || '#3B82F6' }}>
@@ -210,7 +212,9 @@ export default function MatchPage() {
               <div className="flex justify-center mb-2">
                 {awayTeam.logo ? (
                   <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                    <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
+                    <img
+              loading="lazy"
+              decoding="async" src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
                   </div>
                 ) : (
                   <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: awayTeam.colors?.[0] || '#3B82F6' }}>
@@ -657,7 +661,9 @@ export default function MatchPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               {team.logo && (
-                                <img src={team.logo} alt={`${team.name} logo`} className="w-8 h-8 rounded-full object-cover" />
+                                <img
+              loading="lazy"
+              decoding="async" src={team.logo} alt={`${team.name} logo`} className="w-8 h-8 rounded-full object-cover" />
                               )}
                               <span className={`font-semibold ${isHomeTeam ? 'text-blue-400' : 'text-red-400'}`}>
                                 {team.name} Goal #{goal.goalNumber || 1}

@@ -6,6 +6,7 @@ dist/
 CLI_user_accessKeys.csv
 *_accessKeys.csv
 .aws-sam/
+/_to_delete/
 .vite/
 .vercel/
 .idea/

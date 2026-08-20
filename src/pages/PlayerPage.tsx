@@ -152,6 +152,8 @@ export default function PlayerPage() {
           <div className="relative group">
             {player.photo ? (
               <img
+              loading="lazy"
+              decoding="async"
                 src={player.photo}
                 alt={`${fullName} photo`}
                 className="w-32 h-32 object-cover rounded-lg"
@@ -254,6 +256,8 @@ export default function PlayerPage() {
             <div className="flex items-center gap-3">
               {currentTeam.logo ? (
                 <img
+              loading="lazy"
+              decoding="async"
                   src={currentTeam.logo}
                   alt={`${currentTeam.name} logo`}
                   className="w-16 h-16 object-cover rounded-lg"
@@ -363,7 +367,9 @@ export default function PlayerPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                           {tournament.logo ? (
-                            <img 
+                            <img
+              loading="lazy"
+              decoding="async" 
                               src={tournament.logo} 
                               alt={`${tournament.name} logo`} 
                               className="w-full h-full object-cover" 
@@ -407,6 +413,8 @@ export default function PlayerPage() {
                       <div className="flex items-center justify-center gap-2">
                         {currentTeam.logo && (
                           <img
+              loading="lazy"
+              decoding="async"
                             src={currentTeam.logo}
                             alt={`${currentTeam.name} logo`}
                             className="w-6 h-6 object-cover rounded"

@@ -103,6 +103,25 @@ export const tournamentService = {
     return api.get<Tournament>(path)
   },
 
+  /**
+   * Everything a public tournament page needs, in a single request: the
+   * tournament, its teams and the organizer. Replaces the old three-step dance
+   * of "download all summaries to resolve the slug, then the tournament, then
+   * its teams", where each call had to wait for the one before it.
+   */
+  async getBySlug(
+    organizerSlug: string,
+    tournamentSlug: string,
+  ): Promise<{ tournament: Tournament; teams: Team[]; organizer: Organizer } | null> {
+    try {
+      return await api.get(
+        `/public/by-slug/${encodeURIComponent(organizerSlug)}/${encodeURIComponent(tournamentSlug)}`,
+      )
+    } catch {
+      return null
+    }
+  },
+
   async getByOrganizer(organizerId: string): Promise<Tournament[]> {
     return isSignedIn()
       ? api.get<Tournament[]>('/admin/tournaments')

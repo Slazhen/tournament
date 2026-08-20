@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './index.css'
@@ -6,22 +6,31 @@ import App from './App.tsx'
 import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute.tsx'
 
-import HomePage from './pages/HomePage.tsx'
-import AdminPage from './pages/AdminPage.tsx'
-import AdminLoginPage from './pages/AdminLoginPage.tsx'
-import OrganizersPage from './pages/OrganizersPage.tsx'
-import TournamentsPage from './pages/TournamentsPage.tsx'
-import TeamsPage from './pages/TeamsPage.tsx'
-import CalendarPage from './pages/CalendarPage.tsx'
-import TournamentPage from './pages/TournamentPage.tsx'
-import TeamPage from './pages/TeamPage.tsx'
-import PlayerPage from './pages/PlayerPage.tsx'
-import MatchPage from './pages/MatchPage.tsx'
-import PublicTournamentPage from './pages/PublicTournamentPage.tsx'
-import NewPublicTeam from './pages/NewPublicTeam.tsx'
-import NewPublicPlayer from './pages/NewPublicPlayer.tsx'
-import PublicMatchPage from './pages/PublicMatchPage.tsx'
 import NotFound from './components/NotFound.tsx'
+
+/**
+ * Every page is a separate chunk.
+ *
+ * The bundle used to be one 583 KB file, so a visitor opening a public
+ * tournament also downloaded the whole admin area — the 2.5k-line tournament
+ * editor, the match editor, the organizer screens — and parsed all of it before
+ * anything rendered. Now a route pulls only its own code.
+ */
+const HomePage = lazy(() => import('./pages/HomePage.tsx'))
+const AdminPage = lazy(() => import('./pages/AdminPage.tsx'))
+const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage.tsx'))
+const OrganizersPage = lazy(() => import('./pages/OrganizersPage.tsx'))
+const TournamentsPage = lazy(() => import('./pages/TournamentsPage.tsx'))
+const TeamsPage = lazy(() => import('./pages/TeamsPage.tsx'))
+const CalendarPage = lazy(() => import('./pages/CalendarPage.tsx'))
+const TournamentPage = lazy(() => import('./pages/TournamentPage.tsx'))
+const TeamPage = lazy(() => import('./pages/TeamPage.tsx'))
+const PlayerPage = lazy(() => import('./pages/PlayerPage.tsx'))
+const MatchPage = lazy(() => import('./pages/MatchPage.tsx'))
+const PublicTournamentPage = lazy(() => import('./pages/PublicTournamentPage.tsx'))
+const NewPublicTeam = lazy(() => import('./pages/NewPublicTeam.tsx'))
+const NewPublicPlayer = lazy(() => import('./pages/NewPublicPlayer.tsx'))
+const PublicMatchPage = lazy(() => import('./pages/PublicMatchPage.tsx'))
 
 const router = createBrowserRouter([
   {
@@ -187,10 +196,21 @@ const router = createBrowserRouter([
   },
 ])
 
+/** Shown for the moment a route's chunk is in flight. */
+function PageLoading() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center">
+      <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-white/70 animate-spin" />
+    </div>
+  )
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
-      <RouterProvider router={router} />
+      <Suspense fallback={<PageLoading />}>
+        <RouterProvider router={router} />
+      </Suspense>
     </AuthProvider>
   </StrictMode>,
 )

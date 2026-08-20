@@ -183,7 +183,9 @@ export default function HomePage() {
                 <div key={organizer.id} className="glass rounded-2xl p-6 shadow-2xl border border-white/20 hover:border-white/40 transition-all">
                   <div className="flex items-center gap-4 mb-4">
                     {organizer.logo ? (
-                      <img 
+                      <img
+              loading="lazy"
+              decoding="async" 
                         src={organizer.logo} 
                         alt={`${typeof organizer.name === 'string' ? organizer.name : 'Organizer'} logo`}
                         className="w-16 h-16 rounded-full object-cover border border-white/20"
@@ -230,7 +232,9 @@ export default function HomePage() {
                   >
                     <div className="flex items-center gap-4 mb-4">
                       {tournament.logo ? (
-                        <img 
+                        <img
+              loading="lazy"
+              decoding="async" 
                           src={tournament.logo} 
                           alt={`${tournament.name} logo`}
                           className="w-16 h-16 rounded-full object-cover border border-white/20 group-hover:border-blue-400/50 transition-colors"

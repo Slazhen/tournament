@@ -17,6 +17,10 @@ export default function TeamPage() {
   
   // State for upload feedback
   const [uploadMessage, setUploadMessage] = useState('')
+  // The add-player form. Players used to be created the instant the button was
+  // pressed, appearing as "New Player" with a number nobody chose.
+  const [isAddingPlayer, setIsAddingPlayer] = useState(false)
+  const [draftPlayer, setDraftPlayer] = useState({ firstName: '', lastName: '', number: '', position: 'Forward' })
   // Hooks must run on every render (before any early return) to keep hook order stable.
   const logoFileRef = useRef<HTMLInputElement>(null)
   const photoFileRef = useRef<HTMLInputElement>(null)
@@ -88,15 +92,20 @@ export default function TeamPage() {
 
   // Each of these touches one player on the server rather than rewriting the
   // whole squad, so two edits made close together no longer overwrite each other.
-  const addPlayer = () => {
+  const submitNewPlayer = async () => {
     if (!team) return
-    void createPlayer(team.id, {
-      firstName: '',
-      lastName: '',
-      position: 'Forward',
-      number: (team.players?.length || 0) + 1,
+    if (!draftPlayer.firstName.trim() && !draftPlayer.lastName.trim()) return
+
+    await createPlayer(team.id, {
+      firstName: draftPlayer.firstName.trim(),
+      lastName: draftPlayer.lastName.trim(),
+      position: draftPlayer.position.trim() || 'Forward',
+      number: draftPlayer.number ? Number(draftPlayer.number) : undefined,
       isPublic: true,
     })
+
+    setDraftPlayer({ firstName: '', lastName: '', number: '', position: 'Forward' })
+    setIsAddingPlayer(false)
   }
 
   const updatePlayer = (playerId: string, updates: Record<string, unknown>) => {
@@ -112,6 +121,16 @@ export default function TeamPage() {
   // Find tournaments where this team participates
   const teamTournaments = tournaments.filter(t => 
     t.teamIds.includes(teamId!)
+  )
+
+  // Matches this team is actually scheduled in, across every tournament.
+  const teamMatchCount = teamTournaments.reduce(
+    (total, tournament) =>
+      total +
+      (tournament.matches || []).filter(
+        (match) => match.homeTeamId === teamId || match.awayTeamId === teamId
+      ).length,
+    0
   )
 
   return (
@@ -150,6 +169,8 @@ export default function TeamPage() {
           <div className="relative group">
             {team.logo ? (
               <img
+              loading="lazy"
+              decoding="async"
                 src={team.logo}
                 alt={`${team.name} logo`}
                 className="w-24 h-24 object-cover rounded-lg"
@@ -255,6 +276,8 @@ export default function TeamPage() {
           <div className="relative group">
             {team.photo ? (
               <img
+              loading="lazy"
+              decoding="async"
                 src={team.photo}
                 alt={`${team.name} photo`}
                 className="w-24 h-24 object-cover rounded-lg"
@@ -334,7 +357,10 @@ export default function TeamPage() {
       {/* Team Statistics Summary */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <h2 className="text-xl font-semibold mb-4 text-center">Season Summary</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-center">
+        {/* Only numbers someone would actually look up. The old tiles included
+            the last four characters of the database id and a yes/no for whether
+            a social link had been filled in. */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div className="p-4 glass rounded-lg">
             <div className="text-2xl font-bold text-blue-400">{teamTournaments.length}</div>
             <div className="text-sm opacity-70">Tournaments</div>
@@ -344,20 +370,12 @@ export default function TeamPage() {
             <div className="text-sm opacity-70">Players</div>
           </div>
           <div className="p-4 glass rounded-lg">
+            <div className="text-2xl font-bold text-purple-400">{teamMatchCount}</div>
+            <div className="text-sm opacity-70">Matches</div>
+          </div>
+          <div className="p-4 glass rounded-lg">
             <div className="text-2xl font-bold text-yellow-400">{new Date(team.createdAtISO).getFullYear()}</div>
             <div className="text-sm opacity-70">Founded</div>
-          </div>
-          <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-purple-400">{team.id.slice(-4)}</div>
-            <div className="text-sm opacity-70">Team ID</div>
-          </div>
-          <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-red-400">{team.colors?.length || 0}</div>
-            <div className="text-sm opacity-70">Colors</div>
-          </div>
-          <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-indigo-400">{team.socialMedia ? 'Yes' : 'No'}</div>
-            <div className="text-sm opacity-70">Social Media</div>
           </div>
         </div>
       </section>
@@ -367,12 +385,68 @@ export default function TeamPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Players ({team.players?.length || 0})</h2>
           <button
-            onClick={addPlayer}
+            onClick={() => setIsAddingPlayer((open) => !open)}
             className="px-4 py-2 rounded-md glass hover:bg-white/10 transition-all"
           >
-            Add Player
+            {isAddingPlayer ? 'Cancel' : 'Add Player'}
           </button>
         </div>
+
+        {isAddingPlayer && (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              void submitNewPlayer()
+            }}
+            className="mb-6 grid gap-3 md:grid-cols-[1fr_1fr_80px_1fr_auto] items-end"
+          >
+            <label className="text-sm">
+              <span className="opacity-70">First name</span>
+              <input
+                autoFocus
+                value={draftPlayer.firstName}
+                onChange={(e) => setDraftPlayer({ ...draftPlayer, firstName: e.target.value })}
+                className="mt-1 w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                placeholder="Vasily"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="opacity-70">Last name</span>
+              <input
+                value={draftPlayer.lastName}
+                onChange={(e) => setDraftPlayer({ ...draftPlayer, lastName: e.target.value })}
+                className="mt-1 w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                placeholder="Esipov"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="opacity-70">Number</span>
+              <input
+                type="number"
+                value={draftPlayer.number}
+                onChange={(e) => setDraftPlayer({ ...draftPlayer, number: e.target.value })}
+                className="mt-1 w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
+                placeholder="#"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="opacity-70">Position</span>
+              <input
+                value={draftPlayer.position}
+                onChange={(e) => setDraftPlayer({ ...draftPlayer, position: e.target.value })}
+                className="mt-1 w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                placeholder="Forward"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={!draftPlayer.firstName.trim() && !draftPlayer.lastName.trim()}
+              className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Add
+            </button>
+          </form>
+        )}
         
         {(!team.players || team.players.length === 0) ? (
           <p className="text-center opacity-70">No players yet. Add your first player!</p>
@@ -397,6 +471,8 @@ export default function TeamPage() {
                         <div className="relative group">
                           {player.photo ? (
                             <img
+              loading="lazy"
+              decoding="async"
                               src={player.photo}
                               alt={`${player.firstName} ${player.lastName} photo`}
                               className="w-12 h-12 object-cover rounded-full"
@@ -492,7 +568,9 @@ export default function TeamPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                           {tournament.logo ? (
-                            <img 
+                            <img
+              loading="lazy"
+              decoding="async" 
                               src={tournament.logo} 
                               alt={`${tournament.name} logo`} 
                               className="w-full h-full object-cover" 

@@ -9,6 +9,8 @@ export default function TeamsPage() {
   const [teamLogoFile, setTeamLogoFile] = useState<File | null>(null)
   const [teamLogoPreview, setTeamLogoPreview] = useState("")
   const [bulkTeams, setBulkTeams] = useState("")
+  // With thirty-odd teams in an unordered grid, finding one meant scrolling.
+  const [teamSearch, setTeamSearch] = useState("")
   
   const { 
     getCurrentOrganizer, 
@@ -86,6 +88,12 @@ export default function TeamsPage() {
   }
   
   // Removed unused functions and refs to fix TypeScript errors
+
+  // Alphabetical order and a search box: the list used to come back in whatever
+  // order the database returned it, with new teams landing in the middle.
+  const visibleTeams = [...teams]
+    .filter((team) => team.name.toLowerCase().includes(teamSearch.trim().toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <div className="min-h-[80vh] flex flex-col items-center gap-8">
@@ -177,13 +185,26 @@ export default function TeamsPage() {
 
       {/* Teams List */}
       <div className="w-full max-w-6xl">
-        <h2 className="text-2xl font-semibold mb-6">Your Teams ({teams.length})</h2>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <h2 className="text-2xl font-semibold">
+            Your Teams ({visibleTeams.length}{visibleTeams.length !== teams.length ? ` of ${teams.length}` : ''})
+          </h2>
+          <input
+            type="search"
+            value={teamSearch}
+            onChange={(e) => setTeamSearch(e.target.value)}
+            placeholder="Search teams..."
+            className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none w-64 max-w-full"
+          />
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {teams.map((team) => (
+          {visibleTeams.map((team) => (
             <div key={team.id} className="glass rounded-xl p-6">
               <div className="flex items-center gap-4 mb-4">
                 {team.logo ? (
-                  <img src={team.logo} alt={team.name} className="w-16 h-16 rounded-lg object-cover" />
+                  <img
+              loading="lazy"
+              decoding="async" src={team.logo} alt={team.name} className="w-16 h-16 rounded-lg object-cover" />
                 ) : (
                   <div 
                     className="w-16 h-16 rounded-lg flex items-center justify-center text-white font-bold text-xl"
@@ -231,7 +252,7 @@ export default function TeamsPage() {
                       const file = e.target.files?.[0]
                       if (file) handlePhotoUpload(team.id, file)
                     }}
-                    className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
+                    className="w-full text-sm text-white/70 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-white/10 file:text-white hover:file:bg-white/20 file:cursor-pointer"
                   />
                 </div>
                 

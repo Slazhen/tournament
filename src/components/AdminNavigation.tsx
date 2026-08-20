@@ -25,7 +25,7 @@ export default function AdminNavigation() {
   }
 
   return (
-    <header className="sticky top-0 z-50 glass border-b border-white/10">
+    <header className="sticky top-0 z-50 glass-header">
       <div className="mx-auto container-max px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Left: User Info */}

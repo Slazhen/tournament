@@ -122,7 +122,9 @@ export default function NewPublicTeam() {
                   
                   {/* Logo container with border effect */}
                   <div className="relative bg-white/10 backdrop-blur-sm rounded-full p-8 border border-white/20 shadow-2xl">
-                    <img 
+                    <img
+              loading="lazy"
+              decoding="async" 
                       src={team.logo} 
                       alt={`${team.name} logo`}
                       className="w-32 h-32 object-contain"
@@ -237,7 +239,9 @@ export default function NewPublicTeam() {
               <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-8 border border-white/10">
                 <h2 className="text-3xl font-bold text-white mb-6">Team Photo</h2>
                 <div className="relative group">
-                  <img 
+                  <img
+              loading="lazy"
+              decoding="async" 
                     src={team.photo} 
                     alt={`${team.name} team photo`}
                     className="w-full h-64 object-cover rounded-xl shadow-2xl group-hover:scale-105 transition-transform duration-500"
@@ -281,7 +285,9 @@ export default function NewPublicTeam() {
                     <div className="relative mb-6">
                       {player.photo ? (
                         <div className="relative">
-                          <img 
+                          <img
+              loading="lazy"
+              decoding="async" 
                             src={player.photo} 
                             alt={`${player.firstName} ${player.lastName}`}
                             className="w-24 h-24 mx-auto rounded-full object-cover border-4 border-white/20 group-hover:border-white/40 transition-all duration-300 shadow-xl"
@@ -375,7 +381,9 @@ export default function NewPublicTeam() {
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 mb-4">
               {team.logo && (
-                <img 
+                <img
+              loading="lazy"
+              decoding="async" 
                   src={team.logo} 
                   alt={`${team.name} logo`}
                   className="w-8 h-8 object-contain"

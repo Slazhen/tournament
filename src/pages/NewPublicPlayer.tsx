@@ -124,7 +124,9 @@ export default function NewPublicPlayer() {
             {/* Player Photo */}
             <div className="flex-shrink-0">
               {player.photo ? (
-                <img 
+                <img
+              loading="lazy"
+              decoding="async" 
                   src={player.photo} 
                   alt={`${player.firstName} ${player.lastName}`}
                   className="w-48 h-48 rounded-full object-cover border-4 border-white/20"
@@ -165,7 +167,9 @@ export default function NewPublicPlayer() {
               {/* Team Info */}
               <div className="flex items-center justify-center md:justify-start gap-4 mb-6">
                 {team.logo && (
-                  <img 
+                  <img
+              loading="lazy"
+              decoding="async" 
                     src={team.logo} 
                     alt={`${team.name} logo`}
                     className="w-12 h-12 rounded-full object-cover"

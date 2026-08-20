@@ -1,5 +1,6 @@
 import { Router } from '../lib/router.js'
 import { badRequest, notFound } from '../lib/http.js'
+import { organizerSlug, tournamentSlug } from '../lib/slugs.js'
 import { isPublic, organizers, teams, tournaments } from '../repos.js'
 import type { RequestContext } from '../context.js'
 
@@ -63,9 +64,43 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
   )
 
   /**
-   * Fetches a specific set of teams by id — used by tournament pages, which
-   * know exactly which teams they need. POST rather than GET so a long list of
-   * ids does not have to fit in a URL.
+   * Everything a public tournament page needs, in one request: the tournament,
+   * the teams it references, and the organizer that runs it.
+   *
+   * The page used to make three sequential calls to assemble this — resolve the
+   * slug from the full summary list, fetch the tournament, then fetch its teams —
+   * each one waiting on the last. All three reads here come from the same
+   * server-side cache.
+   */
+  router.get('/public/by-slug/:organizerSlug/:tournamentSlug', async (_ctx, params) => {
+    const allOrganizers = await organizers.list()
+    const organizer = allOrganizers.find((o) => organizerSlug(o) === params.organizerSlug!.toLowerCase())
+    if (!organizer) throw notFound('Organizer not found')
+
+    const candidates = await tournaments.listByOrganizer(organizer.id)
+    const tournament = candidates
+      .filter(isPublic)
+      .find((t) => tournamentSlug(t).toLowerCase() === params.tournamentSlug!.toLowerCase())
+    if (!tournament) throw notFound('Tournament not found')
+
+    const teamIds = Array.isArray(tournament.teamIds) ? tournament.teamIds : []
+
+    return {
+      tournament,
+      teams: await teams.getMany(teamIds),
+      organizer: {
+        id: organizer.id,
+        name: organizer.name,
+        logo: organizer.logo,
+        description: organizer.description,
+      },
+    }
+  })
+
+  /**
+   * Fetches a specific set of teams by id — used by pages that already know
+   * which teams they need. POST rather than GET so a long list of ids does not
+   * have to fit in a URL.
    */
   router.post('/public/teams/batch', async (ctx) => {
     const ids = ctx.body.teamIds

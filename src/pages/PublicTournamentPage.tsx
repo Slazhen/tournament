@@ -1,7 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState, useMemo } from 'react'
-import { findTournamentBySlug } from '../utils/urls'
-import { organizerService, tournamentService, batchGetTeams } from '../lib/data'
+import { tournamentService, batchGetTeams } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 
@@ -23,9 +22,9 @@ export default function PublicTournamentPage() {
     return null
   }, [tournamentId, id])
 
-  // Load only what this page needs: organizers, teams, and the ONE tournament being viewed.
-  // The tournament is fetched by id (GetItem). For slug routes we resolve the id from a
-  // lightweight summaries list first, so we never scan every tournament's full match data.
+  // Load only what this page needs. A slug route is one request that returns the
+  // tournament, its teams and the organizer together; the older id route still
+  // fetches the tournament by key and then its teams.
   useEffect(() => {
     let cancelled = false
     // Reset view state when the route changes so we don't flash the previous tournament.
@@ -36,22 +35,23 @@ export default function PublicTournamentPage() {
 
     const loadData = async () => {
       try {
-        const orgs = await organizerService.getAll()
-
-        let full: any = null
-        if (actualTournamentId) {
-          // Old route: /public/tournaments/:id — direct GetItem
-          full = await tournamentService.getById(actualTournamentId)
-        } else if (orgSlug && tournamentSlug) {
-          // New route: /:orgSlug/:tournamentSlug — resolve id from lightweight summaries, then GetItem
-          const summaries = await tournamentService.getAllSummaries()
-          const decodedOrg = decodeURIComponent(orgSlug).trim()
-          const decodedTournament = decodeURIComponent(tournamentSlug).trim()
-          const summary = findTournamentBySlug(summaries, decodedOrg, decodedTournament, orgs || [])
-          if (summary) {
-            full = await tournamentService.getById(summary.id)
+        // New route: /:orgSlug/:tournamentSlug — one request for everything.
+        if (!actualTournamentId && orgSlug && tournamentSlug) {
+          const bundle = await tournamentService.getBySlug(
+            decodeURIComponent(orgSlug).trim(),
+            decodeURIComponent(tournamentSlug).trim(),
+          )
+          if (!cancelled) {
+            setTournament(bundle?.tournament ?? null)
+            setTeams(bundle?.teams ?? [])
           }
+          return
         }
+
+        // Old route: /public/tournaments/:id — fetch by key, then its teams.
+        const full = actualTournamentId
+          ? await tournamentService.getById(actualTournamentId)
+          : null
         if (!cancelled) setTournament(full)
 
         // Fetch only the teams this tournament references, by key. Scanning the whole
@@ -357,7 +357,9 @@ export default function PublicTournamentPage() {
                 <div className="relative inline-block">
                   <div className="absolute inset-0 rounded-full blur-2xl opacity-30 bg-gradient-to-r from-blue-400/20 to-purple-400/20"></div>
                   <div className="relative bg-white/10 backdrop-blur-sm rounded-full p-6 border border-white/20 shadow-xl">
-                    <img 
+                    <img
+              loading="lazy"
+              decoding="async" 
                       src={tournament.logo} 
                       alt={`${tournament.name} logo`}
                       className="w-24 h-24 object-contain"
@@ -508,7 +510,9 @@ export default function PublicTournamentPage() {
                                     >
                                       {team?.logo ? (
                                         <div className="relative">
-                                          <img 
+                                          <img
+              loading="lazy"
+              decoding="async" 
                                             src={team.logo} 
                                             alt={`${team.name} logo`}
                                             className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
@@ -600,7 +604,9 @@ export default function PublicTournamentPage() {
                             >
                               {team?.logo ? (
                                 <div className="relative">
-                                  <img 
+                                  <img
+              loading="lazy"
+              decoding="async" 
                                     src={team.logo} 
                                     alt={`${team.name} logo`}
                                     className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
@@ -754,7 +760,9 @@ export default function PublicTournamentPage() {
                           <td className="py-2 px-1 sm:px-6">
                             <div className="flex items-center gap-1 sm:gap-3">
                               {stats.player.photo ? (
-                                <img 
+                                <img
+              loading="lazy"
+              decoding="async" 
                                   src={stats.player.photo} 
                                   alt={`${stats.player.firstName} ${stats.player.lastName}`}
                                   className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover border border-white/20"
@@ -779,7 +787,9 @@ export default function PublicTournamentPage() {
                           <td className="py-2 px-1 sm:px-6">
                             <div className="flex items-center gap-1 sm:gap-2">
                               {stats.team.logo ? (
-                                <img 
+                                <img
+              loading="lazy"
+              decoding="async" 
                                   src={stats.team.logo} 
                                   alt={`${stats.team.name} logo`}
                                   className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover"
@@ -842,7 +852,9 @@ export default function PublicTournamentPage() {
                     <div className="flex items-center gap-2 sm:gap-4 flex-1">
                       {homeTeam?.logo ? (
                         <div className="relative">
-                          <img 
+                          <img
+              loading="lazy"
+              decoding="async" 
                             src={homeTeam.logo} 
                             alt={`${homeTeam.name} logo`}
                             className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
@@ -916,7 +928,9 @@ export default function PublicTournamentPage() {
                       </div>
                       {awayTeam?.logo ? (
                         <div className="relative">
-                          <img 
+                          <img
+              loading="lazy"
+              decoding="async" 
                             src={awayTeam.logo} 
                             alt={`${awayTeam.name} logo`}
                             className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
@@ -1251,7 +1265,9 @@ export default function PublicTournamentPage() {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3 flex-1">
                                 {homeTeam?.logo ? (
-                                  <img src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
+                                  <img
+              loading="lazy"
+              decoding="async" src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
                                 ) : (
                                   <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
                                     <span className="text-xs">{homeTeam?.name?.charAt(0) || 'H'}</span>
@@ -1275,7 +1291,9 @@ export default function PublicTournamentPage() {
                                   {awayTeam?.name || match.awayTeamId}
                                 </Link>
                                 {awayTeam?.logo ? (
-                                  <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
+                                  <img
+              loading="lazy"
+              decoding="async" src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
                                 ) : (
                                   <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
                                     <span className="text-xs">{awayTeam?.name?.charAt(0) || 'A'}</span>

@@ -27,6 +27,18 @@ body {
   border: 1px solid rgb(255 255 255 / 0.12);
 }
 
+/*
+ * A sticky bar has to hide whatever scrolls under it. The .glass panels used for
+ * cards are only 6% opaque, which is why page headings could be read straight
+ * through the navigation.
+ */
+.glass-header {
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  background-color: rgb(var(--bg) / 0.92);
+  border-bottom: 1px solid rgb(255 255 255 / 0.12);
+}
+
 .container-max {
   max-width: 1100px;
 }

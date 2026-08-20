@@ -223,7 +223,9 @@ export default function NewPublicTournament() {
                 <div className="relative inline-block">
                   <div className="absolute inset-0 rounded-full blur-2xl opacity-30 bg-gradient-to-r from-blue-400/20 to-purple-400/20"></div>
                   <div className="relative bg-white/10 backdrop-blur-sm rounded-full p-6 border border-white/20 shadow-xl">
-                    <img 
+                    <img
+              loading="lazy"
+              decoding="async" 
                       src={tournament.logo} 
                       alt={`${tournament.name} logo`}
                       className="w-24 h-24 object-contain"
@@ -356,7 +358,9 @@ export default function NewPublicTournament() {
                           >
                             {teamData?.logo ? (
                               <div className="relative">
-                                <img 
+                                <img
+              loading="lazy"
+              decoding="async" 
                                   src={teamData.logo} 
                                   alt={`${teamData.name} logo`}
                                   className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
@@ -496,7 +500,9 @@ export default function NewPublicTournament() {
                             <td className="py-3 px-2 sm:px-6">
                               <div className="flex items-center gap-3">
                                 {stats.team.logo ? (
-                                  <img 
+                                  <img
+              loading="lazy"
+              decoding="async" 
                                     src={stats.team.logo} 
                                     alt={`${stats.team.name} logo`}
                                     className="w-10 h-10 rounded-full object-cover border border-white/20"
@@ -631,7 +637,9 @@ export default function NewPublicTournament() {
                             <td className="py-2 px-1 sm:px-6">
                               <div className="flex items-center gap-1 sm:gap-3">
                                 {stats.player.photo ? (
-                                  <img 
+                                  <img
+              loading="lazy"
+              decoding="async" 
                                     src={stats.player.photo} 
                                     alt={`${stats.player.firstName} ${stats.player.lastName}`}
                                     className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover border border-white/20"
@@ -656,7 +664,9 @@ export default function NewPublicTournament() {
                             <td className="py-2 px-1 sm:px-6">
                               <div className="flex items-center gap-1 sm:gap-2">
                                 {stats.team.logo ? (
-                                  <img 
+                                  <img
+              loading="lazy"
+              decoding="async" 
                                     src={stats.team.logo} 
                                     alt={`${stats.team.name} logo`}
                                     className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover"
@@ -756,7 +766,9 @@ export default function NewPublicTournament() {
                               <div className="flex items-center gap-2 sm:gap-4 flex-1">
                                 {homeTeam?.logo ? (
                                   <div className="relative">
-                                    <img 
+                                    <img
+              loading="lazy"
+              decoding="async" 
                                       src={homeTeam.logo} 
                                       alt={`${homeTeam.name} logo`}
                                       className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
@@ -824,7 +836,9 @@ export default function NewPublicTournament() {
                                 </div>
                                 {awayTeam?.logo ? (
                                   <div className="relative">
-                                    <img 
+                                    <img
+              loading="lazy"
+              decoding="async" 
                                       src={awayTeam.logo} 
                                       alt={`${awayTeam.name} logo`}
                                       className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
@@ -891,7 +905,9 @@ export default function NewPublicTournament() {
                               {/* Home Team */}
                               <div className="flex items-center gap-2 sm:gap-4 flex-1">
                                 {homeTeam?.logo ? (
-                                  <img 
+                                  <img
+              loading="lazy"
+              decoding="async" 
                                     src={homeTeam.logo} 
                                     alt={`${homeTeam.name} logo`}
                                     className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20"
@@ -954,7 +970,9 @@ export default function NewPublicTournament() {
                                   </span>
                                 </div>
                                 {awayTeam?.logo ? (
-                                  <img 
+                                  <img
+              loading="lazy"
+              decoding="async" 
                                     src={awayTeam.logo} 
                                     alt={`${awayTeam.name} logo`}
                                     className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20"

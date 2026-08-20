@@ -296,7 +296,9 @@ export default function OrganizersPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       {organizer.logo ? (
-                        <img 
+                        <img
+              loading="lazy"
+              decoding="async" 
                           src={organizer.logo} 
                           alt={`${organizer.name} logo`}
                           className="w-12 h-12 rounded-full object-cover border border-white/20"

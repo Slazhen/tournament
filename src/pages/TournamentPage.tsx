@@ -1042,7 +1042,9 @@ export default function TournamentPage() {
                                   if (team?.logo) {
                                     return (
                                       <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                                        <img src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
+                                        <img
+              loading="lazy"
+              decoding="async" src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
                                       </div>
                                     )
                                   } else {
@@ -1138,7 +1140,9 @@ export default function TournamentPage() {
                         }}
                       >
                         {team?.logo ? (
-                          <img src={team.logo} alt={team.name} className="w-5 h-5 rounded-full object-cover" />
+                          <img
+              loading="lazy"
+              decoding="async" src={team.logo} alt={team.name} className="w-5 h-5 rounded-full object-cover" />
                         ) : (
                           <span className="w-5 h-5 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
                         )}
@@ -1187,7 +1191,9 @@ export default function TournamentPage() {
                           }}
                         >
                           {team?.logo ? (
-                            <img src={team.logo} alt={team.name} className="w-6 h-6 rounded-full object-cover" />
+                            <img
+              loading="lazy"
+              decoding="async" src={team.logo} alt={team.name} className="w-6 h-6 rounded-full object-cover" />
                           ) : (
                             <span className="w-6 h-6 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
                           )}
@@ -1306,7 +1312,9 @@ export default function TournamentPage() {
                               if (team?.logo) {
                                 return (
                                   <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                                    <img src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
+                                    <img
+              loading="lazy"
+              decoding="async" src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
                                   </div>
                                 )
                               } else {
@@ -1400,7 +1408,9 @@ export default function TournamentPage() {
                                      } else if (homeTeam?.logo) {
                                        return (
                                          <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                                           <img src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
+                                           <img
+              loading="lazy"
+              decoding="async" src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
                                          </div>
                                        )
                                      } else if (homeTeam) {
@@ -1431,7 +1441,9 @@ export default function TournamentPage() {
                                      } else if (awayTeam?.logo) {
                                        return (
                                          <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                                           <img src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
+                                           <img
+              loading="lazy"
+              decoding="async" src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
                                          </div>
                                        )
                                      } else if (awayTeam) {

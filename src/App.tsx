@@ -2,6 +2,8 @@ import { Link, Outlet } from 'react-router-dom'
 import { useAppStore } from './store'
 import { useEffect } from 'react'
 import AdminNavigation from './components/AdminNavigation'
+import { useAuth } from './contexts/AuthContext'
+import { isSignedIn } from './lib/api'
 
 function App() {
   const settings = useAppStore((s) => s.settings)
@@ -26,23 +28,20 @@ function App() {
   }
 
 
-  const currentOrganizerId = useAppStore((s) => s.currentOrganizerId)
-  console.log('App: currentOrganizerId:', currentOrganizerId)
-  console.log('App: currentOrganizer:', currentOrganizer?.name || 'none')
-  
+  const { user, isLoading } = useAuth()
+
+  // While the session is being verified we already know a token is stored, so
+  // show the admin bar straight away. Deciding purely on loaded data made the
+  // header flip from the public version to the admin one on every page load.
+  const showAdminNavigation = Boolean(user) || Boolean(currentOrganizer) || (isLoading && isSignedIn())
+
   return (
     <div className="min-h-full">
-      {/* Show Admin Navigation when organizer is logged in */}
-      {currentOrganizer ? (
-        <>
-          {console.log('App: Rendering AdminNavigation')}
-          <AdminNavigation />
-        </>
+      {showAdminNavigation ? (
+        <AdminNavigation />
       ) : (
-        /* Show regular header when no organizer is logged in */
         <>
-          {console.log('App: Rendering regular header')}
-          <header className="sticky top-0 z-10 glass">
+          <header className="sticky top-0 z-50 glass-header">
             <div className="mx-auto container-max px-6 py-6 flex items-center justify-between">
               <div className="font-semibold tracking-wide text-lg">MFTournament</div>
               
@@ -69,7 +68,7 @@ function App() {
       </main>
       
       <footer className="mx-auto container-max px-4 py-8 text-xs opacity-70">
-        Local-first. Export to GitHub Pages when ready.
+        MFTournament — tournament management for local football and futsal.
       </footer>
     </div>
   )

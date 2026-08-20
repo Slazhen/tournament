@@ -10,6 +10,9 @@ import type { RequestContext } from '../context.js'
 
 const s3 = new S3Client({})
 
+/** Uploaded images are immutable: their key carries a random id. */
+const IMAGE_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+
 const ALLOWED_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const EXTENSION_BY_TYPE: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -69,10 +72,17 @@ export function registerUploadRoutes(router: Router<RequestContext>): void {
       Bucket: S3_BUCKET,
       Key: key,
       Expires: 300,
-      Fields: { 'Content-Type': contentType },
+      Fields: {
+        'Content-Type': contentType,
+        // The key contains a random id, so an image at a given URL never changes.
+        // A year of browser caching is safe and stops every page view from
+        // re-downloading logos that were already fetched.
+        'Cache-Control': IMAGE_CACHE_CONTROL,
+      },
       Conditions: [
         ['content-length-range', 1, MAX_UPLOAD_BYTES],
         ['eq', '$Content-Type', contentType],
+        ['eq', '$Cache-Control', IMAGE_CACHE_CONTROL],
       ],
     })
 

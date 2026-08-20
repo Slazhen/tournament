@@ -106,6 +106,8 @@ export default function PublicTeamPage() {
             <div className="w-32 h-32 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl">
               {team.logo ? (
                 <img
+              loading="lazy"
+              decoding="async"
                   src={team.logo}
                   alt={`${team.name} logo`}
                   className="w-full h-full object-cover rounded-xl"
@@ -155,6 +157,8 @@ export default function PublicTeamPage() {
             >
               {team.photo ? (
                 <img
+              loading="lazy"
+              decoding="async"
                   src={team.photo}
                   alt={`${team.name} photo`}
                   className="w-full h-full object-cover rounded-xl"
@@ -220,6 +224,8 @@ export default function PublicTeamPage() {
                         <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
                           {player.photo ? (
                             <img
+              loading="lazy"
+              decoding="async"
                               src={player.photo}
                                                              alt={`${player.firstName} ${player.lastName} photo`}
                               className="w-full h-full object-cover rounded-full"
@@ -437,7 +443,9 @@ export default function PublicTeamPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                           {tournament.logo ? (
-                            <img 
+                            <img
+              loading="lazy"
+              decoding="async" 
                               src={tournament.logo} 
                               alt={`${tournament.name} logo`} 
                               className="w-full h-full object-cover" 
@@ -538,6 +546,8 @@ export default function PublicTeamPage() {
         >
           <div className="relative max-w-4xl max-h-[90vh]">
             <img
+              loading="lazy"
+              decoding="async"
               src={team.photo}
               alt={`${team.name} photo`}
               className="w-full h-auto max-h-[90vh] object-contain rounded-lg"

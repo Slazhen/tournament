@@ -115,18 +115,20 @@ export default function LogoUploader({ onLogoUpload, currentLogo, size = 80, com
         onClick={handleClick}
       >
         {displayLogo ? (
-          <img 
+          <img
+              loading="lazy"
+              decoding="async" 
             src={displayLogo} 
             alt="Logo" 
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-2xl mb-2">📷</div>
-              <div className="text-xs opacity-70">
-                Click or drag to upload
-              </div>
+          // The circle is small, so the label has to fit inside it: the old
+          // two-line caption spilled over the dashed border.
+          <div className="w-full h-full flex items-center justify-center p-2">
+            <div className="text-center leading-tight">
+              <div className="text-2xl">📷</div>
+              <div className="text-[10px] opacity-70">Upload</div>
             </div>
           </div>
         )}

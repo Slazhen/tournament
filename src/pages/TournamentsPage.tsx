@@ -343,6 +343,10 @@ export default function TournamentsPage() {
           >
             Create Tournament
           </button>
+          {/* Creation defaults to private, which was not visible anywhere before. */}
+          <p className="text-xs opacity-60 text-center">
+            New tournaments start private. Publish one from the list below when the draw is ready.
+          </p>
         </form>
       </section>
       
@@ -360,7 +364,9 @@ export default function TournamentsPage() {
                   {/* Tournament Logo */}
                   <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10 flex-shrink-0">
                     {tournament.logo ? (
-                      <img 
+                      <img
+              loading="lazy"
+              decoding="async" 
                         src={tournament.logo} 
                         alt={`${tournament.name} logo`} 
                         className="w-full h-full object-cover" 
@@ -387,8 +393,9 @@ export default function TournamentsPage() {
                     </div>
                   </div>
 
-                  {/* Visibility Toggle */}
+                  {/* Current visibility — click to switch it */}
                   <div className="flex flex-col items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-wide opacity-50">Visibility</span>
                     <CompactVisibilityToggle
                       isPublic={tournament.visibility !== 'private'}
                       onToggle={async (isPublic) => {
@@ -417,7 +424,7 @@ export default function TournamentsPage() {
                       target="_blank"
                       className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
                     >
-                      🌐 Public
+                      🌐 Open public page
                     </Link>
                     <button
                       onClick={() => {
