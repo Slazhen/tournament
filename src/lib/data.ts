@@ -143,6 +143,37 @@ export const tournamentService = {
   },
 }
 
+export type TeamContext = {
+  team: Team
+  tournaments: Tournament[]
+  teams: Team[]
+}
+
+export type PlayerContext = TeamContext & { player: Player }
+
+/**
+ * The public team and player pages used to load every team and every tournament
+ * in the system and filter in the browser — roughly 95 KB of JSON to render one
+ * page. These two calls return only what the page shows.
+ */
+export const publicPages = {
+  async teamContext(teamId: string): Promise<TeamContext | null> {
+    try {
+      return await api.get<TeamContext>(`/public/teams/${encodeURIComponent(teamId)}/context`)
+    } catch {
+      return null
+    }
+  },
+
+  async playerContext(playerId: string): Promise<PlayerContext | null> {
+    try {
+      return await api.get<PlayerContext>(`/public/players/${encodeURIComponent(playerId)}`)
+    } catch {
+      return null
+    }
+  },
+}
+
 /**
  * Players are stored inside their team, but they are edited one at a time.
  *

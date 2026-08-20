@@ -1,36 +1,35 @@
 import { useParams, Link } from 'react-router-dom'
-import { useAppStore } from '../store'
+import { publicPages } from '../lib/data'
+import type { PlayerContext } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import { useEffect, useState } from 'react'
 
 export default function PublicPlayerPage() {
   const { playerId } = useParams()
-  const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
+  // The server finds the player and returns their team and its tournaments.
+  const [context, setContext] = useState<PlayerContext | null>(null)
 
-  // Load data from AWS when component mounts
   useEffect(() => {
+    let cancelled = false
+
     const loadData = async () => {
-      try {
-        // Check if data is already available in store before loading
-        const existingTournaments = getAllTournaments()
-        const existingTeams = getAllTeams()
-        
-        // Only load if we don't have data
-        if (existingTournaments.length === 0 || existingTeams.length === 0) {
-          await Promise.all([loadTournaments(), loadTeams()])
-        }
-        setDataLoaded(true)
-      } catch (error) {
-        console.error('Error loading data for public player page:', error)
-      } finally {
-        setIsLoading(false)
-      }
+      setIsLoading(true)
+      setDataLoaded(false)
+      const loaded = playerId ? await publicPages.playerContext(playerId) : null
+      if (cancelled) return
+      setContext(loaded)
+      setDataLoaded(true)
+      setIsLoading(false)
     }
-    loadData()
-  }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams])
+
+    void loadData()
+    return () => {
+      cancelled = true
+    }
+  }, [playerId])
 
   if (isLoading || !dataLoaded) {
     return (
@@ -43,24 +42,9 @@ export default function PublicPlayerPage() {
     )
   }
 
-  // Only access data after it's loaded
-  const teams = getAllTeams() || []
-  const tournaments = getAllTournaments() || []
-  
-  // Find the player across all teams
-  let player: any = null
-  let currentTeam: any = null
-  
-  for (const team of teams) {
-    if (team && team.players && Array.isArray(team.players)) {
-      const foundPlayer = team.players.find(p => p && p.id === playerId)
-      if (foundPlayer && foundPlayer.isPublic) {
-        player = foundPlayer
-        currentTeam = team
-        break
-      }
-    }
-  }
+  const tournaments = context?.tournaments || []
+  const player: any = context?.player ?? null
+  const currentTeam: any = context?.team ?? null
   
   // Show player not found if it doesn't exist or is not public
   if (!player || !currentTeam) {

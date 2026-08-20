@@ -98,6 +98,44 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
   })
 
   /**
+   * Everything a public team page needs: the team, the public tournaments it
+   * plays in, and the teams referenced by those tournaments so opponents can be
+   * named. One request instead of downloading every team and every tournament in
+   * the system and filtering in the browser.
+   */
+  router.get('/public/teams/:id/context', async (_ctx, params) => {
+    const team = await teams.get(params.id!)
+    if (!team) throw notFound('Team not found')
+    return buildTeamContext(team)
+  })
+
+  /**
+   * A player, the team they belong to, and that team's tournaments.
+   *
+   * Finding a player means looking through the teams, which is exactly the kind
+   * of work that belongs on the server: the page used to pull every team into
+   * the browser to run the same search.
+   */
+  router.get('/public/players/:id', async (_ctx, params) => {
+    const allTeams = await teams.listAll()
+
+    for (const team of allTeams) {
+      const players = Array.isArray(team.players)
+        ? (team.players as { id?: string; isPublic?: boolean }[])
+        : []
+      // A player marked not public is not served here at all.
+      const player = players.find(
+        (candidate) => candidate?.id === params.id && candidate.isPublic !== false,
+      )
+      if (player) {
+        return { player, ...(await buildTeamContext(team)) }
+      }
+    }
+
+    throw notFound('Player not found')
+  })
+
+  /**
    * Fetches a specific set of teams by id — used by pages that already know
    * which teams they need. POST rather than GET so a long list of ids does not
    * have to fit in a URL.
@@ -110,4 +148,29 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
     if (ids.length > 500) throw badRequest('Too many teamIds in one request')
     return teams.getMany(ids as string[])
   })
+}
+
+/** The team, its public tournaments, and every team those tournaments mention. */
+async function buildTeamContext(team: Awaited<ReturnType<typeof teams.get>> & object) {
+  const all = await tournaments.listAll()
+  const played = all
+    .filter(isPublic)
+    .filter((tournament) =>
+      Array.isArray(tournament.teamIds) && tournament.teamIds.includes(team.id as string),
+    )
+
+  const referenced = new Set<string>()
+  for (const tournament of played) {
+    for (const id of tournament.teamIds ?? []) referenced.add(id)
+    for (const match of (tournament.matches ?? []) as { homeTeamId?: string; awayTeamId?: string }[]) {
+      if (match?.homeTeamId) referenced.add(match.homeTeamId)
+      if (match?.awayTeamId) referenced.add(match.awayTeamId)
+    }
+  }
+
+  return {
+    team,
+    tournaments: played,
+    teams: await teams.getMany([...referenced]),
+  }
 }

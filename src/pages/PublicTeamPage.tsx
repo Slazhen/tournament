@@ -1,37 +1,36 @@
 import { useParams, Link } from 'react-router-dom'
-import { useAppStore } from '../store'
+import { publicPages } from '../lib/data'
+import type { TeamContext } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import { useState, useEffect } from 'react'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
-  const { getAllTournaments, getAllTeams, loadTournaments, loadTeams } = useAppStore()
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
+  // Exactly this team, its tournaments and the teams it has played — nothing else.
+  const [context, setContext] = useState<TeamContext | null>(null)
 
-  // Load data from AWS when component mounts
   useEffect(() => {
+    let cancelled = false
+
     const loadData = async () => {
-      try {
-        // Check if data is already available in store before loading
-        const existingTournaments = getAllTournaments()
-        const existingTeams = getAllTeams()
-        
-        // Only load if we don't have data
-        if (existingTournaments.length === 0 || existingTeams.length === 0) {
-          await Promise.all([loadTournaments(), loadTeams()])
-        }
-        setDataLoaded(true)
-      } catch (error) {
-        console.error('Error loading data for public team page:', error)
-      } finally {
-        setIsLoading(false)
-      }
+      setIsLoading(true)
+      setDataLoaded(false)
+      const loaded = teamId ? await publicPages.teamContext(teamId) : null
+      if (cancelled) return
+      setContext(loaded)
+      setDataLoaded(true)
+      setIsLoading(false)
     }
-    loadData()
-  }, [loadTournaments, loadTeams, getAllTournaments, getAllTeams])
+
+    void loadData()
+    return () => {
+      cancelled = true
+    }
+  }, [teamId])
 
   if (isLoading || !dataLoaded) {
     return (
@@ -44,12 +43,9 @@ export default function PublicTeamPage() {
     )
   }
 
-  // Only access data after it's loaded
-  const teams = getAllTeams() || []
-  const tournaments = getAllTournaments() || []
-  
-  // Find the specific team by ID
-  const team = teams.find(t => t.id === teamId)
+  const teams = context?.teams || []
+  const tournaments = context?.tournaments || []
+  const team = context?.team
   
   // Show team not found if it doesn't exist
   if (!team) {

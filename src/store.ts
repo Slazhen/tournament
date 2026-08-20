@@ -3,6 +3,9 @@ import type { Team, Tournament, Match, Organizer, Player, AppSettings } from './
 import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule, generateGroupsWithDivisionsSchedule } from './utils/tournament'
 import { organizerService, teamService, tournamentService, matchService, playerService, uploadImage } from './lib/data'
 
+/** Routes that render an organizer's own teams and tournaments. */
+const ADMIN_ROUTES = /^\/(admin|teams|tournaments|players|calendar)(\/|$)/
+
 type AppStore = {
   // Organizers
   organizers: Organizer[]
@@ -124,9 +127,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       if (organizerId) {
         localStorage.setItem('currentOrganizerId', organizerId)
-        // Load data for the selected organizer
-        get().loadTeams()
-        get().loadTournaments()
+        // Preload the organizer's data only on the screens that show it. Doing it
+        // on every route meant a signed-in user opening a public tournament page
+        // also pulled their whole team and tournament list in the background.
+        if (ADMIN_ROUTES.test(window.location.pathname)) {
+          get().loadTeams()
+          get().loadTournaments()
+        }
       } else {
         localStorage.removeItem('currentOrganizerId')
       }
