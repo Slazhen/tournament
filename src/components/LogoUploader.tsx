@@ -113,8 +113,17 @@ export default function LogoUploader({
   return (
     <div className="space-y-3">
       <div
+        role="button"
+        tabIndex={0}
+        title={displayLogo ? 'Click to replace the logo' : 'Click to upload a logo'}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            handleClick()
+          }
+        }}
         className={`
-          relative rounded-full overflow-hidden cursor-pointer transition-all
+          group relative rounded-full overflow-hidden cursor-pointer transition-all
           ${isDragging 
             ? 'border-blue-400 bg-blue-50/20' 
             : 'border-white/30 hover:border-white/50'
@@ -129,20 +138,26 @@ export default function LogoUploader({
         onClick={handleClick}
       >
         {displayLogo ? (
-          <img
+          <>
+            <img
               loading="lazy"
-              decoding="async" 
-            src={displayLogo} 
-            alt="Logo" 
-            className="w-full h-full object-cover"
-          />
+              decoding="async"
+              src={displayLogo}
+              alt="Logo"
+              className="w-full h-full object-cover"
+            />
+            {/* Nothing said the logo could be replaced by clicking it. */}
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs font-medium">
+              Change
+            </div>
+          </>
         ) : (
           // The circle is small, so the label has to fit inside it: the old
           // two-line caption spilled over the dashed border.
-          <div className="w-full h-full flex items-center justify-center p-2">
+          <div className="w-full h-full flex items-center justify-center p-2 group-hover:bg-white/5 transition-colors">
             <div className="text-center leading-tight">
-              <div className="text-2xl">📷</div>
-              <div className="text-[10px] opacity-70">Upload</div>
+              <div className="text-xl opacity-70">+</div>
+              <div className="text-[10px] opacity-60">Logo</div>
             </div>
           </div>
         )}

@@ -58,6 +58,7 @@ export default function TournamentPage() {
   
   // State for editing groups
   const [showEditGroups, setShowEditGroups] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [editingGroups, setEditingGroups] = useState<string[][]>([])
   
   // All useMemo hooks must be called before any early returns
@@ -819,58 +820,151 @@ export default function TournamentPage() {
 
   return (
     <div className="grid gap-6 place-items-center">
-                   <section className="glass rounded-xl p-6 w-full max-w-6xl text-center">
-               <div className="flex items-center justify-center gap-4 mb-4">
-                 <div className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                   <LogoUploader 
-                     onLogoUpload={(file) => uploadTournamentLogo(tournament.id, file)}
-                     currentLogo={tournament.logo}
-                     size={80}
-                   />
-                 </div>
-                 <div>
-        <h1 className="text-xl font-semibold">{tournament.name}</h1>
-        <div className="text-sm opacity-70">{tournament.teamIds.length} teams • {tournament.matches.length} matches</div>
-        <Link
-          to={`/tournaments/${tournament.id}/settings`}
-          className="inline-block mt-1 text-xs opacity-70 hover:opacity-100 transition-opacity"
-        >
-          ⚙️ Settings — name, teams, visibility
-        </Link>
-                 </div>
-               </div>
+      {/*
+        The tournament's header.
 
-               {/* Tournament Visibility */}
-               <div className="mt-6 flex justify-center">
-                 <div className="text-center">
-                   <label className="block text-sm font-medium mb-3">Tournament Visibility</label>
-                   <VisibilityToggle
-                     isPublic={tournament.visibility !== 'private'}
-                     onToggle={async (isPublic) => {
-                       try {
-                         await updateTournament(tournament.id, { 
-                           visibility: isPublic ? 'public' : 'private' 
-                         })
-                       } catch (error) {
-                         console.error('Failed to update tournament visibility:', error)
-                         alert('Failed to update tournament visibility. Please try again.')
-                       }
-                     }}
-                     size="medium"
-                   />
-                 </div>
-               </div>
-               
-               {/* Repair tools. These rewrite fixtures in place and exist for
-                  data that predates a schema change — they are not part of
-                  running a tournament, so they stay folded away. Deleting moved
-                  to the settings screen, where it asks for the name first. */}
+        It used to be a stack of centred blocks — a label above a centred input
+        above another centred label — with four bordered text fields for the
+        venue and the social links, each 200px wide and none of them lining up
+        with anything. Everything here is now left-aligned on one baseline, and
+        the fields themselves moved to the settings screen: a header is for
+        reading, and a link is not something you edit twice a season.
+      */}
+      <section className="glass rounded-xl p-5 w-full max-w-6xl">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+          {/* The logo is the one thing worth editing in place, so it is a plain
+              click target with a label rather than a circle inside a circle. */}
+          <div className="shrink-0">
+            <LogoUploader
+              onLogoUpload={(file) => uploadTournamentLogo(tournament.id, file)}
+              currentLogo={tournament.logo}
+              size={96}
+              compressionType="tournament"
+            />
+            <p className="mt-1.5 text-[11px] opacity-50 text-center w-24">
+              {tournament.logo ? 'Click to replace' : 'Click to add a logo'}
+            </p>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold leading-tight">{tournament.name}</h1>
+
+            <p className="mt-1 text-sm opacity-70">
+              {tournament.teamIds.length} teams · {tournament.matches.length} matches
+            </p>
+
+            {/* Venue and links, shown only when they exist. */}
+            {(tournament.location?.name || tournament.location?.link ||
+              tournament.socialMedia?.facebook || tournament.socialMedia?.instagram) && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                {tournament.location?.name && (
+                  <span className="flex items-center gap-1.5 opacity-80">
+                    <LocationIcon size={14} />
+                    {tournament.location.link ? (
+                      <a
+                        href={tournament.location.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:underline"
+                      >
+                        {tournament.location.name}
+                      </a>
+                    ) : (
+                      tournament.location.name
+                    )}
+                  </span>
+                )}
+                {tournament.socialMedia?.facebook && (
+                  <a
+                    href={tournament.socialMedia.facebook}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity"
+                  >
+                    <FacebookIcon size={14} /> Facebook
+                  </a>
+                )}
+                {tournament.socialMedia?.instagram && (
+                  <a
+                    href={tournament.socialMedia.instagram}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity"
+                  >
+                    <InstagramIcon size={14} /> Instagram
+                  </a>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <VisibilityToggle
+                isPublic={tournament.visibility !== 'private'}
+                onToggle={async (isPublic) => {
+                  try {
+                    await updateTournament(tournament.id, {
+                      visibility: isPublic ? 'public' : 'private',
+                    })
+                  } catch (error) {
+                    console.error('Failed to update tournament visibility:', error)
+                    alert('Failed to update tournament visibility. Please try again.')
+                  }
+                }}
+                size="small"
+              />
+
+              <div className="flex-1" />
+
+              {/* A 300px read-only box holding a URL nobody reads, replaced by
+                  the only thing anyone did with it. */}
+              <button
+                type="button"
+                onClick={() => {
+                  const url = currentOrganizer
+                    ? `${window.location.origin}${getPublicTournamentUrl(tournament, currentOrganizer)}`
+                    : `${window.location.origin}/public/tournaments/${tournament.id}`
+                  navigator.clipboard.writeText(url)
+                  setLinkCopied(true)
+                  setTimeout(() => setLinkCopied(false), 2000)
+                }}
+                className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+              >
+                {linkCopied ? '✓ Link copied' : '🔗 Copy public link'}
+              </button>
+
+              <Link
+                to={currentOrganizer ? getPublicTournamentUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
+                target="_blank"
+                className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+              >
+                Preview
+              </Link>
+
+              <Link
+                to={`/tournaments/${tournament.id}/settings`}
+                className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+              >
+                ⚙️ Settings
+              </Link>
+            </div>
+
+            {!tournament.location?.name && !tournament.socialMedia?.facebook && (
+              <p className="mt-3 text-xs opacity-50">
+                <Link to={`/tournaments/${tournament.id}/settings`} className="hover:opacity-100 underline">
+                  Add a venue and social links
+                </Link>{' '}
+                — they show on the public page.
+              </p>
+            )}
+          </div>
+        </div>
+
               {tournament.format?.mode === 'groups_with_divisions' && (
-                <details className="mt-4 mx-auto max-w-xl">
-                  <summary className="cursor-pointer text-sm opacity-60 hover:opacity-100 transition-opacity text-center">
+                <details className="mt-5 pt-4 border-t border-white/10">
+                  <summary className="cursor-pointer text-xs opacity-50 hover:opacity-100 transition-opacity">
                     Repair tools
                   </summary>
-                  <div className="flex justify-center gap-3 mt-3 flex-wrap">
+                  <div className="flex gap-2 mt-3 flex-wrap">
                     <button
                       onClick={() => {
                         if (confirm('Fix group indexes? This will update all matches with correct groupIndex values so tables show results correctly.')) {
@@ -878,7 +972,6 @@ export default function TournamentPage() {
                         }
                       }}
                       className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-xs opacity-80"
-                      title="Fix group indexes for all matches"
                     >
                       Fix group indexes
                     </button>
@@ -889,7 +982,6 @@ export default function TournamentPage() {
                         }
                       }}
                       className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-xs opacity-80"
-                      title="Fix group rounds (6 rounds → 3 rounds)"
                     >
                       Fix group rounds
                     </button>
@@ -900,106 +992,13 @@ export default function TournamentPage() {
                         }
                       }}
                       className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-xs opacity-80"
-                      title="Regenerate playoff matches with all rounds"
                     >
                       Regenerate playoffs
                     </button>
                   </div>
                 </details>
               )}
-              
-              {/* Public Link */}
-               <div className="mt-4 flex justify-center">
-                 <div className="text-center">
-                   <label className="block text-sm font-medium mb-2">Public Link</label>
-                   <div className="flex items-center gap-2">
-                     <input
-                       type="text"
-                       readOnly
-                       value={`${window.location.origin}/public/tournaments/${tournament.id}`}
-                       className="px-3 py-2 rounded-md bg-transparent border border-white/20 text-center min-w-[300px] text-sm"
-                     />
-                     <button
-                       onClick={() => navigator.clipboard.writeText(`${window.location.origin}/public/tournaments/${tournament.id}`)}
-                       className="px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
-                       title="Copy to clipboard"
-                     >
-                       📋 Copy
-                     </button>
-                   </div>
-                 </div>
-               </div>
-               
-               
-        
-                                      {/* Tournament Info Editing */}
-               <div className="flex items-center justify-center gap-4 text-sm mb-3">
-                 <div className="flex items-center gap-2">
-                   <LocationIcon size={16} />
-                   <InlineInput
-                     type="text"
-                     placeholder="Tournament location name..."
-                     value={tournament.location?.name || ''}
-                                          onCommit={(value) => updateTournament(tournament.id, { 
-                       location: { 
-                         ...tournament.location, 
-                         name: value || undefined 
-                       }
-                     })}
-                     className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
-                   />
-                 </div>
-                 <div className="flex items-center gap-2">
-                   <span>🔗</span>
-                   <InlineInput
-                     type="url"
-                     placeholder="Location link..."
-                     value={tournament.location?.link || ''}
-                                          onCommit={(value) => updateTournament(tournament.id, { 
-                       location: { 
-                         ...tournament.location, 
-                         link: value || undefined 
-                       }
-                     })}
-                     className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
-                   />
-                 </div>
-               </div>
-        
-                       <div className="flex items-center justify-center gap-4 text-sm mb-3">
-                 <div className="flex items-center gap-2">
-                   <FacebookIcon size={16} />
-                   <InlineInput
-                     type="url"
-                     placeholder="Facebook page..."
-                     value={tournament.socialMedia?.facebook || ''}
-                                          onCommit={(value) => updateTournament(tournament.id, { 
-                       socialMedia: { 
-                         ...tournament.socialMedia, 
-                         facebook: value || undefined 
-                       }
-                     })}
-                     className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
-                   />
-                 </div>
-                 <div className="flex items-center gap-2">
-                   <InstagramIcon size={16} />
-                   <InlineInput
-                     type="url"
-                     placeholder="Instagram profile..."
-                     value={tournament.socialMedia?.instagram || ''}
-                                          onCommit={(value) => updateTournament(tournament.id, { 
-                       socialMedia: { 
-                         ...tournament.socialMedia, 
-                         instagram: value || undefined 
-                       }
-                     })}
-                     className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-center min-w-[200px]"
-                   />
-                 </div>
-               </div>
       </section>
-
 
       {/* Championship Table or Group Tables */}
       {tournament.format?.mode === 'groups_with_divisions' && (tournament.format?.groupsWithDivisionsConfig?.groups || tournament.format?.groupsWithDivisionsConfig) ? (
