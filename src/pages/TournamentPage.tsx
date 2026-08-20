@@ -1504,7 +1504,7 @@ export default function TournamentPage() {
                         className="px-3 py-1 rounded-md glass text-sm hover:bg-white/10 transition-all text-center block"
                         title="View match statistics"
                       >
-                        📊 Stats
+                        📊 Match details
                       </Link>
                             </div>
                           </div>
@@ -1541,7 +1541,7 @@ export default function TournamentPage() {
               {r.matchIds.map((mid) => {
                 const m = tournament.matches.find((x) => x.id === mid)!
                 return (
-                  <div key={mid} className="grid md:grid-cols-6 gap-3 items-center p-3 glass rounded-lg">
+                  <div key={mid} className="grid gap-3 items-end p-3 glass rounded-lg md:grid-cols-[minmax(7rem,1fr)_auto_minmax(7rem,1fr)_auto_auto_auto]">
                     {/* Home Team Selection */}
                     <div className="flex flex-col gap-1">
                       <label className="text-xs opacity-70">Home Team</label>
@@ -1559,7 +1559,7 @@ export default function TournamentPage() {
                           }
                           setPlayoffTeams(mid, newHomeTeamId, newAwayTeamId)
                         }}
-                        className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                        className="w-full min-w-0 px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
                       >
                         <option value="">Select Team</option>
                         {tournamentTeams.map(team => (
@@ -1581,7 +1581,7 @@ export default function TournamentPage() {
                       <select
                         value={m.awayTeamId || ''}
                         onChange={(e) => setPlayoffTeams(mid, m.homeTeamId || '', e.target.value)}
-                        className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                        className="w-full min-w-0 px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
                       >
                         <option value="">Select Team</option>
                         {getAvailableOpponents(m.homeTeamId, m).map(team => (
@@ -1617,24 +1617,21 @@ export default function TournamentPage() {
                     {/* Date & Time */}
                     <div className="flex flex-col gap-1">
                       <label className="text-xs opacity-70">Date & Time</label>
-                      <div className="flex gap-2">
-                        <MatchDateTime
-                          value={m.dateISO}
-                          onChange={(iso) => setDate(mid, iso ?? '')}
-                          size="sm"
-                        />
-                      </div>
+                      <MatchDateTime
+                        value={m.dateISO}
+                        onChange={(iso) => setDate(mid, iso ?? '')}
+                        size="sm"
+                      />
                     </div>
 
                     {/* Actions */}
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs opacity-70">Actions</label>
                       <Link 
                         to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${mid}` : `/tournaments/${tournament.id}/matches/${mid}`}
                         className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
                         title="View match statistics"
                       >
-                        📊 Stats
+                        📊 Match details
                       </Link>
                     </div>
                   </div>
@@ -2074,7 +2071,7 @@ export default function TournamentPage() {
                                     disabled={!match.homeTeamId || !match.awayTeamId}
                                     title={!match.homeTeamId || !match.awayTeamId ? 'Select teams first' : 'View match stats'}
                                   >
-                                    📊 Stats
+                                    📊 Match details
                                   </button>
                                 </div>
                               </div>
@@ -2146,7 +2143,7 @@ export default function TournamentPage() {
                                 <div className="font-bold text-lg mb-4 text-center text-green-400">Division 1 - {roundName}</div>
                                 <div className="grid gap-3">
                                   {roundMatches.map((m) => (
-                                    <div key={m.id} className="grid md:grid-cols-6 gap-3 items-center p-3 glass rounded-lg">
+                                    <div key={m.id} className="grid gap-3 items-end p-3 glass rounded-lg md:grid-cols-[minmax(7rem,1fr)_auto_minmax(7rem,1fr)_auto_auto_auto]">
                                       <div className="flex flex-col gap-1">
                                         <label className="text-xs opacity-70">Home Team</label>
                                         <select
@@ -2207,13 +2204,12 @@ export default function TournamentPage() {
                                         </div>
                                       </div>
                                       <div className="flex flex-col gap-1">
-                                        <label className="text-xs opacity-70">Actions</label>
-                                        <Link 
+                                                          <Link 
                                           to={`/tournaments/${tournament.id}/matches/${m.id}`}
                                           className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
                                           title="View match statistics"
                                         >
-                                          📊 Stats
+                                          📊 Match details
                                         </Link>
                                       </div>
                                     </div>
@@ -2240,7 +2236,7 @@ export default function TournamentPage() {
                                 <div className="font-bold text-lg mb-4 text-center text-blue-400">Division 2 - {roundName}</div>
                                 <div className="grid gap-3">
                                   {roundMatches.map((m) => (
-                                    <div key={m.id} className="grid md:grid-cols-6 gap-3 items-center p-3 glass rounded-lg">
+                                    <div key={m.id} className="grid gap-3 items-end p-3 glass rounded-lg md:grid-cols-[minmax(7rem,1fr)_auto_minmax(7rem,1fr)_auto_auto_auto]">
                                       <div className="flex flex-col gap-1">
                                         <label className="text-xs opacity-70">Home Team</label>
                                         <select
@@ -2301,13 +2297,12 @@ export default function TournamentPage() {
                                         </div>
                                       </div>
                                       <div className="flex flex-col gap-1">
-                                        <label className="text-xs opacity-70">Actions</label>
-                                        <Link 
+                                                          <Link 
                                           to={`/tournaments/${tournament.id}/matches/${m.id}`}
                                           className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
                                           title="View match statistics"
                                         >
-                                          📊 Stats
+                                          📊 Match details
                                         </Link>
                                       </div>
                                     </div>
@@ -2336,7 +2331,7 @@ export default function TournamentPage() {
                   <div className="font-bold text-lg mb-4 text-center text-blue-400">{roundName}</div>
                   <div className="grid gap-3">
                     {roundMatches.map((m) => (
-                      <div key={m.id} className="grid md:grid-cols-6 gap-3 items-center p-3 glass rounded-lg">
+                      <div key={m.id} className="grid gap-3 items-end p-3 glass rounded-lg md:grid-cols-[minmax(7rem,1fr)_auto_minmax(7rem,1fr)_auto_auto_auto]">
                         {/* Home Team Selection */}
                         <div className="flex flex-col gap-1">
                           <label className="text-xs opacity-70">Home Team</label>
@@ -2412,13 +2407,12 @@ export default function TournamentPage() {
 
                         {/* Actions */}
                         <div className="flex flex-col gap-1">
-                          <label className="text-xs opacity-70">Actions</label>
-                          <Link 
+                              <Link 
                             to={`/tournaments/${tournament.id}/matches/${m.id}`}
                             className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
                             title="View match statistics"
                           >
-                            📊 Stats
+                            📊 Match details
                           </Link>
                         </div>
                       </div>
