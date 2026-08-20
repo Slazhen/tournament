@@ -12,6 +12,20 @@
   --glass: 0 0 0;
 }
 
+/*
+ * Tells the browser to draw native controls — the date picker's calendar glyph,
+ * the time picker's spinners, scrollbars — in dark colours. Without it Chrome
+ * paints a black calendar icon on a black field, which is why the date controls
+ * looked broken.
+ */
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme="bright"] {
+  color-scheme: light;
+}
+
 body {
   margin: 0;
   background: radial-gradient(1200px 600px at 10% -10%, rgb(56 189 248 / 0.15), transparent 60%),

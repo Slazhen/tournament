@@ -14,6 +14,7 @@ import LogoUploader from '../components/LogoUploader'
 import VisibilityToggle from '../components/VisibilityToggle'
 import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
+import MatchDateTime from '../components/MatchDateTime'
 import InlineInput from '../components/InlineInput'
 
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
@@ -1465,29 +1466,16 @@ export default function TournamentPage() {
                                    )}
                                  </div>
                             <div className="flex gap-2 items-center">
-                              <input inputMode="numeric" pattern="[0-9]*" className="w-14 px-2 py-1 rounded-md bg-transparent border border-white/20" value={match.homeGoals ?? ''} onChange={(e) => setScore(match.id, e.target.value === '' ? NaN : Number(e.target.value), match.awayGoals ?? NaN)} />
+                              <InlineInput inputMode="numeric" pattern="[0-9]*" className="w-14 px-2 py-1 rounded-md bg-transparent border border-white/20" value={match.homeGoals ?? ''} onCommit={(value) => setScore(match.id, value === '' ? NaN : Number(value), match.awayGoals ?? NaN)} />
                               <span>:</span>
-                              <input inputMode="numeric" pattern="[0-9]*" className="w-14 px-2 py-1 rounded-md bg-transparent border border-white/20" value={match.awayGoals ?? ''} onChange={(e) => setScore(match.id, match.homeGoals ?? NaN, e.target.value === '' ? NaN : Number(e.target.value))} />
+                              <InlineInput inputMode="numeric" pattern="[0-9]*" className="w-14 px-2 py-1 rounded-md bg-transparent border border-white/20" value={match.awayGoals ?? ''} onCommit={(value) => setScore(match.id, match.homeGoals ?? NaN, value === '' ? NaN : Number(value))} />
                             </div>
                             <div className="flex gap-2">
-                              <CustomDatePicker
-                                value={match.dateISO ? match.dateISO.split('T')[0] : ''}
-                                onChange={(date) => {
-                                  const currentTime = match.dateISO ? new Date(match.dateISO).toTimeString().slice(0, 5) : '12:00'
-                                  setDate(match.id, new Date(`${date}T${currentTime}`).toISOString())
-                                }}
-                                className="flex-1"
-                                placeholder="Select Date"
-                              />
-                              <CustomTimePicker
-                                value={match.dateISO ? new Date(match.dateISO).toTimeString().slice(0, 5) : '12:00'}
-                                onChange={(time) => {
-                                  const currentDate = match.dateISO ? match.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
-                                  setDate(match.id, new Date(`${currentDate}T${time}`).toISOString())
-                                }}
-                                className="w-32"
-                                placeholder="Time"
-                              />
+                              <MatchDateTime
+                          value={match.dateISO}
+                          onChange={(iso) => setDate(match.id, iso ?? '')}
+                          size="md"
+                        />
                             </div>
                             <div>
                       <Link 
@@ -1574,20 +1562,20 @@ export default function TournamentPage() {
                     <div className="flex flex-col gap-1">
                       <label className="text-xs opacity-70">Score</label>
                       <div className="flex gap-1 items-center">
-                        <input 
+                        <InlineInput 
                           inputMode="numeric" 
                           pattern="[0-9]*" 
                           className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
                           value={m.homeGoals ?? ''} 
-                          onChange={(e) => setScore(mid, e.target.value === '' ? NaN : Number(e.target.value), m.awayGoals ?? NaN)} 
+                          onCommit={(value) => setScore(mid, value === '' ? NaN : Number(value), m.awayGoals ?? NaN)} 
                         />
                         <span className="text-sm">:</span>
-                        <input 
+                        <InlineInput 
                           inputMode="numeric" 
                           pattern="[0-9]*" 
                           className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
                           value={m.awayGoals ?? ''} 
-                          onChange={(e) => setScore(mid, m.homeGoals ?? NaN, e.target.value === '' ? NaN : Number(e.target.value))} 
+                          onCommit={(value) => setScore(mid, m.homeGoals ?? NaN, value === '' ? NaN : Number(value))} 
                         />
                       </div>
                     </div>
@@ -1596,32 +1584,10 @@ export default function TournamentPage() {
                     <div className="flex flex-col gap-1">
                       <label className="text-xs opacity-70">Date & Time</label>
                       <div className="flex gap-2">
-                        <CustomDatePicker
-                          value={m.dateISO ? new Date(m.dateISO).toISOString().split('T')[0] : ''}
-                          onChange={(date) => {
-                            const newDate = date ? new Date(date) : new Date()
-                            // Preserve time if it exists, otherwise set to 12:00
-                            if (m.dateISO) {
-                              const time = new Date(m.dateISO)
-                              newDate.setHours(time.getHours(), time.getMinutes())
-                            } else {
-                              newDate.setHours(12, 0)
-                            }
-                            setDate(mid, newDate.toISOString())
-                          }}
-                          className="flex-1 text-xs"
-                          placeholder="Select Date"
-                        />
-                        <CustomTimePicker
-                          value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'}
-                          onChange={(time) => {
-                            const currentDate = m.dateISO ? new Date(m.dateISO) : new Date()
-                            const [hours, minutes] = time.split(':').map(Number)
-                            currentDate.setHours(hours || 12, minutes || 0)
-                            setDate(mid, currentDate.toISOString())
-                          }}
-                          className="w-32 text-xs"
-                          placeholder="Time"
+                        <MatchDateTime
+                          value={m.dateISO}
+                          onChange={(iso) => setDate(mid, iso ?? '')}
+                          size="sm"
                         />
                       </div>
                     </div>
@@ -2179,44 +2145,31 @@ export default function TournamentPage() {
                                       <div className="flex flex-col gap-1">
                                         <label className="text-xs opacity-70">Score</label>
                                         <div className="flex gap-1 items-center">
-                                          <input 
+                                          <InlineInput 
                                             inputMode="numeric" 
                                             pattern="[0-9]*" 
                                             className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
                                             value={m.homeGoals ?? ''} 
-                                            onChange={(e) => setScore(m.id, e.target.value === '' ? NaN : Number(e.target.value), m.awayGoals ?? NaN)} 
+                                            onCommit={(value) => setScore(m.id, value === '' ? NaN : Number(value), m.awayGoals ?? NaN)} 
                                           />
                                           <span className="text-sm">:</span>
-                                          <input 
+                                          <InlineInput 
                                             inputMode="numeric" 
                                             pattern="[0-9]*" 
                                             className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
                                             value={m.awayGoals ?? ''} 
-                                            onChange={(e) => setScore(m.id, m.homeGoals ?? NaN, e.target.value === '' ? NaN : Number(e.target.value))} 
+                                            onCommit={(value) => setScore(m.id, m.homeGoals ?? NaN, value === '' ? NaN : Number(value))} 
                                           />
                                         </div>
                                       </div>
                                       <div className="flex flex-col gap-1">
                                         <label className="text-xs opacity-70">Date & Time</label>
                                         <div className="flex gap-2">
-                                          <CustomDatePicker
-                                            value={m.dateISO ? m.dateISO.split('T')[0] : ''}
-                                            onChange={(date) => {
-                                              const currentTime = m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'
-                                              setDate(m.id, new Date(`${date}T${currentTime}`).toISOString())
-                                            }}
-                                            className="flex-1 text-xs"
-                                            placeholder="Select Date"
-                                          />
-                                          <CustomTimePicker
-                                            value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'}
-                                            onChange={(time) => {
-                                              const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
-                                              setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
-                                            }}
-                                            className="w-32 text-xs"
-                                            placeholder="Time"
-                                          />
+                                          <MatchDateTime
+                          value={m.dateISO}
+                          onChange={(iso) => setDate(m.id, iso ?? '')}
+                          size="sm"
+                        />
                                         </div>
                                       </div>
                                       <div className="flex flex-col gap-1">
@@ -2286,44 +2239,31 @@ export default function TournamentPage() {
                                       <div className="flex flex-col gap-1">
                                         <label className="text-xs opacity-70">Score</label>
                                         <div className="flex gap-1 items-center">
-                                          <input 
+                                          <InlineInput 
                                             inputMode="numeric" 
                                             pattern="[0-9]*" 
                                             className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
                                             value={m.homeGoals ?? ''} 
-                                            onChange={(e) => setScore(m.id, e.target.value === '' ? NaN : Number(e.target.value), m.awayGoals ?? NaN)} 
+                                            onCommit={(value) => setScore(m.id, value === '' ? NaN : Number(value), m.awayGoals ?? NaN)} 
                                           />
                                           <span className="text-sm">:</span>
-                                          <input 
+                                          <InlineInput 
                                             inputMode="numeric" 
                                             pattern="[0-9]*" 
                                             className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
                                             value={m.awayGoals ?? ''} 
-                                            onChange={(e) => setScore(m.id, m.homeGoals ?? NaN, e.target.value === '' ? NaN : Number(e.target.value))} 
+                                            onCommit={(value) => setScore(m.id, m.homeGoals ?? NaN, value === '' ? NaN : Number(value))} 
                                           />
                                         </div>
                                       </div>
                                       <div className="flex flex-col gap-1">
                                         <label className="text-xs opacity-70">Date & Time</label>
                                         <div className="flex gap-2">
-                                          <CustomDatePicker
-                                            value={m.dateISO ? m.dateISO.split('T')[0] : ''}
-                                            onChange={(date) => {
-                                              const currentTime = m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'
-                                              setDate(m.id, new Date(`${date}T${currentTime}`).toISOString())
-                                            }}
-                                            className="flex-1 text-xs"
-                                            placeholder="Select Date"
-                                          />
-                                          <CustomTimePicker
-                                            value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'}
-                                            onChange={(time) => {
-                                              const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
-                                              setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
-                                            }}
-                                            className="w-32 text-xs"
-                                            placeholder="Time"
-                                          />
+                                          <MatchDateTime
+                          value={m.dateISO}
+                          onChange={(iso) => setDate(m.id, iso ?? '')}
+                          size="sm"
+                        />
                                         </div>
                                       </div>
                                       <div className="flex flex-col gap-1">
@@ -2406,20 +2346,20 @@ export default function TournamentPage() {
                         <div className="flex flex-col gap-1">
                           <label className="text-xs opacity-70">Score</label>
                           <div className="flex gap-1 items-center">
-                            <input 
+                            <InlineInput 
                               inputMode="numeric" 
                               pattern="[0-9]*" 
                               className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
                               value={m.homeGoals ?? ''} 
-                              onChange={(e) => setScore(m.id, e.target.value === '' ? NaN : Number(e.target.value), m.awayGoals ?? NaN)} 
+                              onCommit={(value) => setScore(m.id, value === '' ? NaN : Number(value), m.awayGoals ?? NaN)} 
                             />
                             <span className="text-sm">:</span>
-                            <input 
+                            <InlineInput 
                               inputMode="numeric" 
                               pattern="[0-9]*" 
                               className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
                               value={m.awayGoals ?? ''} 
-                              onChange={(e) => setScore(m.id, m.homeGoals ?? NaN, e.target.value === '' ? NaN : Number(e.target.value))} 
+                              onCommit={(value) => setScore(m.id, m.homeGoals ?? NaN, value === '' ? NaN : Number(value))} 
                             />
                           </div>
                         </div>
@@ -2428,24 +2368,11 @@ export default function TournamentPage() {
                         <div className="flex flex-col gap-1">
                           <label className="text-xs opacity-70">Date & Time</label>
                           <div className="flex gap-2">
-                            <CustomDatePicker
-                              value={m.dateISO ? m.dateISO.split('T')[0] : ''}
-                              onChange={(date) => {
-                                const currentTime = m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'
-                                setDate(m.id, new Date(`${date}T${currentTime}`).toISOString())
-                              }}
-                              className="flex-1 text-xs"
-                              placeholder="Select Date"
-                            />
-                            <CustomTimePicker
-                              value={m.dateISO ? new Date(m.dateISO).toTimeString().slice(0, 5) : '12:00'}
-                              onChange={(time) => {
-                                const currentDate = m.dateISO ? m.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
-                                setDate(m.id, new Date(`${currentDate}T${time}`).toISOString())
-                              }}
-                              className="w-32 text-xs"
-                              placeholder="Time"
-                            />
+                            <MatchDateTime
+                          value={m.dateISO}
+                          onChange={(iso) => setDate(m.id, iso ?? '')}
+                          size="sm"
+                        />
                           </div>
                         </div>
 

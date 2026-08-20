@@ -84,7 +84,10 @@ export default function CustomDatePicker({
   }
 
   return (
-    <div className={`relative ${className}`}>
+    // The caller's className belongs on the input, not on both the wrapper and
+    // the input — applying it twice made layout classes such as flex-1 fight
+    // each other and the field drifted out of its column.
+    <div className="relative">
       <input
         type="date"
         value={inputValue}
@@ -96,7 +99,7 @@ export default function CustomDatePicker({
           w-full px-3 py-2 rounded-md border transition-all duration-200
           ${disabled 
             ? 'bg-gray-500/20 border-gray-500/30 text-gray-400 cursor-not-allowed' 
-            : 'bg-transparent border-white/20 text-white hover:border-white/40 focus:border-white/40 focus:outline-none'
+            : 'bg-white/5 border-white/20 text-white hover:border-white/40 focus:border-white/50 focus:outline-none'
           }
           ${className}
         `}

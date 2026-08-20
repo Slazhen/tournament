@@ -6,9 +6,23 @@ interface LogoUploaderProps {
   currentLogo?: string
   size?: number
   compressionType?: 'logo' | 'profile' | 'tournament' | 'team' | 'general'
+  /**
+   * Show the "square image works best" hint. Off by default on small avatars:
+   * the three-line caption is wider than an 80px circle, so it used to spill
+   * across whatever sat next to it — on the tournament header, straight through
+   * the tournament's own name.
+   */
+  showHints?: boolean
 }
 
-export default function LogoUploader({ onLogoUpload, currentLogo, size = 80, compressionType = 'logo' }: LogoUploaderProps) {
+export default function LogoUploader({
+  onLogoUpload,
+  currentLogo,
+  size = 80,
+  compressionType = 'logo',
+  showHints,
+}: LogoUploaderProps) {
+  const hintsVisible = showHints ?? size >= 120
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadMessage, setUploadMessage] = useState('')
@@ -176,11 +190,11 @@ export default function LogoUploader({ onLogoUpload, currentLogo, size = 80, com
         </div>
       )}
       
-      <div className="text-xs opacity-70 text-center">
-        <p>Logo will appear as a circle</p>
-        <p>Recommended: Square image (1:1 ratio)</p>
-        <p className="text-green-400 mt-1">✓ Images are automatically optimized</p>
-      </div>
+      {hintsVisible && (
+        <p className="text-xs opacity-60 text-center" style={{ maxWidth: size * 2 }}>
+          A square image works best — it is resized and compressed automatically.
+        </p>
+      )}
     </div>
   )
 }

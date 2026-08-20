@@ -61,14 +61,15 @@ export default function VisibilityToggle({
           ${isToggling ? 'opacity-70' : ''}
         `}
       >
-        {/* Thumb */}
+        {/* Thumb. The offset is an inline style because two Tailwind translate
+            classes on one element fight over the same variable — the knob used to
+            land in a position decided by stylesheet order rather than by state. */}
         <span
           className={`
-            inline-block transform transition-transform duration-200 ease-in-out rounded-full bg-white shadow-lg
+            inline-block transition-transform duration-200 ease-in-out rounded-full bg-white shadow-lg
             ${thumbSizeClasses[size]}
-            ${isPublic ? 'translate-x-full' : 'translate-x-0'}
-            ${size === 'small' ? 'translate-x-0.5' : size === 'medium' ? 'translate-x-0.5' : 'translate-x-0.5'}
           `}
+          style={{ transform: `translateX(${isPublic ? 'calc(100% + 0.25rem)' : '0.125rem'})` }}
         />
         
         {/* Loading spinner */}
@@ -79,22 +80,13 @@ export default function VisibilityToggle({
         )}
       </button>
 
-      {/* Labels */}
-      <div className="flex items-center gap-2">
-        <span className={`${textSizeClasses[size]} ${isPublic ? 'text-green-400 font-medium' : 'text-gray-400'}`}>
-          🌐 Public
-        </span>
-        <span className={`${textSizeClasses[size]} ${!isPublic ? 'text-gray-400 font-medium' : 'text-gray-500'}`}>
-          🔒 Private
-        </span>
-      </div>
-
-      {/* Status Text */}
-      <div className={`${textSizeClasses[size]} text-gray-300`}>
+      {/* One statement of the current state. Showing "Public", "Private" and a
+          status line side by side left it unclear which one was in effect. */}
+      <div className={textSizeClasses[size]}>
         {isPublic ? (
-          <span className="text-green-400">Visible to everyone</span>
+          <span className="text-green-400 font-medium">🌐 Public — anyone with the link can see it</span>
         ) : (
-          <span className="text-gray-400">Admin/Organizer only</span>
+          <span className="text-gray-400 font-medium">🔒 Private — only you can see it</span>
         )}
       </div>
     </div>

@@ -5,8 +5,7 @@ import { uid } from '../utils/uid'
 import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
 import { organizerService } from '../lib/data'
 import type { Organizer } from '../types'
-import CustomDatePicker from '../components/CustomDatePicker'
-import CustomTimePicker from '../components/CustomTimePicker'
+import MatchDateTime from '../components/MatchDateTime'
 import InlineInput from '../components/InlineInput'
 
 export default function MatchPage() {
@@ -234,23 +233,10 @@ export default function MatchPage() {
             <div>
               <span className="opacity-70">Date:</span>
               <div className="flex gap-2 ml-2">
-                <CustomDatePicker
-                  value={match.dateISO ? match.dateISO.split('T')[0] : ''}
-                  onChange={(date) => {
-                    const currentTime = match.dateISO ? new Date(match.dateISO).toTimeString().slice(0, 5) : '12:00'
-                    updateMatch({ dateISO: date ? new Date(`${date}T${currentTime}`).toISOString() : undefined })
-                  }}
-                  className="text-xs"
-                  placeholder="Select Date"
-                />
-                <CustomTimePicker
-                  value={match.dateISO ? new Date(match.dateISO).toTimeString().slice(0, 5) : '12:00'}
-                  onChange={(time) => {
-                    const currentDate = match.dateISO ? match.dateISO.split('T')[0] : new Date().toISOString().split('T')[0]
-                    updateMatch({ dateISO: time ? new Date(`${currentDate}T${time}`).toISOString() : undefined })
-                  }}
-                  className="text-xs"
-                  placeholder="Time"
+                <MatchDateTime
+                  value={match.dateISO}
+                  onChange={(iso) => updateMatch({ dateISO: iso })}
+                  size="sm"
                 />
               </div>
             </div>
