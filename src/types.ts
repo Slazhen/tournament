@@ -173,7 +173,7 @@ export type Tournament = {
   matches: Match[]
   format?: {
     rounds: number
-    mode: 'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff' | 'groups_with_divisions'
+    mode: 'league' | 'league_playoff' | 'knockout' | 'swiss_elimination' | 'league_custom_playoff' | 'groups_with_divisions'
     playoffQualifiers?: number
     customPlayoffConfig?: {
       playoffTeams: number // Total teams in playoffs

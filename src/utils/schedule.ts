@@ -799,3 +799,130 @@ export function sortTeamsByStandings(standings: TeamStanding[]): TeamStanding[] 
   }))
 }
 
+/**
+ * A straight knockout cup played by every team in the tournament.
+ *
+ * Teams are seeded in the order they were selected: 1 plays the lowest seed, 2
+ * plays the second lowest, and so on. When the count is not a power of two the
+ * top seeds sit out the first round rather than playing a fake fixture — a bye
+ * is an absence of a match, not a match against yourself.
+ *
+ * Only the first round can name both teams. Later rounds are created empty and
+ * filled in as results arrive (see advanceKnockoutWinners), which also leaves the
+ * organiser free to set a pairing by hand if a tie is decided off the pitch.
+ */
+export function generateKnockoutSchedule(teamIds: string[]): Match[] {
+  const teams = teamIds.filter(Boolean)
+  if (teams.length < 2) return []
+
+  // The bracket is the next power of two; the difference is the number of byes.
+  let bracketSize = 1
+  while (bracketSize < teams.length) bracketSize *= 2
+
+  // Standard seeding: 1 meets 2 only in the final, 1 meets 4 no earlier than the
+  // semi, and so on. Build it by repeatedly mirroring the previous round.
+  let seeds = [1, 2]
+  while (seeds.length < bracketSize) {
+    const mirrored = seeds.length * 2 + 1
+    const next: number[] = []
+    for (const seed of seeds) next.push(seed, mirrored - seed)
+    seeds = next
+  }
+
+  // A seed beyond the number of real teams is an empty slot: its opponent has a bye.
+  const leaves = seeds.map((seed) => (seed <= teams.length ? teams[seed - 1] : null))
+
+  const matches: Match[] = []
+  const roundCount = Math.log2(bracketSize)
+
+  // Every round after the first is created empty and filled in as ties are won.
+  for (let round = 1; round < roundCount; round++) {
+    const count = bracketSize / Math.pow(2, round + 1)
+    for (let i = 0; i < count; i++) {
+      matches.push({
+        id: `ko-${round}-${i}`,
+        homeTeamId: '',
+        awayTeamId: '',
+        round,
+        isPlayoff: true,
+        isElimination: true,
+        playoffRound: round,
+        playoffMatch: i,
+      })
+    }
+  }
+
+  const placeInNextRound = (fromMatchIndex: number, teamId: string) => {
+    const target = matches.find(
+      (match) => match.playoffRound === 1 && match.playoffMatch === Math.floor(fromMatchIndex / 2),
+    )
+    if (!target) return
+    if (fromMatchIndex % 2 === 0) target.homeTeamId = teamId
+    else target.awayTeamId = teamId
+  }
+
+  // The first round, read straight off the seeded bracket.
+  for (let i = 0; i < bracketSize / 2; i++) {
+    const home = leaves[i * 2]
+    const away = leaves[i * 2 + 1]
+
+    if (home && away) {
+      matches.unshift({
+        id: `ko-0-${i}-${home}-${away}`,
+        homeTeamId: home,
+        awayTeamId: away,
+        round: 0,
+        isPlayoff: true,
+        isElimination: true,
+        playoffRound: 0,
+        playoffMatch: i,
+      })
+      continue
+    }
+
+    // One side is empty: the real team has a bye and starts in the second round.
+    const advancing = home || away
+    if (advancing) placeInNextRound(i, advancing)
+  }
+
+  return matches.sort((a, b) => (a.playoffRound ?? 0) - (b.playoffRound ?? 0) || (a.playoffMatch ?? 0) - (b.playoffMatch ?? 0))
+}
+
+/**
+ * Moves the winner of a finished knockout match into the next round.
+ *
+ * Called after a score is saved. It only ever fills an empty slot, so a pairing
+ * the organiser set by hand is never overwritten, and a corrected score moves the
+ * new winner into the slot the old one occupied.
+ */
+export function advanceKnockoutWinners(matches: Match[]): Match[] {
+  const knockout = matches.filter((match) => match.isPlayoff)
+  if (knockout.length === 0) return matches
+
+  const next = matches.map((match) => ({ ...match }))
+
+  for (const match of next) {
+    if (!match.isPlayoff) continue
+    if (match.homeGoals === undefined || match.awayGoals === undefined) continue
+    if (match.homeGoals === match.awayGoals) continue // a draw decides nothing here
+    if (!match.homeTeamId || !match.awayTeamId) continue
+
+    const winner = match.homeGoals > match.awayGoals ? match.homeTeamId : match.awayTeamId
+    const loser = match.homeGoals > match.awayGoals ? match.awayTeamId : match.homeTeamId
+
+    const targetRound = (match.playoffRound ?? 0) + 1
+    const targetIndex = Math.floor((match.playoffMatch ?? 0) / 2)
+    const target = next.find(
+      (candidate) => candidate.playoffRound === targetRound && candidate.playoffMatch === targetIndex,
+    )
+    if (!target) continue
+
+    const slot = (match.playoffMatch ?? 0) % 2 === 0 ? 'homeTeamId' : 'awayTeamId'
+    // Replace an empty slot, or one still holding the team that just lost.
+    if (!target[slot] || target[slot] === loser) {
+      target[slot] = winner
+    }
+  }
+
+  return next
+}

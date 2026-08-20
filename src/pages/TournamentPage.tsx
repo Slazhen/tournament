@@ -15,6 +15,7 @@ import VisibilityToggle from '../components/VisibilityToggle'
 import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
 import MatchDateTime from '../components/MatchDateTime'
+import { applyDateToRound } from '../utils/matchdates'
 import InlineInput from '../components/InlineInput'
 
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
@@ -243,6 +244,20 @@ export default function TournamentPage() {
   function setDate(mid: string, dateISO: string) {
     if (!tournament) return
     const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, dateISO } : m))
+    updateTournament(tournament.id, { matches })
+  }
+
+  /**
+   * Copies the first scheduled kick-off in a round to the rest of it. Rounds are
+   * almost always played on one day, so setting the same date match by match was
+   * pure repetition.
+   */
+  function applyRoundDate(roundNumber: number) {
+    if (!tournament) return
+    const inRound = tournament.matches.filter((m) => (m.round ?? 0) === roundNumber)
+    const source = inRound.find((m) => m.dateISO)
+    if (!source) return
+    const matches = applyDateToRound(tournament.matches, source.id)
     updateTournament(tournament.id, { matches })
   }
 
@@ -1502,7 +1517,20 @@ export default function TournamentPage() {
         <h2 className="text-lg font-semibold text-center tracking-wide">Fixtures</h2>
         {rounds.map((r) => (
           <div key={r.round} className="glass rounded-xl p-4">
-            <div className="font-bold text-lg mb-4 text-center text-blue-400">Round {r.round + 1}</div>
+            <div className="mb-4 flex items-center justify-center gap-3">
+              <span className="font-bold text-lg text-blue-400">Round {r.round + 1}</span>
+              {tournament.matches.some((m) => (m.round ?? 0) === r.round && m.dateISO) &&
+                tournament.matches.some((m) => (m.round ?? 0) === r.round && !m.dateISO) && (
+                  <button
+                    type="button"
+                    onClick={() => applyRoundDate(r.round)}
+                    className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
+                    title="Give every match in this round the same date"
+                  >
+                    📅 Same date for the round
+                  </button>
+                )}
+            </div>
             <div className="grid gap-3">
               {r.matchIds.map((mid) => {
                 const m = tournament.matches.find((x) => x.id === mid)!

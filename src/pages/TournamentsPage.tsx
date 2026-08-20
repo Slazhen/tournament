@@ -4,13 +4,20 @@ import { Link } from "react-router-dom"
 import { getAdminTournamentUrl, getPublicTournamentUrl } from "../utils/urls"
 import LogoUploader from "../components/LogoUploader"
 import { CompactVisibilityToggle } from "../components/VisibilityToggle"
+import FormatPicker from "../components/FormatPicker"
+import TeamPicker from "../components/TeamPicker"
+import { findFormat, planSchedule } from "../utils/formats"
 
 export default function TournamentsPage() {
   const [tournamentName, setTournamentName] = useState("")
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [formatId, setFormatId] = useState('league_single')
   const [rounds, setRounds] = useState(1)
-  const [mode, setMode] = useState<'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff' | 'groups_with_divisions'>('league')
+  // The first matchday. Fixtures are dated on creation so a new season does not
+  // arrive as twenty-odd empty date fields.
+  const [startDate, setStartDate] = useState('')
+  const [kickOff, setKickOff] = useState('19:00')
+  const [intervalDays, setIntervalDays] = useState(7)
   const [qualifiers, setQualifiers] = useState(4)
   const [numberOfGroups, setNumberOfGroups] = useState(4)
   const [teamsPerGroup, setTeamsPerGroup] = useState(4)
@@ -31,6 +38,10 @@ export default function TournamentsPage() {
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
+
+  const selectedFormat = findFormat(formatId)
+  const mode = selectedFormat.mode
+  const plan = planSchedule(selectedFormat, selectedTeamIds.length, qualifiers)
   
   // Redirect if no organizer is selected
   if (!currentOrganizer) {
@@ -51,7 +62,7 @@ export default function TournamentsPage() {
     e.preventDefault()
     if (tournamentName.trim() && selectedTeamIds.length >= 2) {
       const format = {
-        rounds,
+        rounds: selectedFormat.mode === 'league_custom_playoff' ? rounds : selectedFormat.rounds,
         mode,
         playoffQualifiers: mode === 'league_playoff' ? qualifiers : undefined,
         customPlayoffConfig: mode === 'league_custom_playoff' ? {
@@ -67,7 +78,11 @@ export default function TournamentsPage() {
       }
       
       // Create tournament first
-      await createTournament(tournamentName.trim(), selectedTeamIds, format)
+      await createTournament(tournamentName.trim(), selectedTeamIds, format, {
+        startDate,
+        time: kickOff,
+        intervalDays,
+      })
       
       // Upload logo if provided
       if (logoFile) {
@@ -79,24 +94,14 @@ export default function TournamentsPage() {
       
       setTournamentName("")
       setSelectedTeamIds([])
-      setShowAdvanced(false)
       setRounds(1)
-      setMode('league')
+      setFormatId('league_single')
+      setStartDate("")
       setQualifiers(4)
       setLogoFile(null)
       setLogoPreview("")
     }
   }
-  
-  const handleTeamToggle = (teamId: string) => {
-    setSelectedTeamIds(prev => 
-      prev.includes(teamId) 
-        ? prev.filter(id => id !== teamId)
-        : [...prev, teamId]
-    )
-  }
-  
-
   
   return (
     <div className="min-h-[80vh] flex flex-col items-center gap-8">
@@ -122,6 +127,18 @@ export default function TournamentsPage() {
             />
           </div>
           
+          {/* The format decides the whole fixture list, so it is asked up front
+              rather than hidden behind an "advanced options" button. */}
+          <div>
+            <label className="block text-sm font-medium mb-2">How is it played?</label>
+            <FormatPicker
+              value={formatId}
+              onChange={setFormatId}
+              teamCount={selectedTeamIds.length}
+              qualifiers={qualifiers}
+            />
+          </div>
+
                  <div>
                    <label className="block text-sm font-medium mb-2">Tournament Logo (Optional)</label>
                    <LogoUploader 
@@ -135,67 +152,65 @@ export default function TournamentsPage() {
                  </div>
           
           <div>
-            <label className="block text-sm font-medium mb-2">Select Teams ({selectedTeamIds.length} selected)</label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-2 border border-white/20 rounded">
-              {teams.map((team) => (
-                <label key={team.id} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedTeamIds.includes(team.id)}
-                    onChange={() => handleTeamToggle(team.id)}
-                    className="rounded"
-                  />
-                  <span className="text-sm">{team.name}</span>
-                </label>
-              ))}
+            <label className="block text-sm font-medium mb-2">
+              Teams ({selectedTeamIds.length} selected)
+            </label>
+            <TeamPicker
+              teams={teams}
+              selectedIds={selectedTeamIds}
+              onChange={setSelectedTeamIds}
+              previousTournaments={tournaments}
+            />
+          </div>
+
+          {/* When to play. Rounds are spaced evenly from the first matchday. */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Schedule (optional)</label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="text-sm">
+                <span className="opacity-70">First matchday</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="opacity-70">Kick-off</span>
+                <input
+                  type="time"
+                  value={kickOff}
+                  onChange={(e) => setKickOff(e.target.value)}
+                  disabled={!startDate}
+                  className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none disabled:opacity-40"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="opacity-70">Next round after</span>
+                <select
+                  value={intervalDays}
+                  onChange={(e) => setIntervalDays(Number(e.target.value))}
+                  disabled={!startDate}
+                  className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none disabled:opacity-40"
+                >
+                  <option value={1}>1 day</option>
+                  <option value={7}>1 week</option>
+                  <option value={14}>2 weeks</option>
+                  <option value={0}>same day</option>
+                </select>
+              </label>
             </div>
-            {teams.length === 0 && (
-              <p className="text-sm opacity-70 text-center py-4">No teams available. Create teams first!</p>
-            )}
+            <p className="mt-1 text-xs opacity-60">
+              {startDate
+                ? 'Every match in a round gets the same kick-off. You can move any of them afterwards.'
+                : 'Leave empty to schedule the matches yourself later.'}
+            </p>
           </div>
-          
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="px-4 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
-            >
-              {showAdvanced ? 'Hide' : 'Show'} Advanced Options
-            </button>
-          </div>
-          
-          {showAdvanced && (
+
+          {selectedFormat.hasSettings && (
             <div className="space-y-4 p-4 glass rounded-lg">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Number of Rounds</label>
-                  <select
-                    value={rounds}
-                    onChange={(e) => setRounds(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                  >
-                    <option value={1}>1 Round</option>
-                    <option value={2}>2 Rounds</option>
-                    <option value={3}>3 Rounds</option>
-                    <option value={4}>4 Rounds</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Tournament Mode</label>
-                  <select
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value as 'league' | 'league_playoff' | 'swiss_elimination' | 'league_custom_playoff' | 'groups_with_divisions')}
-                    className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                  >
-                    <option value="league">League Only</option>
-                    <option value="league_playoff">League + Playoffs</option>
-                    <option value="swiss_elimination">Swiss + Elimination</option>
-                    <option value="league_custom_playoff">League + Custom Playoff</option>
-                    <option value="groups_with_divisions">Groups + Divisions</option>
-                  </select>
-                </div>
-              </div>
+              <p className="text-sm opacity-70">Settings for {selectedFormat.title}</p>
               
               {mode === 'league_playoff' && (
                 <div>
@@ -336,6 +351,21 @@ export default function TournamentsPage() {
             </div>
           )}
           
+          {/* Creating generates every fixture at once and there is no undo, so
+              say what is about to happen. */}
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm">
+            <div className="font-medium mb-1">About to create</div>
+            <p className="opacity-80">
+              {selectedTeamIds.length < 2
+                ? 'Pick at least two teams.'
+                : `${selectedFormat.title.toLowerCase()} with ${selectedTeamIds.length} teams — ${plan.summary}.`}
+              {startDate && plan.rounds
+                ? ` First round on ${new Date(`${startDate}T${kickOff || '12:00'}`).toLocaleDateString()}` +
+                  (intervalDays > 0 ? `, then every ${intervalDays} days.` : '.')
+                : ''}
+            </p>
+          </div>
+
           <button
             type="submit"
             disabled={!tournamentName.trim() || selectedTeamIds.length < 2}

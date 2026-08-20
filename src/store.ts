@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import type { Team, Tournament, Match, Organizer, Player, AppSettings } from './types'
 import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule, generateGroupsWithDivisionsSchedule } from './utils/tournament'
+import { generateKnockoutSchedule, advanceKnockoutWinners } from './utils/schedule'
+import { applySchedule } from './utils/matchdates'
+import type { ScheduleOptions } from './utils/matchdates'
 import { organizerService, teamService, tournamentService, matchService, playerService, uploadImage } from './lib/data'
 
 /** Routes that render an organizer's own teams and tournaments. */
@@ -39,7 +42,7 @@ type AppStore = {
   updatePlayer: (teamId: string, playerId: string, updates: Partial<Player>) => Promise<void>
   removePlayer: (teamId: string, playerId: string) => Promise<void>
   
-  createTournament: (name: string, teamIds: string[], format?: Tournament['format']) => Promise<void>
+  createTournament: (name: string, teamIds: string[], format?: Tournament['format'], schedule?: ScheduleOptions) => Promise<void>
   updateTournament: (tournamentId: string, updates: Partial<Tournament>) => Promise<void>
   deleteTournament: (tournamentId: string) => Promise<void>
   
@@ -295,7 +298,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   // Tournament actions
-  createTournament: async (name: string, teamIds: string[], format?: Tournament['format']) => {
+  createTournament: async (name: string, teamIds: string[], format?: Tournament['format'], schedule?: ScheduleOptions) => {
     const currentOrganizerId = get().currentOrganizerId
     if (!currentOrganizerId) return
 
@@ -328,6 +331,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         } else if (tournamentFormat.mode === 'league_playoff') {
           const playoffMatches = generatePlayoffBrackets(teamIds)
           matches = createPlayoffMatches(playoffMatches)
+        } else if (tournamentFormat.mode === 'knockout') {
+          matches = generateKnockoutSchedule(teamIds)
         } else if (tournamentFormat.mode === 'swiss_elimination') {
           const swissResult = generateSwissEliminationSchedule(teamIds)
           matches = [...swissResult.leagueMatches, ...swissResult.eliminationMatches]
@@ -363,6 +368,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
           }
         }
         
+        // Put the fixtures in the calendar straight away, if a start date was given.
+        // Filling in twenty-odd dates by hand afterwards is the slowest part of
+        // setting up a season.
+        if (schedule?.startDate) {
+          matches = applySchedule(matches, schedule)
+        }
+
         // Update tournament with generated matches and format (which includes groups)
         const updatedTournament = { ...tournament, matches, format: tournament.format }
         await tournamentService.update(tournament.id, { matches, format: tournament.format })
@@ -428,16 +440,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
           })
           
           if (success) {
+            const scored = tournament.matches.map(m =>
+              m.id === matchId ? { ...m, homeGoals, awayGoals } : m
+            )
+
+            // In a cup, a result decides who plays in the next round. Work that
+            // out here and save the affected fixture, so the bracket fills itself
+            // in instead of being retyped by hand.
+            const advanced = advanceKnockoutWinners(scored)
+            const movedOn = advanced.filter((m, index) =>
+              m.homeTeamId !== scored[index].homeTeamId || m.awayTeamId !== scored[index].awayTeamId
+            )
+
+            for (const next of movedOn) {
+              await matchService.updateMatchInTournament(tournament.id, next.id, {
+                homeTeamId: next.homeTeamId,
+                awayTeamId: next.awayTeamId,
+              })
+            }
+
             set(state => ({
               tournaments: state.tournaments.map(t =>
-                t.id === tournament.id
-                  ? {
-                      ...t,
-                      matches: t.matches.map(m =>
-                        m.id === matchId ? { ...m, homeGoals, awayGoals } : m
-                      )
-                    }
-                  : t
+                t.id === tournament.id ? { ...t, matches: advanced } : t
               )
             }))
           }
