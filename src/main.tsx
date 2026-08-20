@@ -21,6 +21,8 @@ const AdminPage = lazy(() => import('./pages/AdminPage.tsx'))
 const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage.tsx'))
 const OrganizersPage = lazy(() => import('./pages/OrganizersPage.tsx'))
 const TournamentsPage = lazy(() => import('./pages/TournamentsPage.tsx'))
+const CreateTournamentPage = lazy(() => import('./pages/CreateTournamentPage.tsx'))
+const TournamentSettingsPage = lazy(() => import('./pages/TournamentSettingsPage.tsx'))
 const TeamsPage = lazy(() => import('./pages/TeamsPage.tsx'))
 const CalendarPage = lazy(() => import('./pages/CalendarPage.tsx'))
 const TournamentPage = lazy(() => import('./pages/TournamentPage.tsx'))
@@ -132,13 +134,23 @@ const router = createBrowserRouter([
         path: 'admin/tournaments/new', 
         element: (
           <ProtectedRoute>
-            <TournamentPage />
+            <CreateTournamentPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: 'admin/tournaments/:id/settings', 
+        element: (
+          <ProtectedRoute>
+            <TournamentSettingsPage />
           </ProtectedRoute>
         ) 
       },
       // Original routes for top navigation
       { path: 'tournaments', element: <TournamentsPage /> },
+      { path: 'tournaments/new', element: <CreateTournamentPage /> },
       { path: 'tournaments/:id', element: <TournamentPage /> },
+      { path: 'tournaments/:id/settings', element: <TournamentSettingsPage /> },
       { path: 'tournaments/:tournamentId/matches/:matchId', element: <MatchPage /> },
       { path: 'teams', element: <TeamsPage /> },
       { path: 'teams/:teamId', element: <TeamPage /> },

@@ -831,6 +831,12 @@ export default function TournamentPage() {
                  <div>
         <h1 className="text-xl font-semibold">{tournament.name}</h1>
         <div className="text-sm opacity-70">{tournament.teamIds.length} teams • {tournament.matches.length} matches</div>
+        <Link
+          to={`/tournaments/${tournament.id}/settings`}
+          className="inline-block mt-1 text-xs opacity-70 hover:opacity-100 transition-opacity"
+        >
+          ⚙️ Settings — name, teams, visibility
+        </Link>
                  </div>
                </div>
 

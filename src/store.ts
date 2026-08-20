@@ -42,7 +42,7 @@ type AppStore = {
   updatePlayer: (teamId: string, playerId: string, updates: Partial<Player>) => Promise<void>
   removePlayer: (teamId: string, playerId: string) => Promise<void>
   
-  createTournament: (name: string, teamIds: string[], format?: Tournament['format'], schedule?: ScheduleOptions) => Promise<void>
+  createTournament: (name: string, teamIds: string[], format?: Tournament['format'], schedule?: ScheduleOptions) => Promise<Tournament | null>
   updateTournament: (tournamentId: string, updates: Partial<Tournament>) => Promise<void>
   deleteTournament: (tournamentId: string) => Promise<void>
   
@@ -300,7 +300,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Tournament actions
   createTournament: async (name: string, teamIds: string[], format?: Tournament['format'], schedule?: ScheduleOptions) => {
     const currentOrganizerId = get().currentOrganizerId
-    if (!currentOrganizerId) return
+    if (!currentOrganizerId) return null
 
     console.log('Store: Creating tournament via AWS:', {
       name,
@@ -383,11 +383,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
           tournaments: [...state.tournaments, updatedTournament],
           loading: { ...state.loading, tournaments: false }
         }))
+
+        // Returned so the caller can send the organiser straight to it.
+        return updatedTournament
       }
     } catch (error) {
       console.error('Error creating tournament:', error)
       set(state => ({ loading: { ...state.loading, tournaments: false } }))
     }
+
+    return null
   },
 
   updateTournament: async (tournamentId: string, updates: Partial<Tournament>) => {
