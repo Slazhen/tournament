@@ -1,5 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState, useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { tournamentService, batchGetTeams } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -25,6 +26,34 @@ function describeVenue(location?: { name?: string; link?: string }) {
   if (!label) return null
   return { label, href }
 }
+
+type MatchStatus = 'finished' | 'in_progress' | 'upcoming'
+
+/** One definition of "has this been played", shared by every part of the page. */
+function matchStatus(match: any): MatchStatus {
+  const home = typeof match?.homeGoals === 'number'
+  const away = typeof match?.awayGoals === 'number'
+  if (home && away) return 'finished'
+  return home || away ? 'in_progress' : 'upcoming'
+}
+
+/** NaN when a fixture has no date yet, which sorts to the end rather than to 1970. */
+const matchTime = (match: any): number =>
+  match?.dateISO ? new Date(match.dateISO).getTime() : Number.NaN
+
+const byKickoffAscending = (a: any, b: any) => {
+  const left = matchTime(a)
+  const right = matchTime(b)
+  if (Number.isNaN(left) && Number.isNaN(right)) return (a.round ?? 0) - (b.round ?? 0)
+  if (Number.isNaN(left)) return 1
+  if (Number.isNaN(right)) return -1
+  return left - right
+}
+
+const shortDate = (match: any) =>
+  match?.dateISO
+    ? new Date(match.dateISO).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : ''
 
 export default function PublicTournamentPage() {
   const { id, tournamentId, orgSlug, tournamentSlug } = useParams()
@@ -362,6 +391,19 @@ export default function PublicTournamentPage() {
 
   const venue = describeVenue(tournament.location)
 
+  const hasPlayoffBracket =
+    tournament.format?.mode === 'league_custom_playoff' &&
+    (tournament.format?.customPlayoffConfig?.playoffRounds?.length ?? 0) > 0
+
+  // A plain array, not useMemo: this sits after the loading and not-found
+  // early returns, where an extra hook would change the hook order.
+  const sections: Section[] = [
+    { id: 'standings', label: 'Table' },
+    ...(hasPlayoffBracket ? [{ id: 'playoffs', label: 'Playoffs' }] : []),
+    { id: 'fixtures', label: 'Fixtures' },
+    { id: 'stats', label: 'Stats' },
+  ]
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
       {/* Background decorative elements */}
@@ -457,8 +499,12 @@ export default function PublicTournamentPage() {
 
       {/* Content */}
       <div className="container mx-auto px-4 py-8 relative z-10">
+        <SectionNav sections={sections} />
+
+        <Highlights tournament={tournament} teams={teams} />
+
         {/* Standings - Groups or Regular Table */}
-        <div className="mb-12">
+        <div id="standings" className="mb-12 scroll-mt-20">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Standings</h2>
           </div>
@@ -679,176 +725,93 @@ export default function PublicTournamentPage() {
           )}
         </div>
 
-        {/* Statistics */}
-        <div className="mb-12">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Statistics</h2>
-          </div>
+        {/* Playoff Bracket Section */}
+        {(() => {
+          // Check if tournament has custom playoff configuration
+          const hasCustomPlayoff = tournament.format?.mode === 'league_custom_playoff' && 
+                                  tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0
           
-          {/* Player Statistics */}
-          <div className="glass rounded-2xl p-4 sm:p-8 shadow-2xl border border-white/20">
+          return hasCustomPlayoff
+        })() && (
+          <div id="playoffs" className="mb-12 scroll-mt-20">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Playoff Bracket</h2>
+            </div>
+            
             <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <h3 className="text-xl sm:text-2xl font-bold text-white">Player Performance</h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setPlayerStatsFilter('all')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                      playerStatsFilter === 'all'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
-                    }`}
-                  >
-                    All Players
-                  </button>
-                  <button
-                    onClick={() => setPlayerStatsFilter('scorers')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                      playerStatsFilter === 'scorers'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
-                    }`}
-                  >
-                    Top Scorers
-                  </button>
-                  <button
-                    onClick={() => setPlayerStatsFilter('assists')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                      playerStatsFilter === 'assists'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
-                    }`}
-                  >
-                    Top Assists
-                  </button>
-                </div>
-              </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-base">
-                  <thead>
-                    <tr className="border-b border-white/20">
-                      <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Player</th>
-                      <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Club</th>
-                      <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Goals</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      // Filter teams to only include teams from this tournament
-                      const tournamentTeams = teams.filter((team: any) => 
-                        tournament.teamIds && tournament.teamIds.includes(team.id)
-                      )
-                      
-                      // Calculate player statistics
-                      const playerStats = tournamentTeams.flatMap((team: any) => 
-                        (team.players || []).map((player: any) => {
-                          const playerMatches = tournament.matches?.filter((match: any) => {
-                            const isHome = match.homeTeamId === team.id
-                            const teamPlayers = isHome ? match.lineups?.home?.starting || [] : match.lineups?.away?.starting || []
-                            return teamPlayers.includes(player.id) && match.homeGoals !== null && match.awayGoals !== null
-                          }) || []
-                          
-                          let goals = 0
-                          let assists = 0
-                          
-                          tournament.matches?.forEach((match: any) => {
-                            if (match.goals) {
-                              match.goals.forEach((goal: any) => {
-                                if (goal.playerId === player.id) goals++
-                                if (goal.assistPlayerId === player.id) assists++
-                              })
-                            }
-                          })
-                          
-                          return {
-                            player,
-                            team,
-                            gamesPlayed: playerMatches.length,
-                            goals,
-                            assists
-                          }
-                        })
-                      )
-                      
-                      // Filter and sort based on selected filter
-                      let filteredStats = playerStats
-                      if (playerStatsFilter === 'scorers') {
-                        filteredStats = playerStats.filter(p => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 5)
-                      } else if (playerStatsFilter === 'assists') {
-                        filteredStats = playerStats.filter(p => p.assists > 0).sort((a, b) => b.assists - a.assists).slice(0, 5)
-                      } else {
-                        // Sort by goals first, then assists
-                        filteredStats = playerStats.sort((a, b) => {
-                          if (b.goals !== a.goals) return b.goals - a.goals
-                          return b.assists - a.assists
-                        })
-                      }
-                      
-                      return filteredStats.map((stats) => (
-                        <tr key={`${stats.team.id}-${stats.player.id}`} className="border-b border-white/10 hover:bg-white/5 transition-colors">
-                          <td className="py-2 px-1 sm:px-6">
-                            <div className="flex items-center gap-1 sm:gap-3">
-                              {stats.player.photo ? (
-                                <img
+              {tournament.format.customPlayoffConfig.playoffRounds.map((round: any, roundIndex: number) => (
+                <div key={roundIndex} className="glass rounded-2xl p-4 sm:p-6 shadow-2xl border border-white/20">
+                  <div className="text-center mb-4 sm:mb-6">
+                    <h3 className="text-lg sm:text-2xl font-bold text-white mb-2">
+                      {round.name}
+                    </h3>
+                    {round.description && (
+                      <p className="text-sm sm:text-base text-gray-300">{round.description}</p>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {round.matches && round.matches.length > 0 ? (
+                      round.matches.map((match: any) => {
+                        const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
+                        const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
+                        
+                        return (
+                          <div key={match.id} className="bg-white/5 rounded-xl p-4 border border-white/10">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3 flex-1">
+                                {homeTeam?.logo ? (
+                                  <img
               loading="lazy"
-              decoding="async" 
-                                  src={stats.player.photo} 
-                                  alt={`${stats.player.firstName} ${stats.player.lastName}`}
-                                  className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover border border-white/20"
-                                />
-                              ) : (
-                                <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
-                                  <span className="text-xs font-bold text-white">
-                                    {stats.player.firstName.charAt(0)}{stats.player.lastName.charAt(0)}
-                                  </span>
-                                </div>
-                              )}
-                              <div>
-                                <div className="text-white font-semibold text-xs sm:text-lg">
-                                  {stats.player.firstName} {stats.player.lastName}
-                                </div>
-                                {stats.player.number && (
-                                  <div className="text-xs text-gray-300">#{stats.player.number}</div>
+              decoding="async" src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                                    <span className="text-xs">{homeTeam?.name?.charAt(0) || 'H'}</span>
+                                  </div>
+                                )}
+                                <Link to={`/public/teams/${match.homeTeamId}`} className="text-white font-medium hover:text-blue-300">
+                                  {homeTeam?.name || match.homeTeamId}
+                                </Link>
+                              </div>
+                              
+                              <div className="px-4">
+                                {match.homeGoals != null && match.awayGoals != null ? (
+                                  <span className="text-xl font-bold text-white">{match.homeGoals} - {match.awayGoals}</span>
+                                ) : (
+                                  <span className="text-gray-300">vs</span>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-3 flex-1 justify-end">
+                                <Link to={`/public/teams/${match.awayTeamId}`} className="text-white font-medium hover:text-blue-300">
+                                  {awayTeam?.name || match.awayTeamId}
+                                </Link>
+                                {awayTeam?.logo ? (
+                                  <img
+              loading="lazy"
+              decoding="async" src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                                    <span className="text-xs">{awayTeam?.name?.charAt(0) || 'A'}</span>
+                                  </div>
                                 )}
                               </div>
                             </div>
-                          </td>
-                          <td className="py-2 px-1 sm:px-6">
-                            <div className="flex items-center gap-1 sm:gap-2">
-                              {stats.team.logo ? (
-                                <img
-              loading="lazy"
-              decoding="async" 
-                                  src={stats.team.logo} 
-                                  alt={`${stats.team.name} logo`}
-                                  className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
-                                  <span className="text-xs font-bold text-white">
-                                    {stats.team.name.charAt(0)}
-                                  </span>
-                                </div>
-                              )}
-                              <span className="text-white font-medium text-xs sm:text-lg">{stats.team.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-2 px-1 sm:px-6 text-center text-white font-semibold">
-                            <span className="text-yellow-400 font-bold text-xs sm:text-base">{stats.goals}</span>
-                          </td>
-                        </tr>
-                      ))
-                    })()}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <p className="text-center text-gray-300">No matches scheduled yet.</p>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        )}
 
         {/* Matches by Rounds */}
-        <div className="mb-12">
+        <div id="fixtures" className="mb-12 scroll-mt-20">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Fixtures & Results</h2>
           </div>
@@ -860,12 +823,9 @@ export default function PublicTournamentPage() {
               const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
               // `!== null` also passed for a match whose goals were never set at
               // all, which is every fixture that has not been played.
-              const isMatchFinished =
-                typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'
-              const isMatchInProgress =
-                !isMatchFinished &&
-                (typeof match.homeGoals === 'number' || typeof match.awayGoals === 'number')
-              const isMatchUpcoming = !isMatchFinished && !isMatchInProgress
+              const status = matchStatus(match)
+              const isMatchFinished = status === 'finished'
+              const isMatchUpcoming = status === 'upcoming'
 
               return (
                 <div key={match.id} className={`group relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
@@ -1097,36 +1057,26 @@ export default function PublicTournamentPage() {
                 return `Round ${roundIndex + 1}`
               }
               
+              const groupRoundOpen = defaultOpenRounds(
+                sortedGroupRounds.map((roundNumber) => groupMatchesByRound[roundNumber]),
+              )
+
               return (
                 <>
                   {/* Group Stage Rounds */}
-                  {sortedGroupRounds.map(roundNumber => {
+                  {sortedGroupRounds.map((roundNumber, index) => {
                     const roundMatches = groupMatchesByRound[roundNumber]
-                    
+
                     return (
-                      <div key={`group-${roundNumber}`} className="mb-6 sm:mb-8">
-                        <div className="glass rounded-2xl p-3 sm:p-6 shadow-2xl border border-white/20">
-                          {/* Round Header */}
-                          <div className="flex items-center justify-between mb-4 sm:mb-6">
-                            <div className="flex items-center gap-2 sm:gap-4">
-                              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center border border-white/20">
-                                <span className="text-sm sm:text-xl font-bold text-white">{roundNumber + 1}</span>
-                              </div>
-                              <div>
-                                <h3 className="text-lg sm:text-2xl font-bold text-white">Round {roundNumber + 1} - Group Stage</h3>
-                                <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-300">
-                                  <span>{roundMatches.length} matches</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {/* Matches Grid */}
-                          <div className="grid gap-2 sm:gap-4">
-                            {roundMatches.map(renderMatch)}
-                          </div>
-                        </div>
-                      </div>
+                      <RoundCard
+                        key={`group-${roundNumber}`}
+                        badge={String(roundNumber + 1)}
+                        title={`Round ${roundNumber + 1} — Group Stage`}
+                        subtitle={roundSubtitle(roundMatches)}
+                        defaultOpen={groupRoundOpen[index]}
+                      >
+                        {roundMatches.map(renderMatch)}
+                      </RoundCard>
                     )
                   })}
                   
@@ -1142,29 +1092,21 @@ export default function PublicTournamentPage() {
                         return div1RoundKeys.map(roundNumber => {
                           const roundMatches = div1MatchesByRound[roundNumber]
                           const roundName = getPlayoffRoundName(roundNumber, totalRounds)
-                          
+
                           return (
-                            <div key={`div1-${roundNumber}`} className="mb-4">
-                              <div className="glass rounded-2xl p-3 sm:p-6 shadow-2xl border border-green-500/20">
-                                <div className="flex items-center justify-between mb-4 sm:mb-6">
-                                  <div className="flex items-center gap-2 sm:gap-4">
-                                    <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl flex items-center justify-center border border-green-400/20">
-                                      <span className="text-sm sm:text-xl font-bold text-white">D1</span>
-                                    </div>
-                                    <div>
-                                      <h3 className="text-lg sm:text-2xl font-bold text-white">Division 1 - {roundName}</h3>
-                                      <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-300">
-                                        <span>{roundMatches.length} matches</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                                
-                                <div className="grid gap-2 sm:gap-4">
-                                  {roundMatches.map(renderMatch)}
-                                </div>
-                              </div>
-                            </div>
+                            <RoundCard
+                              key={`div1-${roundNumber}`}
+                              badge="D1"
+                              title={`Division 1 — ${roundName}`}
+                              subtitle={roundSubtitle(roundMatches)}
+                              accent="border-green-500/20"
+                              badgeAccent="from-green-500/20 to-emerald-500/20 border-green-400/20"
+                              // A knockout round is short and it is the sharp end
+                              // of the tournament: never folded away.
+                              defaultOpen
+                            >
+                              {roundMatches.map(renderMatch)}
+                            </RoundCard>
                           )
                         })
                       })()}
@@ -1183,29 +1125,19 @@ export default function PublicTournamentPage() {
                         return div2RoundKeys.map(roundNumber => {
                           const roundMatches = div2MatchesByRound[roundNumber]
                           const roundName = getPlayoffRoundName(roundNumber, totalRounds)
-                          
+
                           return (
-                            <div key={`div2-${roundNumber}`} className="mb-4">
-                              <div className="glass rounded-2xl p-3 sm:p-6 shadow-2xl border border-blue-500/20">
-                                <div className="flex items-center justify-between mb-4 sm:mb-6">
-                                  <div className="flex items-center gap-2 sm:gap-4">
-                                    <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl flex items-center justify-center border border-blue-400/20">
-                                      <span className="text-sm sm:text-xl font-bold text-white">D2</span>
-                                    </div>
-                                    <div>
-                                      <h3 className="text-lg sm:text-2xl font-bold text-white">Division 2 - {roundName}</h3>
-                                      <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-300">
-                                        <span>{roundMatches.length} matches</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                                
-                                <div className="grid gap-2 sm:gap-4">
-                                  {roundMatches.map(renderMatch)}
-                                </div>
-                              </div>
-                            </div>
+                            <RoundCard
+                              key={`div2-${roundNumber}`}
+                              badge="D2"
+                              title={`Division 2 — ${roundName}`}
+                              subtitle={roundSubtitle(roundMatches)}
+                              accent="border-blue-500/20"
+                              badgeAccent="from-blue-500/20 to-cyan-500/20 border-blue-400/20"
+                              defaultOpen
+                            >
+                              {roundMatches.map(renderMatch)}
+                            </RoundCard>
                           )
                         })
                       })()}
@@ -1232,124 +1164,197 @@ export default function PublicTournamentPage() {
               .map(Number)
               .sort((a, b) => a - b)
             
-            return sortedRounds.map(roundNumber => {
+            const roundOpen = defaultOpenRounds(
+              sortedRounds.map((roundNumber) => matchesByRound[roundNumber]),
+            )
+
+            return sortedRounds.map((roundNumber, index) => {
               const roundMatches = matchesByRound[roundNumber]
-              
+
               return (
-                <div key={roundNumber} className="mb-6 sm:mb-8">
-                  <div className="glass rounded-2xl p-3 sm:p-6 shadow-2xl border border-white/20">
-                    {/* Round Header */}
-                    <div className="flex items-center justify-between mb-4 sm:mb-6">
-                      <div className="flex items-center gap-2 sm:gap-4">
-                        <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center border border-white/20">
-                          <span className="text-sm sm:text-xl font-bold text-white">{roundNumber + 1}</span>
-                        </div>
-                        <div>
-                          {/* "Tour" is the Russian word for a matchday; in English
-                              football this is a round. */}
-                          <h3 className="text-lg sm:text-2xl font-bold text-white">Round {roundNumber + 1}</h3>
-                          <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-300">
-                            <span>{roundMatches.length} matches</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Matches Grid */}
-                    <div className="grid gap-2 sm:gap-4">
-                      {roundMatches.map(renderMatch)}
-                    </div>
-                  </div>
-                </div>
+                <RoundCard
+                  key={roundNumber}
+                  badge={String(roundNumber + 1)}
+                  // "Tour" is the Russian word for a matchday; in English
+                  // football this is a round.
+                  title={`Round ${roundNumber + 1}`}
+                  subtitle={roundSubtitle(roundMatches)}
+                  defaultOpen={roundOpen[index]}
+                >
+                  {roundMatches.map(renderMatch)}
+                </RoundCard>
               )
             })
           })()}
         </div>
 
-        {/* Playoff Bracket Section */}
-        {(() => {
-          // Check if tournament has custom playoff configuration
-          const hasCustomPlayoff = tournament.format?.mode === 'league_custom_playoff' && 
-                                  tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0
+        {/* Statistics */}
+        <div id="stats" className="mb-12 scroll-mt-20">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Statistics</h2>
+          </div>
           
-          return hasCustomPlayoff
-        })() && (
-          <div className="mb-12">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Playoff Bracket</h2>
-            </div>
-            
+          {/* Player Statistics */}
+          <div className="glass rounded-2xl p-4 sm:p-8 shadow-2xl border border-white/20">
             <div className="space-y-6">
-              {tournament.format.customPlayoffConfig.playoffRounds.map((round: any, roundIndex: number) => (
-                <div key={roundIndex} className="glass rounded-2xl p-4 sm:p-6 shadow-2xl border border-white/20">
-                  <div className="text-center mb-4 sm:mb-6">
-                    <h3 className="text-lg sm:text-2xl font-bold text-white mb-2">
-                      {round.name}
-                    </h3>
-                    {round.description && (
-                      <p className="text-sm sm:text-base text-gray-300">{round.description}</p>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {round.matches && round.matches.length > 0 ? (
-                      round.matches.map((match: any) => {
-                        const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
-                        const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
-                        
-                        return (
-                          <div key={match.id} className="bg-white/5 rounded-xl p-4 border border-white/10">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3 flex-1">
-                                {homeTeam?.logo ? (
-                                  <img
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                <h3 className="text-xl sm:text-2xl font-bold text-white">Player Performance</h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPlayerStatsFilter('all')}
+                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                      playerStatsFilter === 'all'
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                    }`}
+                  >
+                    All Players
+                  </button>
+                  <button
+                    onClick={() => setPlayerStatsFilter('scorers')}
+                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                      playerStatsFilter === 'scorers'
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                    }`}
+                  >
+                    Top Scorers
+                  </button>
+                  <button
+                    onClick={() => setPlayerStatsFilter('assists')}
+                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                      playerStatsFilter === 'assists'
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                    }`}
+                  >
+                    Top Assists
+                  </button>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs sm:text-base">
+                  <thead>
+                    <tr className="border-b border-white/20">
+                      <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Player</th>
+                      <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Club</th>
+                      <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Goals</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      // Filter teams to only include teams from this tournament
+                      const tournamentTeams = teams.filter((team: any) => 
+                        tournament.teamIds && tournament.teamIds.includes(team.id)
+                      )
+                      
+                      // Calculate player statistics
+                      const playerStats = tournamentTeams.flatMap((team: any) => 
+                        (team.players || []).map((player: any) => {
+                          const playerMatches = tournament.matches?.filter((match: any) => {
+                            const isHome = match.homeTeamId === team.id
+                            const teamPlayers = isHome ? match.lineups?.home?.starting || [] : match.lineups?.away?.starting || []
+                            return teamPlayers.includes(player.id) && match.homeGoals !== null && match.awayGoals !== null
+                          }) || []
+                          
+                          let goals = 0
+                          let assists = 0
+                          
+                          tournament.matches?.forEach((match: any) => {
+                            if (match.goals) {
+                              match.goals.forEach((goal: any) => {
+                                if (goal.playerId === player.id) goals++
+                                if (goal.assistPlayerId === player.id) assists++
+                              })
+                            }
+                          })
+                          
+                          return {
+                            player,
+                            team,
+                            gamesPlayed: playerMatches.length,
+                            goals,
+                            assists
+                          }
+                        })
+                      )
+                      
+                      // Filter and sort based on selected filter
+                      let filteredStats = playerStats
+                      if (playerStatsFilter === 'scorers') {
+                        filteredStats = playerStats.filter(p => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 5)
+                      } else if (playerStatsFilter === 'assists') {
+                        filteredStats = playerStats.filter(p => p.assists > 0).sort((a, b) => b.assists - a.assists).slice(0, 5)
+                      } else {
+                        // Sort by goals first, then assists
+                        filteredStats = playerStats.sort((a, b) => {
+                          if (b.goals !== a.goals) return b.goals - a.goals
+                          return b.assists - a.assists
+                        })
+                      }
+                      
+                      return filteredStats.map((stats) => (
+                        <tr key={`${stats.team.id}-${stats.player.id}`} className="border-b border-white/10 hover:bg-white/5 transition-colors">
+                          <td className="py-2 px-1 sm:px-6">
+                            <div className="flex items-center gap-1 sm:gap-3">
+                              {stats.player.photo ? (
+                                <img
               loading="lazy"
-              decoding="async" src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                                    <span className="text-xs">{homeTeam?.name?.charAt(0) || 'H'}</span>
-                                  </div>
-                                )}
-                                <Link to={`/public/teams/${match.homeTeamId}`} className="text-white font-medium hover:text-blue-300">
-                                  {homeTeam?.name || match.homeTeamId}
-                                </Link>
-                              </div>
-                              
-                              <div className="px-4">
-                                {match.homeGoals != null && match.awayGoals != null ? (
-                                  <span className="text-xl font-bold text-white">{match.homeGoals} - {match.awayGoals}</span>
-                                ) : (
-                                  <span className="text-gray-300">vs</span>
-                                )}
-                              </div>
-                              
-                              <div className="flex items-center gap-3 flex-1 justify-end">
-                                <Link to={`/public/teams/${match.awayTeamId}`} className="text-white font-medium hover:text-blue-300">
-                                  {awayTeam?.name || match.awayTeamId}
-                                </Link>
-                                {awayTeam?.logo ? (
-                                  <img
-              loading="lazy"
-              decoding="async" src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                                    <span className="text-xs">{awayTeam?.name?.charAt(0) || 'A'}</span>
-                                  </div>
+              decoding="async" 
+                                  src={stats.player.photo} 
+                                  alt={`${stats.player.firstName} ${stats.player.lastName}`}
+                                  className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover border border-white/20"
+                                />
+                              ) : (
+                                <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
+                                  <span className="text-xs font-bold text-white">
+                                    {stats.player.firstName.charAt(0)}{stats.player.lastName.charAt(0)}
+                                  </span>
+                                </div>
+                              )}
+                              <div>
+                                <div className="text-white font-semibold text-xs sm:text-lg">
+                                  {stats.player.firstName} {stats.player.lastName}
+                                </div>
+                                {stats.player.number && (
+                                  <div className="text-xs text-gray-300">#{stats.player.number}</div>
                                 )}
                               </div>
                             </div>
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <p className="text-center text-gray-300">No matches scheduled yet.</p>
-                    )}
-                  </div>
-                </div>
-              ))}
+                          </td>
+                          <td className="py-2 px-1 sm:px-6">
+                            <div className="flex items-center gap-1 sm:gap-2">
+                              {stats.team.logo ? (
+                                <img
+              loading="lazy"
+              decoding="async" 
+                                  src={stats.team.logo} 
+                                  alt={`${stats.team.name} logo`}
+                                  className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
+                                  <span className="text-xs font-bold text-white">
+                                    {stats.team.name.charAt(0)}
+                                  </span>
+                                </div>
+                              )}
+                              <span className="text-white font-medium text-xs sm:text-lg">{stats.team.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-1 sm:px-6 text-center text-white font-semibold">
+                            <span className="text-yellow-400 font-bold text-xs sm:text-base">{stats.goals}</span>
+                          </td>
+                        </tr>
+                      ))
+                    })()}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
@@ -1383,4 +1388,219 @@ function StandingsLegend() {
       ))}
     </div>
   )
+}
+
+type Section = { id: string; label: string }
+
+/**
+ * A jump bar for the sections of the page.
+ *
+ * The alternative was tabs, which would have hidden the playoff bracket and the
+ * scorers from anyone who did not think to look for them, and broken Cmd+F.
+ * This shows the same structure without taking anything off the page.
+ */
+function SectionNav({ sections }: { sections: Section[] }) {
+  const [active, setActive] = useState(sections[0]?.id ?? '')
+  const sectionKey = sections.map((section) => section.id).join(',')
+
+  useEffect(() => {
+    const targets = sections
+      .map((section) => document.getElementById(section.id))
+      .filter((element): element is HTMLElement => Boolean(element))
+    if (targets.length === 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        if (visible[0]) setActive(visible[0].target.id)
+      },
+      // The band starts below the bar itself, so a section counts as current
+      // once its heading clears the nav.
+      { rootMargin: '-72px 0px -55% 0px', threshold: 0 },
+    )
+
+    targets.forEach((target) => observer.observe(target))
+    return () => observer.disconnect()
+    // The list is rebuilt on every render, so compare it by content.
+  }, [sectionKey])
+
+  return (
+    <nav className="sticky top-0 z-30 -mx-4 mb-8 px-4 py-2 bg-black/50 backdrop-blur-md border-b border-white/10">
+      <div className="flex justify-center gap-1 overflow-x-auto">
+        {sections.map((section) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            onClick={(event) => {
+              const target = document.getElementById(section.id)
+              if (!target) return
+              event.preventDefault()
+              target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              window.history.replaceState(null, '', `#${section.id}`)
+            }}
+            className={`px-3 sm:px-4 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${
+              active === section.id
+                ? 'bg-white/15 text-white font-medium'
+                : 'text-gray-300 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            {section.label}
+          </a>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+/**
+ * The two questions almost everybody arrives with: when do we play next, and
+ * what happened last time. Both used to be several screens down, behind the
+ * table and the scorer list.
+ */
+function Highlights({ tournament, teams }: { tournament: any; teams: any[] }) {
+  const fixtures: any[] = (tournament.matches || []).filter(
+    (match: any) => match?.homeTeamId && match?.awayTeamId,
+  )
+
+  const upcoming = fixtures
+    .filter((match) => matchStatus(match) !== 'finished')
+    .sort(byKickoffAscending)
+    .slice(0, 3)
+
+  const recent = fixtures
+    .filter((match) => matchStatus(match) === 'finished')
+    .sort((a, b) => {
+      const left = matchTime(a)
+      const right = matchTime(b)
+      if (Number.isNaN(left) && Number.isNaN(right)) return (b.round ?? 0) - (a.round ?? 0)
+      if (Number.isNaN(left)) return 1
+      if (Number.isNaN(right)) return -1
+      return right - left
+    })
+    .slice(0, 3)
+
+  if (upcoming.length === 0 && recent.length === 0) return null
+
+  const teamName = (id: string) =>
+    teams.find((team: any) => team.id === id)?.name || 'Unknown Team'
+
+  const row = (match: any, showScore: boolean) => (
+    <li key={match.id} className="flex items-center gap-2 sm:gap-3 text-sm py-1.5">
+      <span className="w-14 sm:w-16 shrink-0 text-xs text-gray-300">{shortDate(match)}</span>
+      <span className="flex-1 min-w-0 truncate text-right text-white">
+        {teamName(match.homeTeamId)}
+      </span>
+      <span
+        className={`shrink-0 px-2 font-semibold ${showScore ? 'text-white' : 'text-gray-300'}`}
+      >
+        {showScore ? `${match.homeGoals} - ${match.awayGoals}` : 'vs'}
+      </span>
+      <span className="flex-1 min-w-0 truncate text-white">{teamName(match.awayTeamId)}</span>
+    </li>
+  )
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 mb-8">
+      {upcoming.length > 0 && (
+        <div className="glass rounded-2xl p-4 sm:p-5 border border-white/20">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-2">
+            Next matches
+          </h2>
+          <ul className="divide-y divide-white/5">{upcoming.map((match) => row(match, false))}</ul>
+        </div>
+      )}
+      {recent.length > 0 && (
+        <div className="glass rounded-2xl p-4 sm:p-5 border border-white/20">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-2">
+            Latest results
+          </h2>
+          <ul className="divide-y divide-white/5">{recent.map((match) => row(match, true))}</ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A round of fixtures that can be folded away.
+ *
+ * A full league is several phone screens of identical cards. Finished rounds
+ * collapse to their heading; the last completed round and the one being played
+ * stay open, because that is the part of the season anyone is looking at.
+ */
+function RoundCard({
+  badge,
+  title,
+  subtitle,
+  accent = 'border-white/20',
+  badgeAccent = 'from-blue-500/20 to-purple-500/20 border-white/20',
+  defaultOpen,
+  children,
+}: {
+  badge: string
+  title: string
+  subtitle: string
+  accent?: string
+  badgeAccent?: string
+  defaultOpen: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="mb-4 sm:mb-6">
+      <div className={`glass rounded-2xl shadow-2xl border ${accent}`}>
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          className="w-full flex items-center justify-between gap-3 p-3 sm:p-6 text-left hover:bg-white/[0.03] rounded-2xl transition-colors"
+        >
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div
+              className={`w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br ${badgeAccent} rounded-xl flex items-center justify-center border`}
+            >
+              <span className="text-sm sm:text-xl font-bold text-white">{badge}</span>
+            </div>
+            <div>
+              <h3 className="text-lg sm:text-2xl font-bold text-white">{title}</h3>
+              <div className="text-xs sm:text-sm text-gray-300">{subtitle}</div>
+            </div>
+          </div>
+          <span
+            aria-hidden
+            className={`text-white/60 text-lg transition-transform ${open ? 'rotate-180' : ''}`}
+          >
+            ▾
+          </span>
+        </button>
+        {open && (
+          <div className="grid gap-2 sm:gap-4 px-3 pb-3 sm:px-6 sm:pb-6">{children}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** "6 matches · all played" reads better than a bare count. */
+function roundSubtitle(matches: any[]): string {
+  const played = matches.filter((match) => matchStatus(match) === 'finished').length
+  if (played === 0) return `${matches.length} matches`
+  if (played === matches.length) return `${matches.length} matches · all played`
+  return `${matches.length} matches · ${played} played`
+}
+
+/**
+ * Which rounds open on arrival: the last one that finished, and the first one
+ * still being played.
+ */
+function defaultOpenRounds(groups: any[][]): boolean[] {
+  const complete = groups.map(
+    (matches) => matches.length > 0 && matches.every((match) => matchStatus(match) === 'finished'),
+  )
+  const lastComplete = complete.lastIndexOf(true)
+  const firstIncomplete = complete.indexOf(false)
+  return groups.map((_, index) => index === lastComplete || index === firstIncomplete)
 }
