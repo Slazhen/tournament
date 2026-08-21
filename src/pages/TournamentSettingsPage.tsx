@@ -6,7 +6,7 @@ import TeamPicker from '../components/TeamPicker'
 import VisibilityToggle from '../components/VisibilityToggle'
 import InlineInput from '../components/InlineInput'
 import FormatPicker from '../components/FormatPicker'
-import { FORMAT_OPTIONS, findFormat } from '../utils/formats'
+import { findFormat, formatOptionFor } from '../utils/formats'
 import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
 import type { TournamentFormat } from '../utils/fixtures'
 import { getAdminTournamentUrl } from '../utils/urls'
@@ -71,25 +71,13 @@ export default function TournamentSettingsPage() {
   }
 
   const editMode = teamEditMode(tournament)
-  const formatTitle =
-    FORMAT_OPTIONS.find(
-      (option) =>
-        option.mode === tournament.format?.mode && option.rounds === (tournament.format?.rounds ?? 1),
-    )?.title ??
-    FORMAT_OPTIONS.find((option) => option.mode === tournament.format?.mode)?.title ??
-    'League'
+  const formatTitle = formatOptionFor(tournament.format).title
 
   const teamsChanged = Boolean(plan && (plan.added.length > 0 || plan.removed.length > 0))
 
   /* ---------- Format ---------- */
 
-  const currentFormatId =
-    FORMAT_OPTIONS.find(
-      (option) =>
-        option.mode === tournament.format?.mode && option.rounds === (tournament.format?.rounds ?? 1),
-    )?.id ??
-    FORMAT_OPTIONS.find((option) => option.mode === tournament.format?.mode)?.id ??
-    'league_single'
+  const currentFormatId = formatOptionFor(tournament.format).id
 
   const selectedFormat = findFormat(draftFormatId ?? currentFormatId)
   const qualifiers =
@@ -117,10 +105,15 @@ export default function TournamentSettingsPage() {
     playoffQualifiers: selectedFormat.mode === 'league_playoff' ? qualifiers : undefined,
     customPlayoffConfig:
       selectedFormat.mode === 'league_custom_playoff'
-        ? tournament.format?.customPlayoffConfig ?? {
-            playoffTeams: qualifiers,
-            enableBye: true,
-            playoffRounds: [],
+        ? {
+            ...(tournament.format?.customPlayoffConfig ?? {
+              playoffTeams: qualifiers,
+              enableBye: true,
+              playoffRounds: [],
+            }),
+            // Dropped entirely when switching to plain Custom, since the whole
+            // format object is replaced on save.
+            preset: selectedFormat.preset,
           }
         : undefined,
     groupsWithDivisionsConfig:
@@ -129,10 +122,13 @@ export default function TournamentSettingsPage() {
 
   const formatPlan = planFormatChange(tournament, nextFormat)
   const seeding = planPlayoffSeeding(tournament)
-  const canDrawBracket =
-    (tournament.format?.mode === 'league_playoff' ||
-      tournament.format?.mode === 'league_custom_playoff') &&
-    seeding.canSeed
+  // The week-by-week system builds its own rounds and has no bracket to seed.
+  const isProgressive =
+    tournament.format?.customPlayoffConfig?.preset === 'progressive_elimination'
+  const hasSeedableBracket =
+    tournament.format?.mode === 'league_playoff' ||
+    (tournament.format?.mode === 'league_custom_playoff' && !isProgressive)
+  const canDrawBracket = hasSeedableBracket && seeding.canSeed
 
   const resetFormatDraft = () => {
     setDraftFormatId(null)
@@ -370,8 +366,7 @@ export default function TournamentSettingsPage() {
       </section>
 
       {/* ---------- Drawing the bracket ---------- */}
-      {(tournament.format?.mode === 'league_playoff' ||
-        tournament.format?.mode === 'league_custom_playoff') && (
+      {hasSeedableBracket && (
         <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-3">
           <h2 className="font-semibold">Playoffs</h2>
           {canDrawBracket ? (

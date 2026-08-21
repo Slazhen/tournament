@@ -15,6 +15,11 @@ export type FormatOption = {
   minTeams: number
   /** Shows a "needs setup" badge: the bracket is built after the group stage. */
   needsSetup?: boolean
+  /**
+   * Two options can share a mode and differ only in what gets generated.
+   * The preset is stored on the tournament so the option can be found again.
+   */
+  preset?: 'progressive_elimination'
   /** There are settings to fill in on the create form itself. */
   hasSettings?: boolean
 }
@@ -95,6 +100,23 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     minTeams: 4,
   },
   {
+    id: 'progressive_elimination',
+    mode: 'league_custom_playoff',
+    preset: 'progressive_elimination',
+    rounds: 1,
+    title: 'League, then one out a week',
+    tagline: 'Everyone keeps playing, the bottom pair play to survive',
+    icon: '🪑',
+    points: [
+      'One round robin first, one table throughout',
+      'Then each week the survivors are paired by position',
+      'The bottom pair is a knockout — the loser is out',
+      'Down to two teams and a final',
+    ],
+    minTeams: 4,
+    needsSetup: true,
+  },
+  {
     id: 'league_custom_playoff',
     mode: 'league_custom_playoff',
     rounds: 1,
@@ -110,6 +132,33 @@ export const FORMAT_OPTIONS: FormatOption[] = [
 
 export const findFormat = (id: string): FormatOption =>
   FORMAT_OPTIONS.find((option) => option.id === id) ?? FORMAT_OPTIONS[0]
+
+/**
+ * Which option a tournament was created with.
+ *
+ * Mode alone is no longer enough to tell them apart: two formats can store the
+ * same mode and differ only by preset.
+ */
+export function formatOptionFor(format?: {
+  mode?: TournamentMode
+  rounds?: number
+  customPlayoffConfig?: { preset?: string }
+}): FormatOption {
+  const preset = format?.customPlayoffConfig?.preset
+  if (preset) {
+    const byPreset = FORMAT_OPTIONS.find((option) => option.preset === preset)
+    if (byPreset) return byPreset
+  }
+
+  return (
+    FORMAT_OPTIONS.find(
+      (option) =>
+        option.mode === format?.mode && option.rounds === (format?.rounds ?? 1) && !option.preset,
+    ) ??
+    FORMAT_OPTIONS.find((option) => option.mode === format?.mode && !option.preset) ??
+    FORMAT_OPTIONS[0]
+  )
+}
 
 export type SchedulePlan = {
   matches: number | null
@@ -168,6 +217,15 @@ export function planSchedule(format: FormatOption, teamCount: number, qualifiers
       // The bracket is not created up front: who finishes in the top four is not
       // known until the league has been played.
       summary: `${leagueMatches} league matches, then ${playoffMatches} playoff matches for the top ${qualifiers}, drawn when the table is final`,
+    }
+  }
+
+  if (format.preset === 'progressive_elimination') {
+    const leagueMatches = ((teamCount * (teamCount - 1)) / 2) * legs
+    return {
+      matches: null,
+      rounds: null,
+      summary: `${leagueMatches} league matches, then one knockout game a week until two teams are left`,
     }
   }
 

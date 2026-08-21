@@ -16,6 +16,7 @@ import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
 import MatchDateTime from '../components/MatchDateTime'
 import { applyDateToRound } from '../utils/matchdates'
+import { planNextProgressiveRound, PROGRESSIVE_PRESET } from '../utils/progressive'
 import InlineInput from '../components/InlineInput'
 
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
@@ -24,16 +25,36 @@ const persistedReconstructedGroups = new Set<string>()
 
 export default function TournamentPage() {
   const { id, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, uploadTournamentLogo } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, uploadTournamentLogo, loading } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
   const teams = getOrganizerTeams()
   const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
+  const [organizersSettled, setOrganizersSettled] = useState(false)
   
-  // Load all organizers for slug-based lookup
+  // Load all organizers for slug-based lookup.
+  //
+  // This request failing used to be invisible and fatal: the list stayed empty,
+  // the slug lookup below returned nothing, and the page said the tournament did
+  // not exist — which is what a refresh looked like whenever the call was slow
+  // or came back 403.
   useEffect(() => {
-    organizerService.getAll().then(setAllOrganizers)
+    let cancelled = false
+    organizerService
+      .getAll()
+      .then((list) => {
+        if (!cancelled) setAllOrganizers(list)
+      })
+      .catch(() => {
+        // The signed-in organizer below is enough to resolve their own slugs.
+      })
+      .finally(() => {
+        if (!cancelled) setOrganizersSettled(true)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
   
   // Support both old ID-based route and new slug-based route
@@ -43,10 +64,17 @@ export default function TournamentPage() {
       return tournaments.find(t => t.id === id)
     } else if (orgSlug && tournamentSlug) {
       // New route: /admin/:orgSlug/:tournamentSlug
-      return findTournamentBySlug(tournaments, orgSlug, tournamentSlug, allOrganizers)
+      // An organizer looking at their own tournament does not need the full
+      // organizer list, so their own record is used when the fetch gave nothing.
+      const known = allOrganizers.length > 0
+        ? allOrganizers
+        : currentOrganizer
+          ? [currentOrganizer]
+          : []
+      return findTournamentBySlug(tournaments, orgSlug, tournamentSlug, known)
     }
     return undefined
-  }, [id, orgSlug, tournamentSlug, tournaments, allOrganizers])
+  }, [id, orgSlug, tournamentSlug, tournaments, allOrganizers, currentOrganizer])
   
   // State for new round configuration
   const [showNewRoundForm, setShowNewRoundForm] = useState(false)
@@ -635,6 +663,9 @@ export default function TournamentPage() {
       if (m.homeGoals == null || m.awayGoals == null) continue
       const a = stats[m.homeTeamId]
       const b = stats[m.awayTeamId]
+      // A fixture can name a team that is no longer in the tournament — a
+      // removed club, or a BYE. Without this the whole page threw.
+      if (!a || !b) continue
       a.p++; b.p++
       a.gf += m.homeGoals; a.ga += m.awayGoals
       b.gf += m.awayGoals; b.ga += m.homeGoals
@@ -738,6 +769,23 @@ export default function TournamentPage() {
 
   const { table, eliminatedTeams, groupTables } = useMemo(() => calculateTable(), [tournament])
 
+  // Nothing is missing until everything it depends on has arrived. Showing
+  // "not found" while the tournament list is still in flight is what made a
+  // refresh look like a crash.
+  const stillLoading =
+    loading.tournaments || (!organizersSettled && !currentOrganizer) || (!currentOrganizer && loading.organizers)
+
+  if (stillLoading && !tournament) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <div className="animate-spin rounded-full h-10 w-10 mx-auto mb-4 border-4 border-white/20 border-t-blue-400" />
+          <p className="opacity-70">Loading tournament...</p>
+        </div>
+      </div>
+    )
+  }
+
   // Redirect if no organizer is selected
   if (!currentOrganizer) {
     return (
@@ -766,6 +814,29 @@ export default function TournamentPage() {
         </div>
       </div>
     )
+  }
+
+  const isProgressive =
+    tournament.format?.customPlayoffConfig?.preset === PROGRESSIVE_PRESET
+
+  const nextRoundPlan = isProgressive
+    ? planNextProgressiveRound(tournament)
+    : { round: null, survivors: [] as string[], reason: undefined, resting: undefined }
+
+  const addProgressiveRound = async () => {
+    if (!nextRoundPlan.round) return
+    const config = tournament.format?.customPlayoffConfig
+    if (!config) return
+
+    await updateTournament(tournament.id, {
+      format: {
+        ...tournament.format!,
+        customPlayoffConfig: {
+          ...config,
+          playoffRounds: [...(config.playoffRounds || []), nextRoundPlan.round],
+        },
+      },
+    })
   }
 
   // Helper function to create playoff matches
@@ -1637,11 +1708,56 @@ export default function TournamentPage() {
         {/* Custom Playoff Configuration */}
         {tournament.format?.mode === 'league_custom_playoff' && (
           <div className="glass rounded-xl p-6">
-            <h2 className="text-lg font-semibold text-center mb-4">Custom Playoff Configuration</h2>
+            <h2 className="text-lg font-semibold text-center mb-4">
+              {isProgressive ? 'Rounds' : 'Custom Playoff Configuration'}
+            </h2>
             <div className="space-y-6">
               <p className="text-center text-sm opacity-80">
-                Configure your playoff rounds. Set the quantity of games and mark individual matches as elimination.
+                {isProgressive
+                  ? 'Each week the surviving teams are paired by their place in the table, and the bottom pair play to stay in. Generate the week, then adjust anything that does not match the draw.'
+                  : 'Configure your playoff rounds. Set the quantity of games and mark individual matches as elimination.'}
               </p>
+
+              {/* One week of the "one out a week" system, worked out from the
+                  table instead of typed in by hand. */}
+              {isProgressive && (
+                <div className="rounded-lg border border-white/15 bg-white/[0.03] p-4 space-y-3">
+                  {nextRoundPlan.round ? (
+                    <>
+                      <div className="text-sm">
+                        <span className="font-medium">{nextRoundPlan.round.name}</span>
+                        <span className="opacity-70">
+                          {' '}— {nextRoundPlan.round.matches.length} matches,{' '}
+                          {nextRoundPlan.round.matches.filter((m: any) => m.isElimination).length}{' '}
+                          elimination
+                          {nextRoundPlan.resting
+                            ? `, ${teams.find(t => t.id === nextRoundPlan.resting)?.name ?? 'the leader'} rests`
+                            : ''}
+                        </span>
+                      </div>
+                      <ul className="text-sm opacity-80 space-y-0.5">
+                        {nextRoundPlan.round.matches.map((match: any) => (
+                          <li key={match.id}>
+                            {teams.find(t => t.id === match.homeTeamId)?.name ?? '?'} v{' '}
+                            {teams.find(t => t.id === match.awayTeamId)?.name ?? '?'}
+                            {match.isElimination && (
+                              <span className="ml-2 text-xs text-red-300">elimination</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        onClick={addProgressiveRound}
+                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-sm"
+                      >
+                        ⚡ Add {nextRoundPlan.round.name}
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-sm opacity-70">{nextRoundPlan.reason}</p>
+                  )}
+                </div>
+              )}
               
               {/* Add New Round Form */}
               {!showNewRoundForm && (

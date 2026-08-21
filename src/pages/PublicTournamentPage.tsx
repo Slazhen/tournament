@@ -55,6 +55,46 @@ const shortDate = (match: any) =>
     ? new Date(match.dateISO).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : ''
 
+/**
+ * When a match kicks off.
+ *
+ * Playoff rounds built by hand store the day in `dateISO` (at midnight) and the
+ * kick-off in a separate `time` field, so reading the clock off the timestamp
+ * showed every final at 00:00 — or, in the bracket below, showed nothing at all.
+ */
+function kickOff(match: any): { day: string; time: string } | null {
+  if (!match?.dateISO) return match?.time ? { day: '', time: match.time } : null
+  const date = new Date(match.dateISO)
+  const day = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const time =
+    match.time ||
+    date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return { day, time }
+}
+
+/** Every match of the tournament, including the hand-built playoff rounds. */
+function allTournamentMatches(tournament: any): any[] {
+  const matches = [...(tournament?.matches || [])]
+
+  const rounds = tournament?.format?.customPlayoffConfig?.playoffRounds
+  if (tournament?.format?.mode === 'league_custom_playoff' && Array.isArray(rounds)) {
+    rounds.forEach((round: any) => {
+      if (!Array.isArray(round?.matches)) return
+      round.matches.forEach((match: any) => {
+        matches.push({
+          ...match,
+          isPlayoff: true,
+          isElimination: match.isElimination || round.isElimination || false,
+          playoffRound: round.roundNumber || 0,
+          roundName: round.name || '',
+        })
+      })
+    })
+  }
+
+  return matches
+}
+
 export default function PublicTournamentPage() {
   const { id, tournamentId, orgSlug, tournamentSlug } = useParams()
   const [isLoading, setIsLoading] = useState(true)
@@ -197,26 +237,7 @@ export default function PublicTournamentPage() {
   }
 
   // Helper function to get all matches including custom playoff matches
-  const getAllMatches = () => {
-    let allMatches = [...(tournament.matches || [])]
-    
-    // Add custom playoff matches if they exist
-    if (tournament.format?.mode === 'league_custom_playoff' && tournament.format?.customPlayoffConfig?.playoffRounds) {
-      tournament.format.customPlayoffConfig.playoffRounds.forEach((round: any) => {
-        if (round.matches && Array.isArray(round.matches)) {
-          round.matches.forEach((match: any) => {
-            allMatches.push({
-              ...match,
-              isPlayoff: true,
-              playoffRound: round.name
-            })
-          })
-        }
-      })
-    }
-    
-    return allMatches
-  }
+  const getAllMatches = () => allTournamentMatches(tournament)
 
   const calculateTable = () => {
     if (!tournament) return { table: [], eliminatedTeams: new Set<string>(), groupTables: {} }
@@ -361,24 +382,25 @@ export default function PublicTournamentPage() {
       }
     })
     
-    // Handle elimination matches
-    if (tournament.format?.mode === 'league_playoff' || tournament.format?.mode === 'swiss_elimination') {
-      tournament.matches.forEach((match: any) => {
-        if (match.isPlayoff && ((match as any).homeGoals != null || (match as any).awayGoals != null)) {
-          const homeTeamId = match.homeTeamId
-          const awayTeamId = match.awayTeamId
-          
-          if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return
-          
-          // Mark the loser as eliminated
-          if ((match as any).homeGoals > (match as any).awayGoals) {
-            eliminatedTeams.add(awayTeamId)
-          } else if ((match as any).homeGoals < (match as any).awayGoals) {
-            eliminatedTeams.add(homeTeamId)
-          }
-        }
-      })
-    }
+    // Who has been knocked out.
+    //
+    // This only ran for league_playoff and swiss_elimination, so a tournament
+    // whose knockout games are hand-built rounds — the format this league
+    // actually uses — never showed anyone as eliminated.
+    const knockoutModes = ['league_playoff', 'swiss_elimination']
+    allMatches.forEach((match: any) => {
+      const decidesElimination =
+        match.isElimination === true ||
+        (match.isPlayoff && knockoutModes.includes(tournament.format?.mode))
+      if (!decidesElimination) return
+
+      const { homeTeamId, awayTeamId, homeGoals, awayGoals } = match
+      if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return
+      if (typeof homeGoals !== 'number' || typeof awayGoals !== 'number') return
+
+      if (homeGoals > awayGoals) eliminatedTeams.add(awayTeamId)
+      else if (homeGoals < awayGoals) eliminatedTeams.add(homeTeamId)
+    })
     
     const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
       .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
@@ -390,6 +412,126 @@ export default function PublicTournamentPage() {
   const { table, eliminatedTeams, groupTables } = calculateTable()
 
   const venue = describeVenue(tournament.location)
+
+  const renderMatch = (match: any) => {
+    const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
+    const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
+    // `!== null` also passed for a match whose goals were never set at
+    // all, which is every fixture that has not been played.
+    const status = matchStatus(match)
+    const isMatchFinished = status === 'finished'
+    const isMatchUpcoming = status === 'upcoming'
+
+    return (
+      <div key={match.id} className={`group relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
+        isMatchFinished ? 'border-green-500/20' :
+        isMatchUpcoming ? 'border-blue-500/20' :
+        'border-yellow-500/20'
+      }`}>
+        {/* A bare coloured dot sat here. Nothing on the page said what
+            the colours meant, so it read as decoration. */}
+        <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+          <span className={`text-[10px] sm:text-xs uppercase tracking-wide font-medium px-2 py-0.5 rounded-full ${
+            isMatchFinished ? 'bg-green-500/15 text-green-300' :
+            isMatchUpcoming ? 'bg-blue-500/15 text-blue-300' :
+            'bg-yellow-500/15 text-yellow-300'
+          }`}>
+            {isMatchFinished ? 'Full time' : isMatchUpcoming ? 'Scheduled' : 'In progress'}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          {/* Home Team */}
+          <div className="flex items-center gap-2 sm:gap-4 flex-1">
+            {homeTeam?.logo ? (
+              <div className="relative">
+                <img
+    loading="lazy"
+    decoding="async" 
+                  src={homeTeam.logo} 
+                  alt={`${homeTeam.name} logo`}
+                  className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                />
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
+              </div>
+            ) : (
+              <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
+                <span className="text-sm sm:text-lg font-bold text-white">
+                  {homeTeam?.name?.charAt(0) || 'H'}
+                </span>
+              </div>
+            )}
+            <div>
+              <Link 
+                to={`/public/teams/${match.homeTeamId}`}
+                className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300"
+              >
+                {homeTeam?.name || 'Unknown Team'}
+              </Link>
+            </div>
+          </div>
+          
+          {/* Score/VS */}
+          <div className="text-center px-2 sm:px-6">
+            {isMatchFinished ? (
+              <div className="space-y-1 sm:space-y-2">
+                <div className="text-xl sm:text-3xl font-bold text-white">
+                  {match.homeGoals} - {match.awayGoals}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1 sm:space-y-2">
+                {/* The status now has one home, the badge in the corner. */}
+                <div className="text-sm sm:text-xl font-semibold text-gray-300">vs</div>
+              </div>
+            )}
+
+            {/* Match Date & Time */}
+            {(() => {
+              const when = kickOff(match)
+              if (!when) return null
+              return (
+                <div className="text-xs sm:text-sm text-gray-300 mt-1 sm:mt-2">
+                  {when.day && <div>{when.day}</div>}
+                  <div>{when.time}</div>
+                </div>
+              )
+            })()}
+          </div>
+          
+          {/* Away Team */}
+          <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
+            <div className="text-right">
+              <Link 
+                to={`/public/teams/${match.awayTeamId}`}
+                className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300"
+              >
+                {awayTeam?.name || 'Unknown Team'}
+              </Link>
+            </div>
+            {awayTeam?.logo ? (
+              <div className="relative">
+                <img
+    loading="lazy"
+    decoding="async" 
+                  src={awayTeam.logo} 
+                  alt={`${awayTeam.name} logo`}
+                  className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
+                />
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
+              </div>
+            ) : (
+              <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
+                <span className="text-sm sm:text-lg font-bold text-white">
+                  {awayTeam?.name?.charAt(0) || 'A'}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const hasPlayoffBracket =
     tournament.format?.mode === 'league_custom_playoff' &&
@@ -726,87 +868,50 @@ export default function PublicTournamentPage() {
         </div>
 
         {/* Playoff Bracket Section */}
-        {(() => {
-          // Check if tournament has custom playoff configuration
-          const hasCustomPlayoff = tournament.format?.mode === 'league_custom_playoff' && 
-                                  tournament.format?.customPlayoffConfig?.playoffRounds?.length > 0
-          
-          return hasCustomPlayoff
-        })() && (
+        {hasPlayoffBracket && (
           <div id="playoffs" className="mb-12 scroll-mt-20">
             <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Playoff Bracket</h2>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Playoffs</h2>
             </div>
-            
-            <div className="space-y-6">
-              {tournament.format.customPlayoffConfig.playoffRounds.map((round: any, roundIndex: number) => (
-                <div key={roundIndex} className="glass rounded-2xl p-4 sm:p-6 shadow-2xl border border-white/20">
-                  <div className="text-center mb-4 sm:mb-6">
-                    <h3 className="text-lg sm:text-2xl font-bold text-white mb-2">
-                      {round.name}
-                    </h3>
-                    {round.description && (
-                      <p className="text-sm sm:text-base text-gray-300">{round.description}</p>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {round.matches && round.matches.length > 0 ? (
-                      round.matches.map((match: any) => {
-                        const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
-                        const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
-                        
-                        return (
-                          <div key={match.id} className="bg-white/5 rounded-xl p-4 border border-white/10">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3 flex-1">
-                                {homeTeam?.logo ? (
-                                  <img
-              loading="lazy"
-              decoding="async" src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                                    <span className="text-xs">{homeTeam?.name?.charAt(0) || 'H'}</span>
-                                  </div>
-                                )}
-                                <Link to={`/public/teams/${match.homeTeamId}`} className="text-white font-medium hover:text-blue-300">
-                                  {homeTeam?.name || match.homeTeamId}
-                                </Link>
-                              </div>
-                              
-                              <div className="px-4">
-                                {match.homeGoals != null && match.awayGoals != null ? (
-                                  <span className="text-xl font-bold text-white">{match.homeGoals} - {match.awayGoals}</span>
-                                ) : (
-                                  <span className="text-gray-300">vs</span>
-                                )}
-                              </div>
-                              
-                              <div className="flex items-center gap-3 flex-1 justify-end">
-                                <Link to={`/public/teams/${match.awayTeamId}`} className="text-white font-medium hover:text-blue-300">
-                                  {awayTeam?.name || match.awayTeamId}
-                                </Link>
-                                {awayTeam?.logo ? (
-                                  <img
-              loading="lazy"
-              decoding="async" src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-10 h-10 rounded-full object-cover" />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                                    <span className="text-xs">{awayTeam?.name?.charAt(0) || 'A'}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <p className="text-center text-gray-300">No matches scheduled yet.</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+
+            {/* These rounds used to render in their own stripped-down layout:
+                no date, no kick-off time, no elimination marker — which is why
+                the last rounds looked like they had not been scheduled. They now
+                use the same cards as every other fixture. */}
+            {tournament.format.customPlayoffConfig.playoffRounds.map((round: any, roundIndex: number) => {
+              const matches: any[] = (round.matches || []).map((match: any) => ({
+                ...match,
+                isElimination: match.isElimination || round.isElimination || false,
+              }))
+              const day = matches.find((match) => match.dateISO)
+              const dayLabel = day
+                ? new Date(day.dateISO).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                : ''
+
+              return (
+                <RoundCard
+                  key={roundIndex}
+                  badge={String(roundIndex + 1)}
+                  title={round.name || `Playoff round ${roundIndex + 1}`}
+                  subtitle={[dayLabel, roundSubtitle(matches), round.description]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  accent="border-amber-400/25"
+                  badgeAccent="from-amber-500/20 to-orange-500/20 border-amber-400/25"
+                  defaultOpen
+                >
+                  {matches.length > 0 ? (
+                    matches.map(renderMatch)
+                  ) : (
+                    <p className="text-center text-gray-300 py-2">No matches scheduled yet.</p>
+                  )}
+                </RoundCard>
+              )
+            })}
           </div>
         )}
 
@@ -818,133 +923,6 @@ export default function PublicTournamentPage() {
           
           {(() => {
             // Helper function to render match
-            const renderMatch = (match: any) => {
-              const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
-              const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
-              // `!== null` also passed for a match whose goals were never set at
-              // all, which is every fixture that has not been played.
-              const status = matchStatus(match)
-              const isMatchFinished = status === 'finished'
-              const isMatchUpcoming = status === 'upcoming'
-
-              return (
-                <div key={match.id} className={`group relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
-                  isMatchFinished ? 'border-green-500/20' :
-                  isMatchUpcoming ? 'border-blue-500/20' :
-                  'border-yellow-500/20'
-                }`}>
-                  {/* A bare coloured dot sat here. Nothing on the page said what
-                      the colours meant, so it read as decoration. */}
-                  <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
-                    <span className={`text-[10px] sm:text-xs uppercase tracking-wide font-medium px-2 py-0.5 rounded-full ${
-                      isMatchFinished ? 'bg-green-500/15 text-green-300' :
-                      isMatchUpcoming ? 'bg-blue-500/15 text-blue-300' :
-                      'bg-yellow-500/15 text-yellow-300'
-                    }`}>
-                      {isMatchFinished ? 'Full time' : isMatchUpcoming ? 'Scheduled' : 'In progress'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    {/* Home Team */}
-                    <div className="flex items-center gap-2 sm:gap-4 flex-1">
-                      {homeTeam?.logo ? (
-                        <div className="relative">
-                          <img
-              loading="lazy"
-              decoding="async" 
-                            src={homeTeam.logo} 
-                            alt={`${homeTeam.name} logo`}
-                            className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
-                          />
-                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
-                        </div>
-                      ) : (
-                        <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                          <span className="text-sm sm:text-lg font-bold text-white">
-                            {homeTeam?.name?.charAt(0) || 'H'}
-                          </span>
-                        </div>
-                      )}
-                      <div>
-                        <Link 
-                          to={`/public/teams/${match.homeTeamId}`}
-                          className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300"
-                        >
-                          {homeTeam?.name || 'Unknown Team'}
-                        </Link>
-                      </div>
-                    </div>
-                    
-                    {/* Score/VS */}
-                    <div className="text-center px-2 sm:px-6">
-                      {isMatchFinished ? (
-                        <div className="space-y-1 sm:space-y-2">
-                          <div className="text-xl sm:text-3xl font-bold text-white">
-                            {match.homeGoals} - {match.awayGoals}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-1 sm:space-y-2">
-                          {/* The status now has one home, the badge in the corner. */}
-                          <div className="text-sm sm:text-xl font-semibold text-gray-300">vs</div>
-                        </div>
-                      )}
-
-                      {/* Match Date & Time */}
-                      {match.dateISO && (
-                        <div className="text-xs sm:text-sm text-gray-300 mt-1 sm:mt-2">
-                          <div>
-                            {new Date(match.dateISO).toLocaleDateString('en-US', {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric'
-                            })}
-                          </div>
-                          <div>
-                            {new Date(match.dateISO).toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: false
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Away Team */}
-                    <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
-                      <div className="text-right">
-                        <Link 
-                          to={`/public/teams/${match.awayTeamId}`}
-                          className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300"
-                        >
-                          {awayTeam?.name || 'Unknown Team'}
-                        </Link>
-                      </div>
-                      {awayTeam?.logo ? (
-                        <div className="relative">
-                          <img
-              loading="lazy"
-              decoding="async" 
-                            src={awayTeam.logo} 
-                            alt={`${awayTeam.name} logo`}
-                            className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
-                          />
-                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
-                        </div>
-                      ) : (
-                        <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                          <span className="text-sm sm:text-lg font-bold text-white">
-                            {awayTeam?.name?.charAt(0) || 'A'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            }
             
             // For groups_with_divisions format, organize differently
             if (tournament.format?.mode === 'groups_with_divisions') {
@@ -1460,7 +1438,10 @@ function SectionNav({ sections }: { sections: Section[] }) {
  * table and the scorer list.
  */
 function Highlights({ tournament, teams }: { tournament: any; teams: any[] }) {
-  const fixtures: any[] = (tournament.matches || []).filter(
+  // Rounds built by hand live inside the format, not in `matches` — without
+  // them "Latest results" for a finished tournament showed the league, months
+  // before the final that actually decided it.
+  const fixtures: any[] = allTournamentMatches(tournament).filter(
     (match: any) => match?.homeTeamId && match?.awayTeamId,
   )
 

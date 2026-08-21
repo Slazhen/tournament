@@ -262,7 +262,10 @@ function buildFixtures(teamIds: string[], format: Format): { matches: Match[]; g
 const sameFormat = (a: Format, b: Format) =>
   a.mode === b.mode &&
   (a.rounds || 1) === (b.rounds || 1) &&
-  (a.playoffQualifiers ?? 0) === (b.playoffQualifiers ?? 0)
+  (a.playoffQualifiers ?? 0) === (b.playoffQualifiers ?? 0) &&
+  // Two formats can share a mode and differ only in the system their
+  // hand-built rounds follow.
+  (a.customPlayoffConfig?.preset ?? '') === (b.customPlayoffConfig?.preset ?? '')
 
 /** The table as it stands, best first. */
 function rankTeams(teamIds: string[], matches: Match[]): string[] {

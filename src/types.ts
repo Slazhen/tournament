@@ -179,6 +179,12 @@ export type Tournament = {
       playoffTeams: number // Total teams in playoffs
       enableBye: boolean // Enable BYE for odd numbers (default: true)
       playoffRounds?: CustomPlayoffRoundConfig[] // Configuration for each playoff round
+      /**
+       * Which system these hand-built rounds follow, when they follow one.
+       * 'progressive_elimination' means each week can be generated from the
+       * table instead of being typed in by hand.
+       */
+      preset?: 'progressive_elimination'
     }
     groupsWithDivisionsConfig?: {
       numberOfGroups: number // Number of groups

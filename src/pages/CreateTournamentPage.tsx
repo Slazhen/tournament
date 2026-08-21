@@ -74,9 +74,12 @@ export default function CreateTournamentPage() {
         mode,
         playoffQualifiers: mode === 'league_playoff' ? qualifiers : undefined,
         customPlayoffConfig: mode === 'league_custom_playoff' ? {
-          playoffTeams: qualifiers,
+          playoffTeams: selectedFormat.preset ? selectedTeamIds.length : qualifiers,
           enableBye: true,
-          playoffRounds: []
+          playoffRounds: [],
+          // Marks the rounds as following a system, so they can be generated
+          // from the table instead of typed in one by one.
+          preset: selectedFormat.preset,
         } : undefined,
         groupsWithDivisionsConfig: mode === 'groups_with_divisions' ? {
           numberOfGroups,
