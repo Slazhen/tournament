@@ -2,9 +2,47 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MFTournament</title>
+
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="apple-touch-icon" href="/logo.svg" />
+    <meta name="theme-color" content="#0B1120" />
+
+    <!--
+      The tab used to say "MFTournament" and nothing else, and the page carried
+      no description at all: a search result showed the name and whatever text
+      the crawler happened to scrape first.
+    -->
+    <title>MFTournament — free football league and tournament manager</title>
+    <meta
+      name="description"
+      content="Run a football league, cup or futsal tournament online. MFTournament builds the fixtures, keeps the table up to date, tracks scorers and gives every tournament a public page you can share with players and supporters. Free to use."
+    />
+    <link rel="canonical" href="https://myfootballtournament.com/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="MFTournament" />
+    <meta property="og:title" content="MFTournament — free football league and tournament manager" />
+    <meta
+      property="og:description"
+      content="Fixtures, live standings, scorers and a public page for your league — set up in a few minutes."
+    />
+    <meta property="og:url" content="https://myfootballtournament.com/" />
+    <meta property="og:image" content="https://myfootballtournament.com/logo.svg" />
+    <meta name="twitter:card" content="summary" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "MFTournament",
+        "url": "https://myfootballtournament.com/",
+        "applicationCategory": "SportsApplication",
+        "operatingSystem": "Any",
+        "description": "Football league and tournament management: fixture generation, live standings, player statistics and a public tournament page.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "AUD" }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store'
+import Logo from './Logo'
 import { useAuth } from '../contexts/AuthContext'
 
 const NAV_ITEMS = [
@@ -61,11 +62,8 @@ export default function AdminNavigation() {
   return (
     <header className="sticky top-0 z-50 glass-header">
       <div className="mx-auto container-max px-4 h-14 flex items-center justify-between gap-4">
-        <Link
-          to="/"
-          className="font-semibold tracking-tight shrink-0 hover:opacity-80 transition-opacity"
-        >
-          MFTournament
+        <Link to="/" className="shrink-0 hover:opacity-80 transition-opacity">
+          <Logo size={26} />
         </Link>
 
         <nav className="flex items-center gap-1">
