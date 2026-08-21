@@ -160,12 +160,14 @@ export function planSchedule(format: FormatOption, teamCount: number, qualifiers
   }
 
   if (format.mode === 'league_playoff') {
-    const leagueMatches = (teamCount * (teamCount - 1)) / 2
+    const leagueMatches = ((teamCount * (teamCount - 1)) / 2) * legs
     const playoffMatches = Math.max(0, qualifiers - 1)
     return {
       matches: leagueMatches + playoffMatches,
       rounds: null,
-      summary: `${leagueMatches} league matches, then ${playoffMatches} playoff matches for the top ${qualifiers}`,
+      // The bracket is not created up front: who finishes in the top four is not
+      // known until the league has been played.
+      summary: `${leagueMatches} league matches, then ${playoffMatches} playoff matches for the top ${qualifiers}, drawn when the table is final`,
     }
   }
 

@@ -5,8 +5,10 @@ import LogoUploader from '../components/LogoUploader'
 import TeamPicker from '../components/TeamPicker'
 import VisibilityToggle from '../components/VisibilityToggle'
 import InlineInput from '../components/InlineInput'
-import { FORMAT_OPTIONS } from '../utils/formats'
-import { planTeamChange, teamEditMode } from '../utils/fixtures'
+import FormatPicker from '../components/FormatPicker'
+import { FORMAT_OPTIONS, findFormat } from '../utils/formats'
+import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
+import type { TournamentFormat } from '../utils/fixtures'
 import { getAdminTournamentUrl } from '../utils/urls'
 
 /**
@@ -38,6 +40,15 @@ export default function TournamentSettingsPage() {
 
   const [draftTeamIds, setDraftTeamIds] = useState<string[] | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [draftFormatId, setDraftFormatId] = useState<string | null>(null)
+  const [draftQualifiers, setDraftQualifiers] = useState<number | null>(null)
+  const [draftGroups, setDraftGroups] = useState<{
+    numberOfGroups: number
+    teamsPerGroup: number
+    groupRounds: number
+  } | null>(null)
+  const [isSavingFormat, setIsSavingFormat] = useState(false)
+  const [isDrawing, setIsDrawing] = useState(false)
 
   const selectedTeamIds = draftTeamIds ?? tournament?.teamIds ?? []
 
@@ -69,6 +80,106 @@ export default function TournamentSettingsPage() {
     'League'
 
   const teamsChanged = Boolean(plan && (plan.added.length > 0 || plan.removed.length > 0))
+
+  /* ---------- Format ---------- */
+
+  const currentFormatId =
+    FORMAT_OPTIONS.find(
+      (option) =>
+        option.mode === tournament.format?.mode && option.rounds === (tournament.format?.rounds ?? 1),
+    )?.id ??
+    FORMAT_OPTIONS.find((option) => option.mode === tournament.format?.mode)?.id ??
+    'league_single'
+
+  const selectedFormat = findFormat(draftFormatId ?? currentFormatId)
+  const qualifiers =
+    draftQualifiers ??
+    tournament.format?.playoffQualifiers ??
+    tournament.format?.customPlayoffConfig?.playoffTeams ??
+    4
+  const groupsConfig = draftGroups ?? {
+    numberOfGroups: tournament.format?.groupsWithDivisionsConfig?.numberOfGroups ?? 4,
+    teamsPerGroup: tournament.format?.groupsWithDivisionsConfig?.teamsPerGroup ?? 4,
+    groupRounds: tournament.format?.groupsWithDivisionsConfig?.groupRounds ?? 1,
+  }
+
+  // Adding finals to a league keeps the league exactly as it is, so the number
+  // of legs has to come from the tournament rather than from the format card.
+  const inheritedLegs =
+    tournament.format?.mode === 'league' &&
+    (selectedFormat.mode === 'league_playoff' || selectedFormat.mode === 'league_custom_playoff')
+      ? tournament.format.rounds || 1
+      : selectedFormat.rounds
+
+  const nextFormat: TournamentFormat = {
+    rounds: inheritedLegs,
+    mode: selectedFormat.mode,
+    playoffQualifiers: selectedFormat.mode === 'league_playoff' ? qualifiers : undefined,
+    customPlayoffConfig:
+      selectedFormat.mode === 'league_custom_playoff'
+        ? tournament.format?.customPlayoffConfig ?? {
+            playoffTeams: qualifiers,
+            enableBye: true,
+            playoffRounds: [],
+          }
+        : undefined,
+    groupsWithDivisionsConfig:
+      selectedFormat.mode === 'groups_with_divisions' ? groupsConfig : undefined,
+  }
+
+  const formatPlan = planFormatChange(tournament, nextFormat)
+  const seeding = planPlayoffSeeding(tournament)
+  const canDrawBracket =
+    (tournament.format?.mode === 'league_playoff' ||
+      tournament.format?.mode === 'league_custom_playoff') &&
+    seeding.canSeed
+
+  const resetFormatDraft = () => {
+    setDraftFormatId(null)
+    setDraftQualifiers(null)
+    setDraftGroups(null)
+  }
+
+  const saveFormat = async () => {
+    if (formatPlan.kind === 'unchanged' || formatPlan.kind === 'blocked') return
+
+    if (formatPlan.kind === 'destructive') {
+      const typed = prompt(
+        `This deletes ${formatPlan.lostResults} result(s) and rebuilds the fixture list.\n` +
+          `Type the tournament name to confirm:\n\n${tournament.name}`,
+      )
+      if (typed?.trim() !== tournament.name) return
+    }
+
+    setIsSavingFormat(true)
+    try {
+      const format: TournamentFormat = formatPlan.groups
+        ? {
+            ...nextFormat,
+            groupsWithDivisionsConfig: nextFormat.groupsWithDivisionsConfig
+              ? { ...nextFormat.groupsWithDivisionsConfig, groups: formatPlan.groups }
+              : undefined,
+          }
+        : nextFormat
+
+      await updateTournament(tournament.id, { format, matches: formatPlan.matches })
+      resetFormatDraft()
+    } finally {
+      setIsSavingFormat(false)
+    }
+  }
+
+  const drawBracket = async () => {
+    if (!seeding.canSeed) return
+    setIsDrawing(true)
+    try {
+      await updateTournament(tournament.id, {
+        matches: [...(tournament.matches || []), ...seeding.matches],
+      })
+    } finally {
+      setIsDrawing(false)
+    }
+  }
 
   const saveTeams = async () => {
     if (!plan || !teamsChanged || plan.mode === 'locked') return
@@ -154,6 +265,137 @@ export default function TournamentSettingsPage() {
           }
         />
       </section>
+
+      {/* ---------- Format ---------- */}
+      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="font-semibold">How it is played</h2>
+          <span className="text-xs opacity-60">Currently: {formatTitle}</span>
+        </div>
+
+        <FormatPicker
+          value={draftFormatId ?? currentFormatId}
+          onChange={setDraftFormatId}
+          teamCount={selectedTeamIds.length}
+          qualifiers={qualifiers}
+        />
+
+        {(selectedFormat.mode === 'league_playoff' ||
+          selectedFormat.mode === 'league_custom_playoff') && (
+          <label className="block text-sm">
+            <span className="opacity-70">Teams in the playoffs</span>
+            <input
+              type="number"
+              min={2}
+              max={Math.max(2, selectedTeamIds.length)}
+              value={qualifiers}
+              onChange={(event) => setDraftQualifiers(Number(event.target.value) || 2)}
+              className="mt-1 w-24 px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+            />
+          </label>
+        )}
+
+        {selectedFormat.mode === 'groups_with_divisions' && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {(
+              [
+                ['numberOfGroups', 'Groups', 2, 8],
+                ['teamsPerGroup', 'Teams per group', 2, 8],
+                ['groupRounds', 'Legs in the group', 1, 2],
+              ] as const
+            ).map(([key, label, min, max]) => (
+              <label key={key} className="text-sm">
+                <span className="opacity-70">{label}</span>
+                <input
+                  type="number"
+                  min={min}
+                  max={max}
+                  value={groupsConfig[key]}
+                  onChange={(event) =>
+                    setDraftGroups({
+                      ...groupsConfig,
+                      [key]: Math.min(max, Math.max(min, Number(event.target.value) || min)),
+                    })
+                  }
+                  className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+                />
+              </label>
+            ))}
+          </div>
+        )}
+
+        {/* What the switch would actually do, before anything is written. */}
+        {formatPlan.kind !== 'unchanged' && (
+          <div
+            className={`rounded-lg border p-3 text-sm space-y-1 ${
+              formatPlan.kind === 'destructive'
+                ? 'border-red-400/30 bg-red-400/5'
+                : formatPlan.kind === 'blocked'
+                  ? 'border-white/15 bg-white/[0.03]'
+                  : 'border-amber-400/30 bg-amber-400/5'
+            }`}
+          >
+            <div className="font-medium">
+              {formatPlan.kind === 'blocked' ? 'Not yet' : 'What this will do'}
+            </div>
+            {formatPlan.notes.map((note) => (
+              <p key={note} className="opacity-80">
+                {note}
+              </p>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={saveFormat}
+            disabled={
+              formatPlan.kind === 'unchanged' || formatPlan.kind === 'blocked' || isSavingFormat
+            }
+            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {isSavingFormat ? 'Saving...' : 'Change format'}
+          </button>
+          {formatPlan.kind !== 'unchanged' && (
+            <button
+              type="button"
+              onClick={resetFormatDraft}
+              className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* ---------- Drawing the bracket ---------- */}
+      {(tournament.format?.mode === 'league_playoff' ||
+        tournament.format?.mode === 'league_custom_playoff') && (
+        <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-3">
+          <h2 className="font-semibold">Playoffs</h2>
+          {canDrawBracket ? (
+            <>
+              <p className="text-sm opacity-70">
+                The league is finished. The top {seeding.qualifiers} go into the bracket, seeded by
+                the final table — {seeding.matches.length} matches.
+              </p>
+              <button
+                type="button"
+                onClick={drawBracket}
+                disabled={isDrawing}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 transition-colors"
+              >
+                {isDrawing ? 'Drawing...' : 'Draw the bracket'}
+              </button>
+            </>
+          ) : (
+            <p className="text-sm opacity-70">
+              {seeding.reason ?? 'The bracket cannot be drawn yet.'}
+            </p>
+          )}
+        </section>
+      )}
 
       {/* ---------- Where ---------- */}
       <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">

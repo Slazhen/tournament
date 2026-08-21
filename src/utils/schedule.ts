@@ -717,9 +717,11 @@ export function calculateTeamStandings(
   matches: Match[], 
   teamId: string
 ): TeamStanding {
-  const teamMatches = matches.filter(m => 
+  const teamMatches = matches.filter(m =>
     m.homeTeamId === teamId || m.awayTeamId === teamId
-  ).filter(m => m.homeGoals !== null && m.awayGoals !== null)
+  // `!== null` let an unplayed fixture through, and its undefined score then
+  // turned every total into NaN.
+  ).filter(m => typeof m.homeGoals === 'number' && typeof m.awayGoals === 'number')
 
   let points = 0
   let played = teamMatches.length

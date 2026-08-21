@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import type { Team, Tournament, Match, Organizer, Player, AppSettings } from './types'
-import { generateRoundRobinSchedule, generatePlayoffBrackets, createPlayoffMatches, generateSwissEliminationSchedule, generateGroupsWithDivisionsSchedule } from './utils/tournament'
-import { generateKnockoutSchedule, advanceKnockoutWinners } from './utils/schedule'
+import { generateGroupsWithDivisionsSchedule } from './utils/tournament'
+import { advanceKnockoutWinners } from './utils/schedule'
+import { generateFixtures } from './utils/fixtures'
 import { applySchedule } from './utils/matchdates'
 import type { ScheduleOptions } from './utils/matchdates'
 import { organizerService, teamService, tournamentService, matchService, playerService, uploadImage } from './lib/data'
@@ -331,23 +332,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         let matches: Match[] = []
         const tournamentFormat = format || { rounds: 1, mode: 'league' }
         
-        if (tournamentFormat.mode === 'league') {
-          matches = generateRoundRobinSchedule(teamIds)
-        } else if (tournamentFormat.mode === 'league_playoff') {
-          const playoffMatches = generatePlayoffBrackets(teamIds)
-          matches = createPlayoffMatches(playoffMatches)
-        } else if (tournamentFormat.mode === 'knockout') {
-          matches = generateKnockoutSchedule(teamIds)
-        } else if (tournamentFormat.mode === 'swiss_elimination') {
-          const swissResult = generateSwissEliminationSchedule(teamIds)
-          matches = [...swissResult.leagueMatches, ...swissResult.eliminationMatches]
-        } else if (tournamentFormat.mode === 'league_custom_playoff') {
-          // Generate round-robin matches first (with BYE handling for odd numbers)
-          const leagueMatches = generateRoundRobinSchedule(teamIds, tournamentFormat.rounds || 1)
-          
-          // For now, just create the league matches
-          // Playoff rounds will be configured later by the admin
-          matches = leagueMatches
+        // One generator for every format, shared with the settings screen.
+        // This branch used to call generateRoundRobinSchedule() without the leg
+        // count, so "League, home and away" quietly produced a single round.
+        if (tournamentFormat.mode !== 'groups_with_divisions') {
+          matches = generateFixtures(teamIds, tournamentFormat)
         } else if (tournamentFormat.mode === 'groups_with_divisions') {
           // Generate groups with divisions format
           const config = tournamentFormat.groupsWithDivisionsConfig
