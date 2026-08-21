@@ -5,6 +5,7 @@ import { tournamentService, batchGetTeams } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import LocationIcon from '../components/LocationIcon'
+import { teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 
 const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
 
@@ -429,8 +430,15 @@ export default function PublicTournamentPage() {
         'border-yellow-500/20'
       }`}>
         {/* A bare coloured dot sat here. Nothing on the page said what
-            the colours meant, so it read as decoration. */}
-        <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+            the colours meant, so it read as decoration. The elimination flag
+            sits beside it — it was in the data all along and never reached the
+            page, so a knockout game looked like any other fixture. */}
+        <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1">
+          {match.isElimination && (
+            <span className="text-[10px] sm:text-xs uppercase tracking-wide font-medium px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-400/20">
+              Elimination
+            </span>
+          )}
           <span className={`text-[10px] sm:text-xs uppercase tracking-wide font-medium px-2 py-0.5 rounded-full ${
             isMatchFinished ? 'bg-green-500/15 text-green-300' :
             isMatchUpcoming ? 'bg-blue-500/15 text-blue-300' :
@@ -532,6 +540,8 @@ export default function PublicTournamentPage() {
       </div>
     )
   }
+
+  const playoffSurvivors = survivorsByPlayoffRound(tournament)
 
   const hasPlayoffBracket =
     tournament.format?.mode === 'league_custom_playoff' &&
@@ -883,6 +893,9 @@ export default function PublicTournamentPage() {
                 ...match,
                 isElimination: match.isElimination || round.isElimination || false,
               }))
+              // Only teams still in the tournament can be resting: the ones
+              // already knocked out are absent for good, not for a week.
+              const resting = restingNote(playoffSurvivors[roundIndex] || [], matches, teams)
               const day = matches.find((match) => match.dateISO)
               const dayLabel = day
                 ? new Date(day.dateISO).toLocaleDateString('en-US', {
@@ -897,7 +910,7 @@ export default function PublicTournamentPage() {
                   key={roundIndex}
                   badge={String(roundIndex + 1)}
                   title={round.name || `Playoff round ${roundIndex + 1}`}
-                  subtitle={[dayLabel, roundSubtitle(matches), round.description]
+                  subtitle={[dayLabel, roundSubtitle(matches), resting, round.description]
                     .filter(Boolean)
                     .join(' · ')}
                   accent="border-amber-400/25"
@@ -1156,7 +1169,12 @@ export default function PublicTournamentPage() {
                   // "Tour" is the Russian word for a matchday; in English
                   // football this is a round.
                   title={`Round ${roundNumber + 1}`}
-                  subtitle={roundSubtitle(roundMatches)}
+                  subtitle={[
+                    roundSubtitle(roundMatches),
+                    restingNote(tournament.teamIds || [], roundMatches, teams),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                   defaultOpen={roundOpen[index]}
                 >
                   {roundMatches.map(renderMatch)}
@@ -1563,6 +1581,29 @@ function RoundCard({
       </div>
     </div>
   )
+}
+
+/**
+ * "Khatarnak United rests" — who sits this round out.
+ *
+ * With an odd number of teams somebody has no opponent every week. The fixture
+ * list simply did not mention them, so from the outside it looked like a team
+ * had quietly disappeared for a round.
+ */
+function restingNote(
+  candidates: string[],
+  matches: any[],
+  teams: any[],
+): string {
+  const resting = teamsNotPlaying(candidates, matches)
+  if (resting.length === 0) return ''
+
+  const names = resting.map(
+    (teamId) => teams.find((team: any) => team.id === teamId)?.name || 'A team',
+  )
+  return names.length === 1
+    ? `${names[0]} rests`
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} rest`
 }
 
 /** "6 matches · all played" reads better than a bare count. */

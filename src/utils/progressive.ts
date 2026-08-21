@@ -153,8 +153,21 @@ export function planNextProgressiveRound(
   const label = leagueRounds.size + roundNumber
 
   const isFinal = survivors.length === 2
-  const resting = !isFinal && survivors.length % 2 === 1 ? survivors[0] : undefined
-  const playing = resting ? survivors.slice(1) : survivors
+  // The leader rests when the count is odd — but not two weeks running, or a
+  // team that stays top would keep being handed the week off.
+  const restedLastRound = new Set(
+    existingRounds.length > 0
+      ? teamsNotPlaying(
+          survivors,
+          existingRounds[existingRounds.length - 1].matches || [],
+        )
+      : [],
+  )
+  const resting =
+    !isFinal && survivors.length % 2 === 1
+      ? survivors.find((teamId) => !restedLastRound.has(teamId)) ?? survivors[0]
+      : undefined
+  const playing = resting ? survivors.filter((teamId) => teamId !== resting) : survivors
 
   const pairs: Array<[string, string]> = []
   for (let index = 0; index + 1 < playing.length; index += 2) {
@@ -179,15 +192,50 @@ export function planNextProgressiveRound(
 
   const round = {
     name: isFinal ? `Round ${label} Final` : `Round ${label}`,
-    description: isFinal
-      ? 'Grand Final'
-      : resting
-        ? 'Top team rests this round'
-        : '',
+    description: isFinal ? 'Grand Final' : '',
     roundNumber,
     quantityOfGames: matches.length,
     matches,
   } as RoundConfig
 
   return { round, survivors, resting }
+}
+
+/** Teams from `candidates` that appear in none of these matches. */
+export function teamsNotPlaying(
+  candidates: string[],
+  matches: Array<{ homeTeamId?: string; awayTeamId?: string }>,
+): string[] {
+  const playing = new Set<string>()
+  for (const match of matches) {
+    if (match.homeTeamId) playing.add(match.homeTeamId)
+    if (match.awayTeamId) playing.add(match.awayTeamId)
+  }
+  return candidates.filter((teamId) => !playing.has(teamId))
+}
+
+/**
+ * Who was still in the tournament at the start of each playoff round.
+ *
+ * Needed to tell a team that is resting this week from one that has already
+ * been knocked out — both simply do not appear in the round's fixtures.
+ */
+export function survivorsByPlayoffRound(tournament: Tournament): string[][] {
+  const teamIds = tournament.teamIds || []
+  const rounds = tournament.format?.customPlayoffConfig?.playoffRounds || []
+  const out: string[][] = []
+  const gone = new Set<string>()
+
+  for (const round of rounds) {
+    out.push(teamIds.filter((teamId) => !gone.has(teamId)))
+
+    for (const match of round.matches || []) {
+      if (!match.isElimination || !played(match)) continue
+      if (!match.homeTeamId || !match.awayTeamId) continue
+      if (match.homeGoals! > match.awayGoals!) gone.add(match.awayTeamId)
+      else if (match.homeGoals! < match.awayGoals!) gone.add(match.homeTeamId)
+    }
+  }
+
+  return out
 }

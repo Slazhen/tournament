@@ -16,7 +16,7 @@ import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
 import MatchDateTime from '../components/MatchDateTime'
 import { applyDateToRound } from '../utils/matchdates'
-import { planNextProgressiveRound, PROGRESSIVE_PRESET } from '../utils/progressive'
+import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import InlineInput from '../components/InlineInput'
 
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
@@ -316,6 +316,9 @@ export default function TournamentPage() {
         customPlayoffConfig: {
           playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
           enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+          // Kept, or renaming a round would silently turn this
+          // tournament back into a plain custom playoff.
+          preset: tournament.format?.customPlayoffConfig?.preset,
           playoffRounds: updatedRounds
         }
       }
@@ -818,6 +821,8 @@ export default function TournamentPage() {
 
   const isProgressive =
     tournament.format?.customPlayoffConfig?.preset === PROGRESSIVE_PRESET
+
+  const playoffSurvivors = survivorsByPlayoffRound(tournament)
 
   const nextRoundPlan = isProgressive
     ? planNextProgressiveRound(tournament)
@@ -1587,8 +1592,21 @@ export default function TournamentPage() {
         <h2 className="text-lg font-semibold text-center tracking-wide">Fixtures</h2>
         {rounds.map((r) => (
           <div key={r.round} className="glass rounded-xl p-4">
-            <div className="mb-4 flex items-center justify-center gap-3">
+            <div className="mb-4 flex items-center justify-center gap-3 flex-wrap">
               <span className="font-bold text-lg text-blue-400">Round {r.round + 1}</span>
+              {/* With an odd number of teams one club has no opponent this week.
+                  The fixture list just left them out, which read as a mistake. */}
+              {(() => {
+                const roundMatches = tournament.matches.filter((m) => r.matchIds.includes(m.id))
+                const resting = teamsNotPlaying(tournament.teamIds || [], roundMatches)
+                if (resting.length === 0) return null
+                return (
+                  <span className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10 opacity-80">
+                    🪑 {resting.map((id) => teams.find((t) => t.id === id)?.name ?? 'A team').join(', ')}{' '}
+                    {resting.length === 1 ? 'rests' : 'rest'}
+                  </span>
+                )
+              })()}
               {tournament.matches.some((m) => (m.round ?? 0) === r.round && m.dateISO) &&
                 tournament.matches.some((m) => (m.round ?? 0) === r.round && !m.dateISO) && (
                   <button
@@ -1834,9 +1852,20 @@ export default function TournamentPage() {
                   matches: round.matches || []
                 }
                 
+                // Who is not playing this week, ignoring anyone already out.
+                const stillIn = playoffSurvivors[roundIndex] || []
+                const resting = teamsNotPlaying(stillIn, roundWithQuantity.matches)
+
                 return (
                 <div key={roundIndex} className="p-6 glass rounded-lg border border-white/10">
                   <div className="space-y-4">
+                    {resting.length > 0 && (
+                      <div className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10 opacity-80 inline-block">
+                        🪑 {resting.map((id) => teams.find((t) => t.id === id)?.name ?? 'A team').join(', ')}{' '}
+                        {resting.length === 1 ? 'rests this round' : 'rest this round'}
+                      </div>
+                    )}
+
                     {/* Round Header */}
                     <div className="grid md:grid-cols-4 gap-4 items-end">
                       <div>
@@ -1855,6 +1884,9 @@ export default function TournamentPage() {
                                 customPlayoffConfig: {
                                   playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                   enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                  // Kept, or renaming a round would silently turn this
+                                  // tournament back into a plain custom playoff.
+                                  preset: tournament.format?.customPlayoffConfig?.preset,
                                   playoffRounds: updatedRounds
                                 }
                               }
@@ -1899,6 +1931,9 @@ export default function TournamentPage() {
                                 customPlayoffConfig: {
                                   playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                   enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                  // Kept, or renaming a round would silently turn this
+                                  // tournament back into a plain custom playoff.
+                                  preset: tournament.format?.customPlayoffConfig?.preset,
                                   playoffRounds: updatedRounds
                                 }
                               }
@@ -1923,6 +1958,9 @@ export default function TournamentPage() {
                                 customPlayoffConfig: {
                                   playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                   enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                  // Kept, or renaming a round would silently turn this
+                                  // tournament back into a plain custom playoff.
+                                  preset: tournament.format?.customPlayoffConfig?.preset,
                                   playoffRounds: updatedRounds
                                 }
                               }
@@ -1944,6 +1982,9 @@ export default function TournamentPage() {
                                 customPlayoffConfig: {
                                   playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                   enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                  // Kept, or renaming a round would silently turn this
+                                  // tournament back into a plain custom playoff.
+                                  preset: tournament.format?.customPlayoffConfig?.preset,
                                   playoffRounds: updatedRounds
                                 }
                               }
@@ -1990,6 +2031,9 @@ export default function TournamentPage() {
                                           customPlayoffConfig: {
                                             playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                             enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                            // Kept, or renaming a round would silently turn this
+                                            // tournament back into a plain custom playoff.
+                                            preset: tournament.format?.customPlayoffConfig?.preset,
                                             playoffRounds: updatedRounds
                                           }
                                         }
@@ -2020,6 +2064,9 @@ export default function TournamentPage() {
                                           customPlayoffConfig: {
                                             playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                             enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                            // Kept, or renaming a round would silently turn this
+                                            // tournament back into a plain custom playoff.
+                                            preset: tournament.format?.customPlayoffConfig?.preset,
                                             playoffRounds: updatedRounds
                                           }
                                         }
@@ -2055,6 +2102,9 @@ export default function TournamentPage() {
                                             customPlayoffConfig: {
                                               playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                               enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                              // Kept, or renaming a round would silently turn this
+                                              // tournament back into a plain custom playoff.
+                                              preset: tournament.format?.customPlayoffConfig?.preset,
                                               playoffRounds: updatedRounds
                                             }
                                           }
@@ -2081,6 +2131,9 @@ export default function TournamentPage() {
                                             customPlayoffConfig: {
                                               playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                               enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                              // Kept, or renaming a round would silently turn this
+                                              // tournament back into a plain custom playoff.
+                                              preset: tournament.format?.customPlayoffConfig?.preset,
                                               playoffRounds: updatedRounds
                                             }
                                           }
@@ -2106,6 +2159,9 @@ export default function TournamentPage() {
                                           customPlayoffConfig: {
                                             playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                             enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                            // Kept, or renaming a round would silently turn this
+                                            // tournament back into a plain custom playoff.
+                                            preset: tournament.format?.customPlayoffConfig?.preset,
                                             playoffRounds: updatedRounds
                                           }
                                         }
@@ -2131,6 +2187,9 @@ export default function TournamentPage() {
                                           customPlayoffConfig: {
                                             playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                             enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                            // Kept, or renaming a round would silently turn this
+                                            // tournament back into a plain custom playoff.
+                                            preset: tournament.format?.customPlayoffConfig?.preset,
                                             playoffRounds: updatedRounds
                                           }
                                         }
@@ -2157,6 +2216,9 @@ export default function TournamentPage() {
                                             customPlayoffConfig: {
                                               playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
                                               enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
+                                              // Kept, or renaming a round would silently turn this
+                                              // tournament back into a plain custom playoff.
+                                              preset: tournament.format?.customPlayoffConfig?.preset,
                                               playoffRounds: updatedRounds
                                             }
                                           }
