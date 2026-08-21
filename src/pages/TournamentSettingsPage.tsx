@@ -10,6 +10,15 @@ import { findFormat, formatOptionFor } from '../utils/formats'
 import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
 import type { TournamentFormat } from '../utils/fixtures'
 import { getAdminTournamentUrl } from '../utils/urls'
+import Trophy from '../components/Trophy'
+import {
+  championOf,
+  seasonLabel,
+  seasonStatus,
+  seriesKey,
+  seriesName,
+  groupIntoSeries,
+} from '../utils/seasons'
 
 /**
  * Editing a tournament that already exists.
@@ -49,6 +58,7 @@ export default function TournamentSettingsPage() {
   } | null>(null)
   const [isSavingFormat, setIsSavingFormat] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
+  const [isLinking, setIsLinking] = useState(false)
 
   const selectedTeamIds = draftTeamIds ?? tournament?.teamIds ?? []
 
@@ -129,6 +139,20 @@ export default function TournamentSettingsPage() {
     tournament.format?.mode === 'league_playoff' ||
     (tournament.format?.mode === 'league_custom_playoff' && !isProgressive)
   const canDrawBracket = hasSeedableBracket && seeding.canSeed
+
+  /* ---------- Season ---------- */
+
+  const status = seasonStatus(tournament)
+  const siblings = tournaments
+    .filter((candidate) => seriesKey(candidate) === seriesKey(tournament))
+    .sort(
+      (a, b) => new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime(),
+    )
+  const derivedChampion = championOf({ ...tournament, championTeamId: undefined })
+  const championTeam = teams.find((team) => team.id === championOf(tournament))
+  const otherCompetitions = groupIntoSeries(tournaments).filter(
+    (entry) => entry.key !== seriesKey(tournament),
+  )
 
   const resetFormatDraft = () => {
     setDraftFormatId(null)
@@ -391,6 +415,130 @@ export default function TournamentSettingsPage() {
           )}
         </section>
       )}
+
+      {/* ---------- Season ---------- */}
+      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-5">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="font-semibold">Competition and season</h2>
+          <span className="text-xs opacity-60">
+            {status === 'finished'
+              ? 'Finished'
+              : status === 'running'
+                ? 'In progress'
+                : 'Not started'}
+          </span>
+        </div>
+
+        <p className="text-sm opacity-70">
+          Running the same league again next year is a new season of this competition, not a new
+          competition. Seasons share a page and a switcher, so the year no longer has to be typed
+          into the name.
+        </p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm">
+            <span className="opacity-70">Competition</span>
+            <InlineInput
+              type="text"
+              value={seriesName(tournament)}
+              onCommit={(value) => {
+                const name = value.trim()
+                if (!name) return
+                // Every season of a competition carries its name, so renaming it
+                // means renaming them all — there are only ever a handful.
+                for (const season of siblings) {
+                  updateTournament(season.id, { seriesName: name })
+                }
+              }}
+              placeholder="Homebush Futsal Premier League"
+              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="opacity-70">This season</span>
+            <InlineInput
+              type="text"
+              value={tournament.seasonLabel || ''}
+              onCommit={(value) =>
+                updateTournament(tournament.id, { seasonLabel: value.trim() || undefined })
+              }
+              placeholder={seasonLabel(tournament)}
+              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+            />
+          </label>
+        </div>
+
+        {siblings.length > 1 && (
+          <p className="text-sm opacity-70">
+            {siblings.length} seasons: {siblings.map((season) => seasonLabel(season)).join(', ')}.
+          </p>
+        )}
+
+        {/* Champion: worked out from the results, overridable when the pitch did
+            not have the last word. */}
+        <div>
+          <span className="text-sm opacity-70">Champion</span>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            {championTeam && <Trophy size={30} />}
+            <select
+              value={tournament.championTeamId || ''}
+              onChange={(event) =>
+                updateTournament(tournament.id, {
+                  championTeamId: event.target.value || undefined,
+                })
+              }
+              className="px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none text-sm"
+            >
+              <option value="">
+                {derivedChampion
+                  ? `From the results: ${teams.find((team) => team.id === derivedChampion)?.name ?? 'unknown'}`
+                  : 'Decided when the season finishes'}
+              </option>
+              {teams
+                .filter((team) => selectedTeamIds.includes(team.id))
+                .map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Joining up a season that was created as its own tournament — which is
+            how anyone would have done it before this existed. */}
+        {otherCompetitions.length > 0 && (
+          <label className="block text-sm">
+            <span className="opacity-70">Move this into another competition</span>
+            <select
+              value=""
+              disabled={isLinking}
+              onChange={async (event) => {
+                const target = otherCompetitions.find((entry) => entry.key === event.target.value)
+                if (!target) return
+                setIsLinking(true)
+                try {
+                  await updateTournament(tournament.id, {
+                    seriesId: target.key,
+                    seriesName: target.name,
+                  })
+                } finally {
+                  setIsLinking(false)
+                }
+              }}
+              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+            >
+              <option value="">Keep it on its own</option>
+              {otherCompetitions.map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.name} ({entry.seasons.length}{' '}
+                  {entry.seasons.length === 1 ? 'season' : 'seasons'})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </section>
 
       {/* ---------- Where ---------- */}
       <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">

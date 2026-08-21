@@ -1,11 +1,12 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useRef, useState } from 'react'
-import { getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
+import { getAdminTournamentUrl } from '../utils/urls'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
+import { getSeasonUrl } from '../utils/seasons'
 import {
   IconArrowLeft,
   IconClipboard,
@@ -616,7 +617,7 @@ export default function TeamPage() {
                           <IconTrophy size={14} /> View
                         </Link>
                         <Link
-                          to={currentOrganizer ? getPublicTournamentUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
+                          to={currentOrganizer ? getSeasonUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
                           target="_blank"
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
                         >

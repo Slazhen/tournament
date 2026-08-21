@@ -231,6 +231,13 @@ const router = createBrowserRouter([
         path: ':tournamentSlug', 
         element: <PublicTournamentPage />
       },
+      {
+        // A named season: /homebush_futsal/homebush_futsal_premier_league/2025.
+        // The two-segment route above still resolves an old tournament link or a
+        // whole competition, and sends the browser here.
+        path: ':seriesSlug/:seasonSlug',
+        element: <PublicTournamentPage />,
+      },
       { 
         path: ':tournamentSlug/matches/:matchId', 
         element: <PublicMatchPage />

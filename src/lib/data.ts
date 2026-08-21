@@ -82,6 +82,23 @@ export type TournamentSummary = {
   visibility?: 'public' | 'private'
   logo?: string
   teamCount: number
+  /** Season fields, so a listing can group and label without loading matches. */
+  seriesId?: string
+  seriesName?: string
+  seasonLabel?: string
+  championTeamId?: string
+  status?: 'upcoming' | 'running' | 'finished'
+}
+
+/** A public tournament page's worth of data, in one request. */
+export type SeasonBundle = {
+  tournament: Tournament
+  teams: Team[]
+  organizer: Organizer
+  /** Every public season of the same competition, newest first. */
+  seasons: TournamentSummary[]
+  /** Which kind of address resolved to it: an old link, a competition, a season. */
+  matchedAs: 'tournament' | 'series' | 'season'
 }
 
 export const tournamentService = {
@@ -109,13 +126,25 @@ export const tournamentService = {
    * of "download all summaries to resolve the slug, then the tournament, then
    * its teams", where each call had to wait for the one before it.
    */
-  async getBySlug(
-    organizerSlug: string,
-    tournamentSlug: string,
-  ): Promise<{ tournament: Tournament; teams: Team[]; organizer: Organizer } | null> {
+  async getBySlug(organizerSlug: string, tournamentSlug: string): Promise<SeasonBundle | null> {
     try {
       return await api.get(
         `/public/by-slug/${encodeURIComponent(organizerSlug)}/${encodeURIComponent(tournamentSlug)}`,
+      )
+    } catch {
+      return null
+    }
+  },
+
+  /** One named season of one competition. */
+  async getSeason(
+    organizerSlug: string,
+    seriesSlug: string,
+    seasonSlug: string,
+  ): Promise<SeasonBundle | null> {
+    try {
+      return await api.get(
+        `/public/season/${encodeURIComponent(organizerSlug)}/${encodeURIComponent(seriesSlug)}/${encodeURIComponent(seasonSlug)}`,
       )
     } catch {
       return null

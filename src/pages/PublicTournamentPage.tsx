@@ -1,7 +1,11 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { tournamentService, batchGetTeams } from '../lib/data'
+import type { TournamentSummary } from '../lib/data'
+import Trophy from '../components/Trophy'
+import { championOf, seasonLabel, seriesName } from '../utils/seasons'
+import { slugify } from '../utils/urls'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import LocationIcon from '../components/LocationIcon'
@@ -100,7 +104,8 @@ function allTournamentMatches(tournament: any): any[] {
 }
 
 export default function PublicTournamentPage() {
-  const { id, tournamentId, orgSlug, tournamentSlug } = useParams()
+  const { id, tournamentId, orgSlug, tournamentSlug, seriesSlug, seasonSlug } = useParams()
+  const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
@@ -108,6 +113,9 @@ export default function PublicTournamentPage() {
   const [tournament, setTournament] = useState<any>(null)
   // Only the teams this tournament references, fetched by key (BatchGetItem).
   const [teams, setTeams] = useState<any[]>([])
+  // Every public season of the same competition, for the switcher.
+  const [seasons, setSeasons] = useState<TournamentSummary[]>([])
+  const [organizerSlug, setOrganizerSlug] = useState<string>('')
 
   // Handle both old and new URL structures
   const actualTournamentId = useMemo(() => {
@@ -127,18 +135,47 @@ export default function PublicTournamentPage() {
     setDataLoaded(false)
     setTournament(null)
     setTeams([])
+    setSeasons([])
 
     const loadData = async () => {
       try {
-        // New route: /:orgSlug/:tournamentSlug — one request for everything.
-        if (!actualTournamentId && orgSlug && tournamentSlug) {
-          const bundle = await tournamentService.getBySlug(
+        // /:orgSlug/:seriesSlug/:seasonSlug — a named season of a competition.
+        if (orgSlug && seriesSlug && seasonSlug) {
+          const bundle = await tournamentService.getSeason(
             decodeURIComponent(orgSlug).trim(),
+            decodeURIComponent(seriesSlug).trim(),
+            decodeURIComponent(seasonSlug).trim(),
+          )
+          if (!cancelled) {
+            setTournament(bundle?.tournament ?? null)
+            setTeams(bundle?.teams ?? [])
+            setSeasons(bundle?.seasons ?? [])
+            setOrganizerSlug(decodeURIComponent(orgSlug).trim())
+          }
+          return
+        }
+
+        // /:orgSlug/:slug — either a tournament's old address or a competition.
+        // Both keep working; the page then moves to the season's own address so
+        // there is one canonical URL and links shared years ago still land.
+        if (!actualTournamentId && orgSlug && tournamentSlug) {
+          const org = decodeURIComponent(orgSlug).trim()
+          const bundle = await tournamentService.getBySlug(
+            org,
             decodeURIComponent(tournamentSlug).trim(),
           )
           if (!cancelled) {
             setTournament(bundle?.tournament ?? null)
             setTeams(bundle?.teams ?? [])
+            setSeasons(bundle?.seasons ?? [])
+            setOrganizerSlug(org)
+
+            if (bundle?.tournament) {
+              const target = `/${org}/${slugify(seriesName(bundle.tournament))}/${slugify(
+                seasonLabel(bundle.tournament),
+              )}`
+              navigate(target, { replace: true })
+            }
           }
           return
         }
@@ -173,7 +210,34 @@ export default function PublicTournamentPage() {
     return () => {
       cancelled = true
     }
-  }, [actualTournamentId, orgSlug, tournamentSlug])
+  }, [actualTournamentId, orgSlug, tournamentSlug, seriesSlug, seasonSlug, navigate])
+
+  /**
+   * One address per season for search engines.
+   *
+   * The same season answers to three URLs — its own, the competition's, and the
+   * tournament link shared before seasons existed — so the page has to say which
+   * of them is the real one. The title used to be the same on every page of the
+   * site, which is its own kind of invisible.
+   */
+  useEffect(() => {
+    if (!tournament) return
+
+    const competitionName = seriesName(tournament)
+    const label = seasonLabel(tournament)
+    document.title = `${competitionName} ${label} — MFTournament`
+
+    if (!organizerSlug) return
+    const href = `${window.location.origin}/${organizerSlug}/${slugify(competitionName)}/${slugify(label)}`
+
+    let link = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'canonical'
+      document.head.appendChild(link)
+    }
+    link.href = href
+  }, [tournament, organizerSlug])
 
   // Note: we intentionally do NOT reload data on tab focus/visibility change.
   // Public tournament data changes infrequently and the cache (localStorage-backed)
@@ -417,6 +481,16 @@ export default function PublicTournamentPage() {
 
   const venue = describeVenue(tournament.location)
 
+  /* ---------- Seasons ---------- */
+
+  const competition = seriesName(tournament)
+  const thisSeason = seasonLabel(tournament)
+  const championId = championOf(tournament)
+  const champion = championId ? teams.find((team: any) => team.id === championId) : undefined
+  const otherSeasons = seasons.filter((season) => season.id !== tournament.id)
+  const seasonHref = (season: TournamentSummary) =>
+    `/${organizerSlug}/${slugify(seriesName(season))}/${slugify(seasonLabel(season))}`
+
   const renderMatch = (match: any) => {
     const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
     const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
@@ -591,9 +665,62 @@ export default function PublicTournamentPage() {
               </div>
             )}
 
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-              {tournament.name}
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+              {competition}
             </h1>
+
+            {/* Which season is on screen, and how to reach the others. */}
+            {seasons.length > 1 ? (
+              <div className="mb-5 flex flex-wrap items-center justify-center gap-2">
+                {seasons.map((season) => {
+                  const isCurrent = season.id === tournament.id
+                  return (
+                    <Link
+                      key={season.id}
+                      to={seasonHref(season)}
+                      aria-current={isCurrent ? 'page' : undefined}
+                      className={`px-3 py-1.5 rounded-full text-sm inline-flex items-center gap-1.5 border transition-colors ${
+                        isCurrent
+                          ? 'bg-white/15 border-white/25 text-white font-medium'
+                          : 'bg-white/[0.03] border-white/10 text-gray-300 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {season.status === 'finished' && <Trophy size={14} />}
+                      {seasonLabel(season)}
+                    </Link>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="mb-5 text-gray-300">{thisSeason}</p>
+            )}
+
+            {/* A finished season has a champion, and that is the headline. */}
+            {champion && (
+              <div className="mb-6 inline-flex items-center gap-4 rounded-2xl border border-amber-400/25 bg-gradient-to-r from-amber-500/[0.14] to-transparent px-5 py-3.5">
+                <Trophy size={44} />
+                <div className="text-left">
+                  <div className="text-[11px] uppercase tracking-[0.08em] text-amber-200/70">
+                    Champions {thisSeason}
+                  </div>
+                  <Link
+                    to={`/public/teams/${champion.id}`}
+                    className="text-lg sm:text-xl font-bold hover:text-amber-200 transition-colors"
+                  >
+                    {champion.name}
+                  </Link>
+                </div>
+                {champion.logo && (
+                  <img
+                    loading="lazy"
+                    decoding="async"
+                    src={champion.logo}
+                    alt=""
+                    className="w-12 h-12 rounded-full object-cover border border-amber-400/30"
+                  />
+                )}
+              </div>
+            )}
 
             {/* Venue, links and the size of the tournament. */}
             <div className="space-y-4">
@@ -1354,6 +1481,46 @@ export default function PublicTournamentPage() {
             </div>
           </div>
         </div>
+
+        {/* ---------- The competition's other seasons ---------- */}
+        {otherSeasons.length > 0 && (
+          <div className="mb-12 border-t border-white/5 pt-10">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 text-center">
+              Other seasons
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-w-4xl mx-auto">
+              {otherSeasons.map((season) => (
+                <Link
+                  key={season.id}
+                  to={seasonHref(season)}
+                  className="glass rounded-xl border border-white/10 hover:border-white/25 transition-colors p-4 flex items-center gap-3"
+                >
+                  {season.status === 'finished' ? (
+                    <Trophy size={30} />
+                  ) : (
+                    <span className="w-[30px] h-[30px] rounded-lg bg-white/5 flex items-center justify-center text-[10px] uppercase tracking-wide text-gray-300">
+                      live
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-semibold">{seasonLabel(season)}</div>
+                    <div className="text-xs text-gray-300 truncate">
+                      {season.championTeamId
+                        ? teams.find((team: any) => team.id === season.championTeamId)?.name ||
+                          'Finished'
+                        : season.status === 'finished'
+                          ? 'Finished'
+                          : season.status === 'running'
+                            ? 'In progress'
+                            : 'Not started'}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   )

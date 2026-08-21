@@ -1,7 +1,8 @@
 import { Router } from '../lib/router.js'
 import { badRequest, notFound } from '../lib/http.js'
-import { organizerSlug, tournamentSlug } from '../lib/slugs.js'
-import { isPublic, organizers, teams, tournaments } from '../repos.js'
+import { organizerSlug, tournamentSlug, seriesSlug, seasonSlug, seriesKey } from '../lib/slugs.js'
+import { isPublic, organizers, teams, toSummary, tournaments } from '../repos.js'
+import type { Organizer, Tournament } from '../lib/types.js'
 import type { RequestContext } from '../context.js'
 
 /**
@@ -72,28 +73,98 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
    * each one waiting on the last. All three reads here come from the same
    * server-side cache.
    */
-  router.get('/public/by-slug/:organizerSlug/:tournamentSlug', async (_ctx, params) => {
-    const allOrganizers = await organizers.list()
-    const organizer = allOrganizers.find((o) => organizerSlug(o) === params.organizerSlug!.toLowerCase())
-    if (!organizer) throw notFound('Organizer not found')
-
-    const candidates = await tournaments.listByOrganizer(organizer.id)
-    const tournament = candidates
+  /**
+   * One competition's seasons, and which of them is being shown.
+   *
+   * The page needs the switcher as well as the season, and a second request for
+   * it would be a second cold Lambda on every visit.
+   */
+  const seasonsOf = (all: Tournament[], tournament: Tournament) => {
+    const key = seriesKey(tournament)
+    return all
       .filter(isPublic)
-      .find((t) => tournamentSlug(t).toLowerCase() === params.tournamentSlug!.toLowerCase())
+      .filter((candidate) => seriesKey(candidate) === key)
+      .map(toSummary)
+      .sort(
+        (a, b) =>
+          new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime(),
+      )
+  }
+
+  /**
+   * The season a visitor should land on when they only named the competition:
+   * the newest one still being played, or the newest one there is.
+   */
+  const currentSeason = (seasons: Tournament[]): Tournament => {
+    const byNewest = [...seasons].sort(
+      (a, b) => new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime(),
+    )
+    const unfinished = byNewest.find((season) => toSummary(season).status !== 'finished')
+    return unfinished ?? byNewest[0]
+  }
+
+  const bundle = (all: Tournament[], tournament: Tournament, organizer: Organizer) => ({
+    tournament,
+    seasons: seasonsOf(all, tournament),
+    organizer: {
+      id: organizer.id,
+      name: organizer.name,
+      logo: organizer.logo,
+      description: organizer.description,
+    },
+  })
+
+  const organizerBySlug = async (slug: string) => {
+    const all = await organizers.list()
+    const organizer = all.find((o) => organizerSlug(o) === slug.toLowerCase())
+    if (!organizer) throw notFound('Organizer not found')
+    return organizer
+  }
+
+  /**
+   * The old address of a tournament, and the address of a whole competition,
+   * are the same shape: /:organizer/:slug. Try it as one, then as the other, so
+   * every link ever shared keeps working.
+   */
+  router.get('/public/by-slug/:organizerSlug/:tournamentSlug', async (_ctx, params) => {
+    const organizer = await organizerBySlug(params.organizerSlug!)
+    const candidates = (await tournaments.listByOrganizer(organizer.id)).filter(isPublic)
+    const slug = params.tournamentSlug!.toLowerCase()
+
+    const exact = candidates.find((t) => tournamentSlug(t).toLowerCase() === slug)
+    const bySeries = candidates.filter((t) => seriesSlug(t).toLowerCase() === slug)
+
+    const tournament = exact ?? (bySeries.length > 0 ? currentSeason(bySeries) : undefined)
     if (!tournament) throw notFound('Tournament not found')
 
     const teamIds = Array.isArray(tournament.teamIds) ? tournament.teamIds : []
-
     return {
-      tournament,
+      ...bundle(candidates, tournament, organizer),
       teams: await teams.getMany(teamIds),
-      organizer: {
-        id: organizer.id,
-        name: organizer.name,
-        logo: organizer.logo,
-        description: organizer.description,
-      },
+      matchedAs: exact ? 'tournament' : 'series',
+    }
+  })
+
+  /** A season by name: /homebush_futsal/homebush_futsal_premier_league/2025 */
+  router.get('/public/season/:organizerSlug/:seriesSlug/:seasonSlug', async (_ctx, params) => {
+    const organizer = await organizerBySlug(params.organizerSlug!)
+    const candidates = (await tournaments.listByOrganizer(organizer.id)).filter(isPublic)
+
+    const series = candidates.filter(
+      (t) => seriesSlug(t).toLowerCase() === params.seriesSlug!.toLowerCase(),
+    )
+    if (series.length === 0) throw notFound('Competition not found')
+
+    const tournament = series.find(
+      (t) => seasonSlug(t).toLowerCase() === params.seasonSlug!.toLowerCase(),
+    )
+    if (!tournament) throw notFound('Season not found')
+
+    const teamIds = Array.isArray(tournament.teamIds) ? tournament.teamIds : []
+    return {
+      ...bundle(candidates, tournament, organizer),
+      teams: await teams.getMany(teamIds),
+      matchedAs: 'season',
     }
   })
 

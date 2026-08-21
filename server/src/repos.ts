@@ -221,9 +221,34 @@ export const teams = {
 export type TournamentSummary = Pick<
   Tournament,
   'id' | 'name' | 'organizerId' | 'createdAtISO' | 'visibility'
-> & { logo?: string; teamCount: number }
+> & {
+  logo?: string
+  teamCount: number
+  /** Season fields, so a listing can group and label without fetching matches. */
+  seriesId?: string
+  seriesName?: string
+  seasonLabel?: string
+  championTeamId?: string
+  /** How far along the season is, worked out here so every page agrees. */
+  status: 'upcoming' | 'running' | 'finished'
+}
 
-function toSummary(tournament: Tournament): TournamentSummary {
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value ? value : undefined
+
+/** Played, in the one sense the whole app uses: a score has been entered. */
+function seasonStatus(tournament: Tournament): 'upcoming' | 'running' | 'finished' {
+  const matches = Array.isArray(tournament.matches) ? tournament.matches : []
+  const scored = matches.filter((match) => {
+    const m = match as { homeGoals?: unknown; awayGoals?: unknown }
+    return typeof m.homeGoals === 'number' && typeof m.awayGoals === 'number'
+  }).length
+
+  if (matches.length === 0 || scored === 0) return 'upcoming'
+  return scored === matches.length ? 'finished' : 'running'
+}
+
+export function toSummary(tournament: Tournament): TournamentSummary {
   return {
     id: tournament.id,
     name: tournament.name,
@@ -232,6 +257,11 @@ function toSummary(tournament: Tournament): TournamentSummary {
     visibility: tournament.visibility,
     logo: tournament.logo as string | undefined,
     teamCount: Array.isArray(tournament.teamIds) ? tournament.teamIds.length : 0,
+    seriesId: asString(tournament.seriesId) ?? tournament.id,
+    seriesName: asString(tournament.seriesName) ?? tournament.name,
+    seasonLabel: asString(tournament.seasonLabel),
+    championTeamId: asString(tournament.championTeamId),
+    status: seasonStatus(tournament),
   }
 }
 

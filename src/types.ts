@@ -193,6 +193,24 @@ export type Tournament = {
       groups?: string[][] // Array of arrays: [[team1, team2, ...], [team3, team4, ...], ...] - stores team assignments per group
     }
   }
+  /**
+   * Seasons.
+   *
+   * A tournament run again next year is not a new competition, it is the next
+   * season of the same one. Rather than a separate "competition" record — which
+   * would own no field a season does not already have — every season of the same
+   * competition carries the same `seriesId`, and the grouping falls out of that.
+   */
+  seriesId?: string
+  /** The competition's name, the same on every season of it. */
+  seriesName?: string
+  /** What this season is called: "2025", "Autumn 2026". */
+  seasonLabel?: string
+  /**
+   * Set by hand when the winner is not the one the results imply — a walkover,
+   * a withdrawal, a title decided off the pitch.
+   */
+  championTeamId?: string
   logo?: string
   backgroundImage?: string
   playoffBrackets?: PlayoffBracket[]

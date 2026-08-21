@@ -43,7 +43,14 @@ type AppStore = {
   updatePlayer: (teamId: string, playerId: string, updates: Partial<Player>) => Promise<void>
   removePlayer: (teamId: string, playerId: string) => Promise<void>
   
-  createTournament: (name: string, teamIds: string[], format?: Tournament['format'], schedule?: ScheduleOptions) => Promise<Tournament | null>
+  createTournament: (
+    name: string,
+    teamIds: string[],
+    format?: Tournament['format'],
+    schedule?: ScheduleOptions,
+    /** Anything else the new tournament carries: season fields, a copied logo, the venue. */
+    extra?: Partial<Tournament>,
+  ) => Promise<Tournament | null>
   updateTournament: (tournamentId: string, updates: Partial<Tournament>) => Promise<void>
   deleteTournament: (tournamentId: string) => Promise<void>
   
@@ -304,7 +311,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   // Tournament actions
-  createTournament: async (name: string, teamIds: string[], format?: Tournament['format'], schedule?: ScheduleOptions) => {
+  createTournament: async (
+    name: string,
+    teamIds: string[],
+    format?: Tournament['format'],
+    schedule?: ScheduleOptions,
+    extra?: Partial<Tournament>,
+  ) => {
     const currentOrganizerId = get().currentOrganizerId
     if (!currentOrganizerId) return null
 
@@ -319,6 +332,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     
     try {
       const tournament = await tournamentService.create({
+        // A new season inherits the venue, the crest and the links from the one
+        // before it, which is most of what an organiser would otherwise retype.
+        ...extra,
         name,
         format: format || { rounds: 1, mode: 'league' },
         teamIds,

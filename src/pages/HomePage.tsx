@@ -14,7 +14,7 @@ import {
   IconStadium,
   IconLock,
 } from '../components/icons'
-import { getPublicTournamentUrl } from '../utils/urls'
+import { getSeasonUrl } from '../utils/seasons'
 
 /**
  * The front page.
@@ -260,7 +260,7 @@ export default function HomePage() {
                   {theirs.map((tournament) => (
                     <li key={tournament.id}>
                       <Link
-                        to={getPublicTournamentUrl(tournament, organizer)}
+                        to={getSeasonUrl(tournament, organizer)}
                         className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors group"
                       >
                         <span className="flex items-center gap-2.5 min-w-0">

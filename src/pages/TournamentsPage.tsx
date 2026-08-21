@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom"
 import { useAppStore } from "../store"
-import { getAdminTournamentUrl, getPublicTournamentUrl } from "../utils/urls"
+import { getAdminTournamentUrl } from "../utils/urls"
 import { CompactVisibilityToggle } from "../components/VisibilityToggle"
 import { FORMAT_OPTIONS } from "../utils/formats"
 import type { Tournament } from "../types"
+import { getSeasonUrl, groupIntoSeries, seasonLabel, seasonStatus } from '../utils/seasons'
+import Trophy from '../components/Trophy'
 import {
   IconTrophy,
   IconGear,
@@ -78,8 +80,29 @@ export default function TournamentsPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {tournaments.map((tournament) => (
+          <div className="grid gap-8">
+            {/* Grouped by competition: two or three leagues, each with its
+                seasons, rather than one flat list where the 2026 season looks
+                like an unrelated tournament. */}
+            {groupIntoSeries(tournaments).map((series) => (
+              <div key={series.key} className="grid gap-4">
+                <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-2">
+                  <h2 className="font-semibold">
+                    {series.name}
+                    <span className="ml-2 text-sm opacity-60">
+                      {series.seasons.length}{' '}
+                      {series.seasons.length === 1 ? 'season' : 'seasons'}
+                    </span>
+                  </h2>
+                  <Link
+                    to={`/tournaments/new?season=${series.seasons[0].id}`}
+                    className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+                  >
+                    + New season
+                  </Link>
+                </div>
+
+                {series.seasons.map((tournament) => (
               <div key={tournament.id} className="glass rounded-lg p-4">
                 <div className="flex items-center gap-4">
                   {/* Tournament Logo */}
@@ -99,7 +122,10 @@ export default function TournamentsPage() {
                   
                   {/* Tournament Info */}
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold mb-1">{tournament.name}</h3>
+                    <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+                      {seasonLabel(tournament)}
+                      {seasonStatus(tournament) === 'finished' && <Trophy size={16} />}
+                    </h3>
                     <div className="text-sm opacity-70 space-y-1">
                       <div>Teams: {tournament.teamIds.length}</div>
                       <div>Format: {describeFormat(tournament)}</div>
@@ -143,7 +169,7 @@ export default function TournamentsPage() {
                       <IconGear size={15} /> Settings
                     </Link>
                     <Link
-                      to={currentOrganizer ? getPublicTournamentUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
+                      to={currentOrganizer ? getSeasonUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
                       target="_blank"
                       className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
                     >
@@ -151,6 +177,8 @@ export default function TournamentsPage() {
                     </Link>
                   </div>
                 </div>
+              </div>
+                ))}
               </div>
             ))}
           </div>

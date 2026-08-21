@@ -1,8 +1,9 @@
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
-import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
+import { findTournamentBySlug } from '../utils/urls'
 import type { Tournament, Team, Match, Organizer } from '../types'
+import { getSeasonUrl } from '../utils/seasons'
 import {
   IconArrowLeft,
   IconKnockout,
@@ -182,7 +183,7 @@ export default function PublicMatchPage() {
             to={tournament && allOrganizers.length > 0 
               ? (() => {
                   const organizer = allOrganizers.find(o => o.id === tournament.organizerId)
-                  return organizer ? getPublicTournamentUrl(tournament, organizer) : `/public/tournaments/${tournament.id}`
+                  return organizer ? getSeasonUrl(tournament, organizer) : `/public/tournaments/${tournament.id}`
                 })()
               : `/public/tournaments/${tournament.id}`
             } 

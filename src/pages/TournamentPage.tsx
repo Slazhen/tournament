@@ -33,6 +33,7 @@ import MatchDateTime from '../components/MatchDateTime'
 import { applyDateToRound } from '../utils/matchdates'
 import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import InlineInput from '../components/InlineInput'
+import { getSeasonUrl } from '../utils/seasons'
 
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
 // so we never rewrite the (large) tournament item more than once during rendering.
@@ -1012,7 +1013,7 @@ export default function TournamentPage() {
                 type="button"
                 onClick={() => {
                   const url = currentOrganizer
-                    ? `${window.location.origin}${getPublicTournamentUrl(tournament, currentOrganizer)}`
+                    ? `${window.location.origin}${getSeasonUrl(tournament, currentOrganizer)}`
                     : `${window.location.origin}/public/tournaments/${tournament.id}`
                   navigator.clipboard.writeText(url)
                   setLinkCopied(true)
@@ -1032,7 +1033,7 @@ export default function TournamentPage() {
               </button>
 
               <Link
-                to={currentOrganizer ? getPublicTournamentUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
+                to={currentOrganizer ? getSeasonUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
                 target="_blank"
                 className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
               >

@@ -28,3 +28,26 @@ export function tournamentSlug(tournament: { name: string; createdAtISO?: string
     : new Date().getFullYear()
   return `${slugify(tournament.name)}_${year}`
 }
+
+/** The competition a season belongs to: /homebush_futsal/homebush_futsal_premier_league */
+export function seriesSlug(tournament: { name: string; seriesName?: unknown }): string {
+  const series = typeof tournament.seriesName === 'string' ? tournament.seriesName : ''
+  return slugify(series || tournament.name)
+}
+
+/** The season within it: .../2025 */
+export function seasonSlug(tournament: { seasonLabel?: unknown; createdAtISO?: string }): string {
+  const label = typeof tournament.seasonLabel === 'string' ? tournament.seasonLabel.trim() : ''
+  if (label) return slugify(label)
+  const year = tournament.createdAtISO
+    ? new Date(tournament.createdAtISO).getFullYear()
+    : new Date().getFullYear()
+  return String(year)
+}
+
+/** Seasons of one competition, grouped by the id they share. */
+export function seriesKey(tournament: { id: string; seriesId?: unknown }): string {
+  return typeof tournament.seriesId === 'string' && tournament.seriesId
+    ? tournament.seriesId
+    : tournament.id
+}

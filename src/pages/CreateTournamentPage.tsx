@@ -1,10 +1,11 @@
-import { useState } from "react"
-import { useNavigate, Link } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { useNavigate, Link, useSearchParams } from "react-router-dom"
 import { useAppStore } from "../store"
 import LogoUploader from "../components/LogoUploader"
 import FormatPicker from "../components/FormatPicker"
 import TeamPicker from "../components/TeamPicker"
-import { findFormat, planSchedule } from "../utils/formats"
+import { findFormat, planSchedule, formatOptionFor } from "../utils/formats"
+import { seriesName, nextSeasonLabel, seriesKey } from "../utils/seasons"
 import { getAdminTournamentUrl } from "../utils/urls"
 import {
   IconArrowLeft,
@@ -22,7 +23,12 @@ import {
 export default function CreateTournamentPage() {
   const navigate = useNavigate()
 
+  const [searchParams] = useSearchParams()
+  const previousSeasonId = searchParams.get('season')
+
   const [tournamentName, setTournamentName] = useState("")
+  const [seasonLabelDraft, setSeasonLabelDraft] = useState("")
+  const [prefilled, setPrefilled] = useState(false)
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
   const [formatId, setFormatId] = useState('league_single')
   const [rounds, setRounds] = useState(1)
@@ -48,6 +54,40 @@ export default function CreateTournamentPage() {
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
+
+  const previousSeason = previousSeasonId
+    ? tournaments.find((candidate) => candidate.id === previousSeasonId)
+    : undefined
+
+  /**
+   * A new season starts from the one before it.
+   *
+   * Everything is still editable — the format above all, because a competition
+   * is allowed to change how it is played from one year to the next — but
+   * nobody should have to re-pick nine clubs and re-enter a venue to run the
+   * same league again.
+   */
+  useEffect(() => {
+    if (!previousSeason || prefilled) return
+
+    const option = formatOptionFor(previousSeason.format)
+    setTournamentName(seriesName(previousSeason))
+    setSeasonLabelDraft(nextSeasonLabel(previousSeason))
+    setSelectedTeamIds(previousSeason.teamIds || [])
+    setFormatId(option.id)
+    setRounds(previousSeason.format?.rounds || 1)
+    if (previousSeason.format?.playoffQualifiers) {
+      setQualifiers(previousSeason.format.playoffQualifiers)
+    }
+    const groups = previousSeason.format?.groupsWithDivisionsConfig
+    if (groups) {
+      setNumberOfGroups(groups.numberOfGroups)
+      setTeamsPerGroup(groups.teamsPerGroup)
+      setGroupRounds(groups.groupRounds)
+    }
+    if (previousSeason.logo) setLogoPreview(previousSeason.logo)
+    setPrefilled(true)
+  }, [previousSeason, prefilled])
 
   const selectedFormat = findFormat(formatId)
   const mode = selectedFormat.mode
@@ -92,11 +132,25 @@ export default function CreateTournamentPage() {
         } : undefined
       }
 
-      const created = await createTournament(tournamentName.trim(), selectedTeamIds, format, {
-        startDate,
-        time: kickOff,
-        intervalDays,
-      })
+      const created = await createTournament(
+        tournamentName.trim(),
+        selectedTeamIds,
+        format,
+        { startDate, time: kickOff, intervalDays },
+        {
+          seriesName: tournamentName.trim(),
+          seasonLabel: seasonLabelDraft.trim() || undefined,
+          // A new season joins the competition of the one it was started from.
+          ...(previousSeason
+            ? {
+                seriesId: seriesKey(previousSeason),
+                logo: previousSeason.logo,
+                location: previousSeason.location,
+                socialMedia: previousSeason.socialMedia,
+              }
+            : {}),
+        },
+      )
 
       if (created && logoFile) {
         await uploadTournamentLogo(created.id, logoFile)
@@ -123,23 +177,45 @@ export default function CreateTournamentPage() {
       </div>
 
       <div className="text-center">
-        <h1 className="text-3xl font-bold mb-2">New tournament</h1>
-        <p className="opacity-80">Organizer: {currentOrganizer.name}</p>
+        <h1 className="text-3xl font-bold mb-2">
+          {previousSeason ? 'New season' : 'New tournament'}
+        </h1>
+        <p className="opacity-80">
+          {previousSeason
+            ? `Starting from ${seriesName(previousSeason)} ${previousSeason.seasonLabel || ''}`.trim()
+            : `Organizer: ${currentOrganizer.name}`}
+        </p>
       </div>
 
       <section className="glass rounded-xl p-6 w-full max-w-2xl">
         
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Tournament Name</label>
-            <input
-              type="text"
-              value={tournamentName}
-              onChange={(e) => setTournamentName(e.target.value)}
-              className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-              placeholder="Enter tournament name"
-              required
-            />
+          <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                {previousSeason ? 'Competition' : 'Tournament Name'}
+              </label>
+              <input
+                type="text"
+                value={tournamentName}
+                onChange={(e) => setTournamentName(e.target.value)}
+                className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                placeholder="Enter tournament name"
+                required
+              />
+            </div>
+            <div>
+              {/* The season's name, so the year never has to go into the
+                  competition's own name again. */}
+              <label className="block text-sm font-medium mb-2">Season</label>
+              <input
+                type="text"
+                value={seasonLabelDraft}
+                onChange={(e) => setSeasonLabelDraft(e.target.value)}
+                className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                placeholder={String(new Date().getFullYear())}
+              />
+            </div>
           </div>
           
           {/* The format decides the whole fixture list, so it is asked up front
