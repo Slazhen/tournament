@@ -3,6 +3,28 @@ import { useEffect, useState, useMemo } from 'react'
 import { tournamentService, batchGetTeams } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
+import LocationIcon from '../components/LocationIcon'
+
+const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
+
+/**
+ * What to show for the venue.
+ *
+ * The name field is free text and organisers paste map links straight into it,
+ * so the header used to read "📍 https://maps.app.goo.gl/HbptcFYhpHTmcefG7".
+ * A pasted link becomes the destination of the line, never its text.
+ */
+function describeVenue(location?: { name?: string; link?: string }) {
+  if (!location) return null
+
+  const name = location.name?.trim()
+  const link = location.link?.trim()
+  const href = link || (isUrl(name) ? name : undefined)
+  const label = name && !isUrl(name) ? name : href ? 'View on map' : undefined
+
+  if (!label) return null
+  return { label, href }
+}
 
 export default function PublicTournamentPage() {
   const { id, tournamentId, orgSlug, tournamentSlug } = useParams()
@@ -338,6 +360,8 @@ export default function PublicTournamentPage() {
   // Calculate table directly without useMemo to avoid infinite loops
   const { table, eliminatedTeams, groupTables } = calculateTable()
 
+  const venue = describeVenue(tournament.location)
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
       {/* Background decorative elements */}
@@ -353,73 +377,79 @@ export default function PublicTournamentPage() {
         <div className="container mx-auto px-4 py-16 text-center">
           <div className="glass rounded-2xl p-8 max-w-4xl mx-auto shadow-2xl border border-white/20">
             {tournament.logo && (
-              <div className="mb-6">
-                <div className="relative inline-block">
-                  <div className="absolute inset-0 rounded-full blur-2xl opacity-30 bg-gradient-to-r from-blue-400/20 to-purple-400/20"></div>
-                  <div className="relative bg-white/10 backdrop-blur-sm rounded-full p-6 border border-white/20 shadow-xl">
+              <div className="mb-6 flex justify-center">
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-2xl blur-2xl opacity-30 bg-gradient-to-r from-blue-400/20 to-purple-400/20" />
+                  {/* A round frame with heavy padding turned a wide club crest
+                      into a small sticker floating in a grey disc. */}
+                  <div className="relative bg-white/[0.07] rounded-2xl p-3 border border-white/15">
                     <img
-              loading="lazy"
-              decoding="async" 
-                      src={tournament.logo} 
+                      decoding="async"
+                      src={tournament.logo}
                       alt={`${tournament.name} logo`}
-                      className="w-24 h-24 object-contain"
+                      className="w-28 h-28 object-contain"
                     />
                   </div>
                 </div>
               </div>
             )}
-            
+
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
               {tournament.name}
             </h1>
-            
-            {/* Tournament Info */}
-            <div className="space-y-4 mb-8">
-              {tournament.location?.name && (
-                <div className="flex items-center justify-center gap-2 text-lg sm:text-xl text-gray-300">
-                  <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                  <span>📍 {tournament.location.name}</span>
+
+            {/* Venue, links and the size of the tournament. */}
+            <div className="space-y-4">
+              {venue && (
+                <div className="flex items-center justify-center gap-2 text-base sm:text-lg text-gray-200">
+                  <LocationIcon size={18} />
+                  {venue.href ? (
+                    <a
+                      href={venue.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-white underline decoration-white/25 underline-offset-4 transition-colors"
+                    >
+                      {venue.label}
+                    </a>
+                  ) : (
+                    <span>{venue.label}</span>
+                  )}
                 </div>
               )}
-              
-              {/* Social Media Links */}
+
               {(tournament.socialMedia?.facebook || tournament.socialMedia?.instagram) && (
-                <div className="flex flex-col sm:flex-row justify-center gap-4 sm:gap-6">
+                <div className="flex justify-center gap-3">
                   {tournament.socialMedia?.facebook && (
-                    <a 
-                      href={tournament.socialMedia.facebook} 
-                      target="_blank" 
+                    <a
+                      href={tournament.socialMedia.facebook}
+                      target="_blank"
                       rel="noopener noreferrer"
-                      className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
+                      className="group flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/15 px-4 py-2 rounded-lg transition-colors"
                     >
-                      <FacebookIcon size={24} className="group-hover:scale-110 transition-transform" />
-                      <span className="text-white font-medium text-sm sm:text-base">Facebook</span>
+                      <FacebookIcon size={18} />
+                      <span className="text-sm">Facebook</span>
                     </a>
                   )}
                   {tournament.socialMedia?.instagram && (
-                    <a 
-                      href={tournament.socialMedia.instagram} 
-                      target="_blank" 
+                    <a
+                      href={tournament.socialMedia.instagram}
+                      target="_blank"
                       rel="noopener noreferrer"
-                      className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-4 sm:px-6 py-2 sm:py-3 rounded-xl transition-all backdrop-blur-sm"
+                      className="group flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/15 px-4 py-2 rounded-lg transition-colors"
                     >
-                      <InstagramIcon size={24} className="group-hover:scale-110 transition-transform" />
-                      <span className="text-white font-medium text-sm sm:text-base">Instagram</span>
+                      <InstagramIcon size={18} />
+                      <span className="text-sm">Instagram</span>
                     </a>
                   )}
                 </div>
               )}
-            </div>
-            
-            <div className="flex justify-center gap-6 text-sm text-gray-300">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                <span>{tournament.teamIds?.length || 0} Teams</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                <span>{tournament.matches?.length || 0} Matches</span>
-              </div>
+
+              {/* Two coloured dots used to sit in front of these numbers,
+                  decorating nothing. */}
+              <p className="text-sm text-gray-300">
+                {tournament.teamIds?.length || 0} teams · {tournament.matches?.length || 0} matches
+              </p>
             </div>
           </div>
         </div>
@@ -431,7 +461,6 @@ export default function PublicTournamentPage() {
         <div className="mb-12">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Standings</h2>
-            <p className="text-gray-400 text-sm sm:text-base">Current tournament rankings</p>
           </div>
           
           {/* Group Tables */}
@@ -545,7 +574,8 @@ export default function PublicTournamentPage() {
                           </tbody>
                         </table>
                       </div>
-                      <div className="text-center mt-4 text-xs sm:text-sm text-gray-400">
+                      <StandingsLegend />
+                      <div className="text-center mt-3 text-xs sm:text-sm text-gray-300">
                         <p>Top 2 teams advance to Division 1 playoffs</p>
                         <p>3rd and 4th place go to Division 2 playoffs</p>
                       </div>
@@ -644,6 +674,7 @@ export default function PublicTournamentPage() {
                   </tbody>
                 </table>
               </div>
+              <StandingsLegend />
             </div>
           )}
         </div>
@@ -652,7 +683,6 @@ export default function PublicTournamentPage() {
         <div className="mb-12">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Statistics</h2>
-            <p className="text-gray-400 text-sm sm:text-base">Player performance analytics</p>
           </div>
           
           {/* Player Statistics */}
@@ -779,7 +809,7 @@ export default function PublicTournamentPage() {
                                   {stats.player.firstName} {stats.player.lastName}
                                 </div>
                                 {stats.player.number && (
-                                  <div className="text-xs text-gray-400">#{stats.player.number}</div>
+                                  <div className="text-xs text-gray-300">#{stats.player.number}</div>
                                 )}
                               </div>
                             </div>
@@ -821,7 +851,6 @@ export default function PublicTournamentPage() {
         <div className="mb-12">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Fixtures & Results</h2>
-            <p className="text-gray-400 text-sm sm:text-base">Matches organized by rounds</p>
           </div>
           
           {(() => {
@@ -829,24 +858,33 @@ export default function PublicTournamentPage() {
             const renderMatch = (match: any) => {
               const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
               const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
-              const isMatchFinished = match.homeGoals !== null && match.awayGoals !== null
-              const isMatchUpcoming = match.homeGoals === null && match.awayGoals === null
-              
+              // `!== null` also passed for a match whose goals were never set at
+              // all, which is every fixture that has not been played.
+              const isMatchFinished =
+                typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'
+              const isMatchInProgress =
+                !isMatchFinished &&
+                (typeof match.homeGoals === 'number' || typeof match.awayGoals === 'number')
+              const isMatchUpcoming = !isMatchFinished && !isMatchInProgress
+
               return (
                 <div key={match.id} className={`group relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
-                  isMatchFinished ? 'border-green-500/20' : 
-                  isMatchUpcoming ? 'border-blue-500/20' : 
+                  isMatchFinished ? 'border-green-500/20' :
+                  isMatchUpcoming ? 'border-blue-500/20' :
                   'border-yellow-500/20'
                 }`}>
-                  {/* Match Status Indicator */}
-                  <div className="absolute top-2 right-2 sm:top-4 sm:right-4">
-                    <div className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full ${
-                      isMatchFinished ? 'bg-green-400' : 
-                      isMatchUpcoming ? 'bg-blue-400' : 
-                      'bg-yellow-400 animate-pulse'
-                    }`}></div>
+                  {/* A bare coloured dot sat here. Nothing on the page said what
+                      the colours meant, so it read as decoration. */}
+                  <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+                    <span className={`text-[10px] sm:text-xs uppercase tracking-wide font-medium px-2 py-0.5 rounded-full ${
+                      isMatchFinished ? 'bg-green-500/15 text-green-300' :
+                      isMatchUpcoming ? 'bg-blue-500/15 text-blue-300' :
+                      'bg-yellow-500/15 text-yellow-300'
+                    }`}>
+                      {isMatchFinished ? 'Full time' : isMatchUpcoming ? 'Scheduled' : 'In progress'}
+                    </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between">
                     {/* Home Team */}
                     <div className="flex items-center gap-2 sm:gap-4 flex-1">
@@ -888,16 +926,14 @@ export default function PublicTournamentPage() {
                         </div>
                       ) : (
                         <div className="space-y-1 sm:space-y-2">
+                          {/* The status now has one home, the badge in the corner. */}
                           <div className="text-sm sm:text-xl font-semibold text-gray-300">vs</div>
-                          <div className="text-xs text-blue-400 font-medium">
-                            {isMatchUpcoming ? 'UPCOMING' : 'LIVE'}
-                          </div>
                         </div>
                       )}
-                      
+
                       {/* Match Date & Time */}
                       {match.dateISO && (
-                        <div className="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
+                        <div className="text-xs sm:text-sm text-gray-300 mt-1 sm:mt-2">
                           <div>
                             {new Date(match.dateISO).toLocaleDateString('en-US', {
                               weekday: 'short',
@@ -1078,7 +1114,7 @@ export default function PublicTournamentPage() {
                               </div>
                               <div>
                                 <h3 className="text-lg sm:text-2xl font-bold text-white">Round {roundNumber + 1} - Group Stage</h3>
-                                <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-400">
+                                <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-300">
                                   <span>{roundMatches.length} matches</span>
                                 </div>
                               </div>
@@ -1117,7 +1153,7 @@ export default function PublicTournamentPage() {
                                     </div>
                                     <div>
                                       <h3 className="text-lg sm:text-2xl font-bold text-white">Division 1 - {roundName}</h3>
-                                      <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-400">
+                                      <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-300">
                                         <span>{roundMatches.length} matches</span>
                                       </div>
                                     </div>
@@ -1158,7 +1194,7 @@ export default function PublicTournamentPage() {
                                     </div>
                                     <div>
                                       <h3 className="text-lg sm:text-2xl font-bold text-white">Division 2 - {roundName}</h3>
-                                      <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-400">
+                                      <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-300">
                                         <span>{roundMatches.length} matches</span>
                                       </div>
                                     </div>
@@ -1209,8 +1245,10 @@ export default function PublicTournamentPage() {
                           <span className="text-sm sm:text-xl font-bold text-white">{roundNumber + 1}</span>
                         </div>
                         <div>
-                          <h3 className="text-lg sm:text-2xl font-bold text-white">Tour {roundNumber + 1}</h3>
-                          <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-400">
+                          {/* "Tour" is the Russian word for a matchday; in English
+                              football this is a round. */}
+                          <h3 className="text-lg sm:text-2xl font-bold text-white">Round {roundNumber + 1}</h3>
+                          <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-300">
                             <span>{roundMatches.length} matches</span>
                           </div>
                         </div>
@@ -1239,7 +1277,6 @@ export default function PublicTournamentPage() {
           <div className="mb-12">
             <div className="text-center mb-8">
               <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Playoff Bracket</h2>
-              <p className="text-gray-400 text-sm sm:text-base">Tournament playoffs</p>
             </div>
             
             <div className="space-y-6">
@@ -1250,7 +1287,7 @@ export default function PublicTournamentPage() {
                       {round.name}
                     </h3>
                     {round.description && (
-                      <p className="text-sm sm:text-base text-gray-400">{round.description}</p>
+                      <p className="text-sm sm:text-base text-gray-300">{round.description}</p>
                     )}
                   </div>
                   
@@ -1282,7 +1319,7 @@ export default function PublicTournamentPage() {
                                 {match.homeGoals != null && match.awayGoals != null ? (
                                   <span className="text-xl font-bold text-white">{match.homeGoals} - {match.awayGoals}</span>
                                 ) : (
-                                  <span className="text-gray-400">vs</span>
+                                  <span className="text-gray-300">vs</span>
                                 )}
                               </div>
                               
@@ -1305,7 +1342,7 @@ export default function PublicTournamentPage() {
                         )
                       })
                     ) : (
-                      <p className="text-center text-gray-400">No matches scheduled yet.</p>
+                      <p className="text-center text-gray-300">No matches scheduled yet.</p>
                     )}
                   </div>
                 </div>
@@ -1314,6 +1351,36 @@ export default function PublicTournamentPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * What the column headings mean.
+ *
+ * The table showed ten abbreviations and explained none of them. Anyone who
+ * follows football reads P/W/D/L without thinking; a parent opening the link to
+ * find their kid's team does not.
+ */
+function StandingsLegend() {
+  const items = [
+    ['P', 'Played'],
+    ['W', 'Won'],
+    ['D', 'Drawn'],
+    ['L', 'Lost'],
+    ['GF', 'Goals for'],
+    ['GA', 'Goals against'],
+    ['GD', 'Goal difference'],
+    ['Pts', 'Points'],
+  ]
+
+  return (
+    <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-gray-300">
+      {items.map(([short, long]) => (
+        <span key={short}>
+          <span className="font-semibold text-white">{short}</span> {long}
+        </span>
+      ))}
     </div>
   )
 }
