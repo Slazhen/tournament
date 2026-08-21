@@ -6,6 +6,10 @@ import FormatPicker from "../components/FormatPicker"
 import TeamPicker from "../components/TeamPicker"
 import { findFormat, planSchedule } from "../utils/formats"
 import { getAdminTournamentUrl } from "../utils/urls"
+import {
+  IconArrowLeft,
+  IconWarning,
+} from '../components/icons'
 
 /**
  * Creating a tournament, on a screen of its own.
@@ -113,8 +117,8 @@ export default function CreateTournamentPage() {
   return (
     <div className="min-h-[80vh] flex flex-col items-center gap-6">
       <div className="w-full max-w-2xl">
-        <Link to="/tournaments" className="text-sm opacity-70 hover:opacity-100 transition-opacity">
-          ← Back to tournaments
+        <Link to="/tournaments" className="inline-flex items-center justify-center gap-1.5 text-sm opacity-70 hover:opacity-100 transition-opacity">
+          <IconArrowLeft size={15} /> Back to tournaments
         </Link>
       </div>
 
@@ -345,8 +349,8 @@ export default function CreateTournamentPage() {
                         <strong>Total Teams:</strong> {selectedTeamIds.length}<br />
                         <strong>Total Needed:</strong> {numberOfGroups * teamsPerGroup}<br />
                         {selectedTeamIds.length < numberOfGroups * teamsPerGroup && (
-                          <span className="text-yellow-400">
-                            ⚠️ Not enough teams! Need {numberOfGroups * teamsPerGroup - selectedTeamIds.length} more.
+                          <span className="inline-flex items-center justify-center gap-1.5 text-yellow-400">
+                            <IconWarning size={14} /> Not enough teams! Need {numberOfGroups * teamsPerGroup - selectedTeamIds.length} more.
                           </span>
                         )}
                         {selectedTeamIds.length > numberOfGroups * teamsPerGroup && (

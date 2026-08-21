@@ -6,6 +6,9 @@ import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import LocationIcon from '../components/LocationIcon'
 import { teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
+import {
+  IconTrophy,
+} from '../components/icons'
 
 const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
 
@@ -13,7 +16,7 @@ const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.tr
  * What to show for the venue.
  *
  * The name field is free text and organisers paste map links straight into it,
- * so the header used to read "📍 https://maps.app.goo.gl/HbptcFYhpHTmcefG7".
+ * so the header used to read the raw https://maps.app.goo.gl/... link as text.
  * A pasted link becomes the destination of the line, never its text.
  */
 function describeVenue(location?: { name?: string; link?: string }) {
@@ -190,7 +193,7 @@ export default function PublicTournamentPage() {
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center relative z-10 shadow-2xl border border-white/20">
           <div className="mb-6">
             <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-white/20 animate-pulse">
-              <span className="text-3xl">🏆</span>
+              <IconTrophy size={30} />
             </div>
             <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
               Loading Tournament
@@ -219,7 +222,7 @@ export default function PublicTournamentPage() {
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center relative z-10 shadow-2xl border border-white/20">
           <div className="mb-6">
             <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-2xl flex items-center justify-center border border-white/20">
-              <span className="text-3xl">🏆</span>
+              <IconTrophy size={30} />
             </div>
             <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
               Tournament Not Found

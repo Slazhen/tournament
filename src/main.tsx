@@ -252,7 +252,7 @@ const router = createBrowserRouter([
  * What a visitor sees when a route throws.
  *
  * Without this React Router renders its own developer screen — stack trace,
- * "Hey developer 👋" — to whoever happens to be looking at the site.
+ * its "Hey developer" screen — to whoever happens to be looking at the site.
  */
 function RouteError() {
   return (

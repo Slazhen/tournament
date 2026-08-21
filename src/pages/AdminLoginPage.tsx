@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate, useLocation } from 'react-router-dom'
+import {
+  IconBall,
+} from '../components/icons'
 
 export default function AdminLoginPage() {
   const [loginCredential, setLoginCredential] = useState('')
@@ -47,7 +50,7 @@ export default function AdminLoginPage() {
           {/* Header */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/20">
-              <span className="text-2xl">⚽</span>
+              <IconBall size={24} />
             </div>
             <h1 className="text-3xl font-bold text-white mb-2">
               {isSuperAdminRoute ? 'Super Admin Login' : 'Admin Login'}

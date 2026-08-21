@@ -20,7 +20,7 @@ const NAV_ITEMS = [
  * sits behind it (switching organiser, theme, signing out) opens on demand.
  */
 export default function AdminNavigation() {
-  const { getCurrentOrganizer, setCurrentOrganizer, settings, updateSettings } = useAppStore()
+  const { getCurrentOrganizer, setCurrentOrganizer } = useAppStore()
   const { isSuperAdmin, user, logout } = useAuth()
   const currentOrganizer = getCurrentOrganizer()
   const location = useLocation()
@@ -120,13 +120,6 @@ export default function AdminNavigation() {
                 {isSuperAdmin && (
                   <MenuItem onClick={() => navigate('/admin/organizers')}>Organizers</MenuItem>
                 )}
-                <MenuItem
-                  onClick={() =>
-                    updateSettings({ theme: settings.theme === 'dark' ? 'bright' : 'dark' })
-                  }
-                >
-                  {settings.theme === 'dark' ? 'Light theme' : 'Dark theme'}
-                </MenuItem>
                 <MenuItem onClick={() => navigate('/')}>Public site</MenuItem>
               </div>
 

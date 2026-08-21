@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
 import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
 import type { Tournament, Team, Match, Organizer } from '../types'
+import {
+  IconArrowLeft,
+  IconKnockout,
+  IconVideo,
+} from '../components/icons'
 
 export default function PublicMatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
@@ -183,7 +188,7 @@ export default function PublicMatchPage() {
             } 
             className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2"
           >
-            ← Back to {tournament.name}
+            <IconArrowLeft size={15} /> Back to {tournament.name}
           </Link>
         </div>
 
@@ -193,8 +198,8 @@ export default function PublicMatchPage() {
             {tournament.name} • Round {match.round || 1}
             {match.isPlayoff && ` • Playoff Round ${match.playoffRound}`}
             {match.isElimination && (
-              <span className="ml-2 inline-block bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
-                🔥 ELIMINATION MATCH
+              <span className="inline-flex items-center justify-center gap-1.5 ml-2 inline-block bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                <IconKnockout size={15} /> ELIMINATION MATCH
               </span>
             )}
           </div>
@@ -540,7 +545,7 @@ export default function PublicMatchPage() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded glass hover:bg-white/10 transition-all"
                 >
-                  🎥 Watch Match Video
+                  <IconVideo size={15} /> Watch Match Video
                 </a>
               </div>
             </div>

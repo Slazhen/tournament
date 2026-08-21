@@ -1,5 +1,8 @@
 import { useAppStore } from "../store"
 import { Link } from "react-router-dom"
+import {
+  IconChart,
+} from '../components/icons'
 
 export default function CalendarPage() {
   const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams } = useAppStore()
@@ -96,9 +99,9 @@ export default function CalendarPage() {
                       
                       <Link
                         to={`/tournaments/${match.tournamentId}/matches/${match.id}`}
-                        className="px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
                       >
-                        📊 Stats
+                        <IconChart size={14} /> Stats
                       </Link>
                     </div>
                   </div>

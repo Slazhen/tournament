@@ -1,5 +1,28 @@
 import { FORMAT_OPTIONS, planSchedule } from '../utils/formats'
-import type { FormatOption } from '../utils/formats'
+import type { FormatOption, FormatIconName } from '../utils/formats'
+import type { ComponentType } from 'react'
+import {
+  IconTable,
+  IconRepeat,
+  IconBracket,
+  IconMedal,
+  IconGroups,
+  IconRounds,
+  IconRest,
+  IconTools,
+} from './icons'
+
+/** The drawing for each format, in place of the emoji these cards used to show. */
+const FORMAT_ICONS: Record<FormatIconName, ComponentType<{ size?: number }>> = {
+  table: IconTable,
+  repeat: IconRepeat,
+  bracket: IconBracket,
+  medal: IconMedal,
+  groups: IconGroups,
+  rounds: IconRounds,
+  rest: IconRest,
+  tools: IconTools,
+}
 
 type FormatPickerProps = {
   value: string
@@ -48,6 +71,7 @@ function FormatCard({
 }) {
   const enoughTeams = teamCount >= option.minTeams
   const plan = planSchedule(option, teamCount, qualifiers)
+  const Icon = FORMAT_ICONS[option.icon]
 
   return (
     <button
@@ -64,8 +88,14 @@ function FormatCard({
       `}
     >
       <div className="flex items-start gap-3">
-        <span className="text-2xl leading-none" aria-hidden>
-          {option.icon}
+        <span
+          className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center border ${
+            selected
+              ? 'bg-blue-500/15 border-blue-400/40 text-blue-200'
+              : 'bg-white/5 border-white/10 text-white/70'
+          }`}
+        >
+          <Icon size={20} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

@@ -8,6 +8,21 @@ import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } f
 import { organizerService } from '../lib/data'
 import type { Organizer } from '../types'
 import LocationIcon from '../components/LocationIcon'
+import {
+  IconLink,
+  IconCheck,
+  IconGear,
+  IconPencil,
+  IconClose,
+  IconTrophy,
+  IconChart,
+  IconRest,
+  IconCalendar,
+  IconBolt,
+  IconPlus,
+  IconTrash,
+  IconKnockout,
+} from '../components/icons'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import LogoUploader from '../components/LogoUploader'
@@ -1003,9 +1018,17 @@ export default function TournamentPage() {
                   setLinkCopied(true)
                   setTimeout(() => setLinkCopied(false), 2000)
                 }}
-                className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
               >
-                {linkCopied ? '✓ Link copied' : '🔗 Copy public link'}
+                {linkCopied ? (
+                  <>
+                    <IconCheck size={15} /> Link copied
+                  </>
+                ) : (
+                  <>
+                    <IconLink size={15} /> Copy public link
+                  </>
+                )}
               </button>
 
               <Link
@@ -1018,9 +1041,9 @@ export default function TournamentPage() {
 
               <Link
                 to={`/tournaments/${tournament.id}/settings`}
-                className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
               >
-                ⚙️ Settings
+                <IconGear size={15} /> Settings
               </Link>
             </div>
 
@@ -1087,9 +1110,9 @@ export default function TournamentPage() {
                 setEditingGroups(groups.map(g => [...g])) // Deep copy
                 setShowEditGroups(true)
               }}
-              className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all text-sm"
             >
-              ✏️ Edit Groups
+              <IconPencil size={15} /> Edit Groups
             </button>
           </div>
           <p className="text-sm opacity-70 mb-4 text-center">
@@ -1197,9 +1220,9 @@ export default function TournamentPage() {
               <h2 className="text-xl font-semibold text-white">Edit Groups</h2>
               <button
                 onClick={() => setShowEditGroups(false)}
-                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-all text-white"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-all text-white"
               >
-                ✕ Close
+                <IconClose size={15} /> Close
               </button>
             </div>
             <p className="text-sm text-gray-300 mb-4">
@@ -1450,9 +1473,9 @@ export default function TournamentPage() {
             {isChampionshipFinished && playoffMatches.length === 0 && (
               <button
                 onClick={handleEndChampionship}
-                className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all active:scale-95 active:shadow-inner font-medium bg-green-500/20 text-green-300 border border-green-500/30"
+                className="inline-flex items-center justify-center gap-1.5 px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all active:scale-95 active:shadow-inner font-medium bg-green-500/20 text-green-300 border border-green-500/30"
               >
-                🏆 End Championship & Start Playoffs
+                <IconTrophy size={16} /> End Championship & Start Playoffs
               </button>
             )}
           </div>
@@ -1461,7 +1484,7 @@ export default function TournamentPage() {
             <div className="text-center opacity-70">
               {isChampionshipFinished ? (
                 <div className="space-y-3">
-                  <p>✅ Championship completed! Ready to start playoffs.</p>
+                  <p className="inline-flex items-center gap-1.5"><IconCheck size={15} /> Championship completed! Ready to start playoffs.</p>
                   <p className="text-sm">Top {tournament.format?.playoffQualifiers || 4} teams will qualify for playoffs.</p>
                 </div>
               ) : (
@@ -1570,10 +1593,10 @@ export default function TournamentPage() {
                             <div>
                       <Link 
                         to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}` : `/tournaments/${tournament.id}/matches/${match.id}`}
-                        className="px-3 py-1 rounded-md glass text-sm hover:bg-white/10 transition-all text-center block"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-md glass text-sm hover:bg-white/10 transition-all"
                         title="View match statistics"
                       >
-                        📊 Match details
+                        <IconChart size={14} /> Match details
                       </Link>
                             </div>
                           </div>
@@ -1601,8 +1624,8 @@ export default function TournamentPage() {
                 const resting = teamsNotPlaying(tournament.teamIds || [], roundMatches)
                 if (resting.length === 0) return null
                 return (
-                  <span className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10 opacity-80">
-                    🪑 {resting.map((id) => teams.find((t) => t.id === id)?.name ?? 'A team').join(', ')}{' '}
+                  <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10 opacity-80">
+                    <IconRest size={13} /> {resting.map((id) => teams.find((t) => t.id === id)?.name ?? 'A team').join(', ')}{' '}
                     {resting.length === 1 ? 'rests' : 'rest'}
                   </span>
                 )
@@ -1612,10 +1635,10 @@ export default function TournamentPage() {
                   <button
                     type="button"
                     onClick={() => applyRoundDate(r.round)}
-                    className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
+                    className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
                     title="Give every match in this round the same date"
                   >
-                    📅 Same date for the round
+                    <IconCalendar size={14} /> Same date for the round
                   </button>
                 )}
             </div>
@@ -1710,10 +1733,10 @@ export default function TournamentPage() {
                     <div className="flex flex-col gap-1">
                       <Link 
                         to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${mid}` : `/tournaments/${tournament.id}/matches/${mid}`}
-                        className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
+                        className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
                         title="View match statistics"
                       >
-                        📊 Match details
+                        <IconChart size={14} /> Match details
                       </Link>
                     </div>
                   </div>
@@ -1766,9 +1789,9 @@ export default function TournamentPage() {
                       </ul>
                       <button
                         onClick={addProgressiveRound}
-                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-sm"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-sm"
                       >
-                        ⚡ Add {nextRoundPlan.round.name}
+                        <IconBolt size={15} /> Add {nextRoundPlan.round.name}
                       </button>
                     </>
                   ) : (
@@ -1782,9 +1805,9 @@ export default function TournamentPage() {
                 <div className="text-center">
                   <button
                     onClick={() => setShowNewRoundForm(true)}
-                    className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
                   >
-                    ➕ Add Playoff Round
+                    <IconPlus size={15} /> Add Playoff Round
                   </button>
                 </div>
               )}
@@ -1829,15 +1852,15 @@ export default function TournamentPage() {
                   <div className="flex gap-2 justify-center">
                     <button
                       onClick={handleCompleteRound}
-                      className="px-6 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 transition-all text-green-400"
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 transition-all text-green-400"
                     >
-                      ✅ Complete
+                      <IconCheck size={15} /> Complete
                     </button>
                     <button
                       onClick={() => setShowNewRoundForm(false)}
-                      className="px-6 py-2 rounded-lg bg-gray-500/20 hover:bg-gray-500/30 border border-gray-400/30 transition-all text-gray-400"
+                      className="inline-flex items-center justify-center gap-1.5 px-6 py-2 rounded-lg bg-gray-500/20 hover:bg-gray-500/30 border border-gray-400/30 transition-all text-gray-400"
                     >
-                      ❌ Cancel
+                      <IconClose size={15} /> Cancel
                     </button>
                   </div>
                 </div>
@@ -1860,8 +1883,8 @@ export default function TournamentPage() {
                 <div key={roundIndex} className="p-6 glass rounded-lg border border-white/10">
                   <div className="space-y-4">
                     {resting.length > 0 && (
-                      <div className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10 opacity-80 inline-block">
-                        🪑 {resting.map((id) => teams.find((t) => t.id === id)?.name ?? 'A team').join(', ')}{' '}
+                      <div className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10 opacity-80">
+                        <IconRest size={13} /> {resting.map((id) => teams.find((t) => t.id === id)?.name ?? 'A team').join(', ')}{' '}
                         {resting.length === 1 ? 'rests this round' : 'rest this round'}
                       </div>
                     )}
@@ -1990,9 +2013,9 @@ export default function TournamentPage() {
                               }
                             })
                           }}
-                          className="px-3 py-2 rounded-md bg-red-500/20 hover:bg-red-500/30 transition-all text-red-400"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-red-500/20 hover:bg-red-500/30 transition-all text-red-400"
                         >
-                          🗑️ Delete Round
+                          <IconTrash size={15} /> Delete Round
                         </button>
                       </div>
                     </div>
@@ -2226,7 +2249,7 @@ export default function TournamentPage() {
                                       }}
                                       className="rounded border-gray-300"
                                     />
-                                    <span className="text-sm text-red-400">🔥 Elimination</span>
+                                    <span className="text-sm text-red-400 inline-flex items-center gap-1.5"><IconKnockout size={14} /> Elimination</span>
                                   </label>
                                 </div>
                                 <div className="flex flex-col gap-2">
@@ -2238,11 +2261,11 @@ export default function TournamentPage() {
                                         : `/public/tournaments/${tournament.id}/matches/${match.id}`
                                       window.open(publicUrl, '_blank')
                                     }}
-                                    className="px-3 py-2 rounded-md bg-blue-500/20 hover:bg-blue-500/30 transition-all text-blue-400 text-sm"
+                                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-blue-500/20 hover:bg-blue-500/30 transition-all text-blue-400 text-sm"
                                     disabled={!match.homeTeamId || !match.awayTeamId}
                                     title={!match.homeTeamId || !match.awayTeamId ? 'Select teams first' : 'View match stats'}
                                   >
-                                    📊 Match details
+                                    <IconChart size={14} /> Match details
                                   </button>
                                 </div>
                               </div>
@@ -2377,10 +2400,10 @@ export default function TournamentPage() {
                                       <div className="flex flex-col gap-1">
                                                           <Link 
                                           to={`/tournaments/${tournament.id}/matches/${m.id}`}
-                                          className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
+                                          className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
                                           title="View match statistics"
                                         >
-                                          📊 Match details
+                                          <IconChart size={14} /> Match details
                                         </Link>
                                       </div>
                                     </div>
@@ -2470,10 +2493,10 @@ export default function TournamentPage() {
                                       <div className="flex flex-col gap-1">
                                                           <Link 
                                           to={`/tournaments/${tournament.id}/matches/${m.id}`}
-                                          className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
+                                          className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
                                           title="View match statistics"
                                         >
-                                          📊 Match details
+                                          <IconChart size={14} /> Match details
                                         </Link>
                                       </div>
                                     </div>
@@ -2580,10 +2603,10 @@ export default function TournamentPage() {
                         <div className="flex flex-col gap-1">
                               <Link 
                             to={`/tournaments/${tournament.id}/matches/${m.id}`}
-                            className="px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all text-center"
+                            className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
                             title="View match statistics"
                           >
-                            📊 Match details
+                            <IconChart size={14} /> Match details
                           </Link>
                         </div>
                       </div>

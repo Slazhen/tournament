@@ -5,6 +5,13 @@ import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
+import {
+  IconArrowLeft,
+  IconClipboard,
+  IconUser,
+  IconTrophy,
+  IconGlobe,
+} from '../components/icons'
 
 export default function PlayerPage() {
   const { playerId } = useParams()
@@ -122,7 +129,7 @@ export default function PlayerPage() {
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <div className="flex items-center justify-between mb-6">
           <Link to={`/teams/${currentTeam.id}`} className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2">
-            ← Back to {currentTeam.name}
+            <IconArrowLeft size={15} /> Back to {currentTeam.name}
           </Link>
           
           {/* Public Link */}
@@ -137,10 +144,10 @@ export default function PlayerPage() {
               />
               <button
                 onClick={() => navigator.clipboard.writeText(`${window.location.origin}/public/players/${player.id}`)}
-                className="px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
                 title="Copy to clipboard"
               >
-                📋 Copy
+                <IconClipboard size={15} /> Copy
               </button>
             </div>
           </div>
@@ -159,8 +166,8 @@ export default function PlayerPage() {
                 className="w-32 h-32 object-cover rounded-lg"
               />
             ) : (
-              <div className="w-32 h-32 rounded-lg bg-white/10 flex items-center justify-center text-4xl opacity-50">
-                👤
+              <div className="w-32 h-32 rounded-lg bg-white/10 flex items-center justify-center opacity-50">
+                <IconUser size={26} />
               </div>
             )}
             <input
@@ -263,8 +270,8 @@ export default function PlayerPage() {
                   className="w-16 h-16 object-cover rounded-lg"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-lg bg-white/10 flex items-center justify-center text-2xl opacity-50">
-                  🏆
+                <div className="w-16 h-16 rounded-lg bg-white/10 flex items-center justify-center opacity-50">
+                  <IconTrophy size={22} />
                 </div>
               )}
               <div>
@@ -375,7 +382,7 @@ export default function PlayerPage() {
                               className="w-full h-full object-cover" 
                             />
                           ) : (
-                            <div className="text-lg opacity-50">🏆</div>
+                            <div className="opacity-40"><IconTrophy size={18} /></div>
                           )}
                         </div>
                         <div>
@@ -439,9 +446,9 @@ export default function PlayerPage() {
                       <Link
                         to={`/public/tournaments/${tournament.id}`}
                         target="_blank"
-                        className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
                       >
-                        🌐 View
+                        <IconGlobe size={14} /> View
                       </Link>
                     </td>
                   </tr>

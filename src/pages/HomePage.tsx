@@ -1,11 +1,19 @@
 import { useState, useEffect, useMemo } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, ComponentType } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { organizerService, tournamentService } from '../lib/data'
 import type { TournamentSummary } from '../lib/data'
 import type { Organizer } from '../types'
 import Logo from '../components/Logo'
+import {
+  IconCalendar,
+  IconChart,
+  IconLink,
+  IconBall,
+  IconStadium,
+  IconLock,
+} from '../components/icons'
 import { getPublicTournamentUrl } from '../utils/urls'
 
 /**
@@ -151,27 +159,27 @@ export default function HomePage() {
         </p>
 
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          <Feature icon="🗓️" title="Fixtures, generated">
+          <Feature icon={IconCalendar} title="Fixtures, generated">
             League, home and away, knockout cup, groups and playoffs, Swiss, or a finals format you
             build yourself. Give it a start date and a weekly slot and the whole calendar fills in.
           </Feature>
-          <Feature icon="📊" title="A table that keeps itself">
+          <Feature icon={IconChart} title="A table that keeps itself">
             Type in a score and the standings re-sort: points, goal difference, goals for and
             against, played, won, drawn, lost.
           </Feature>
-          <Feature icon="🔗" title="One link to share">
+          <Feature icon={IconLink} title="One link to share">
             Every tournament gets a public page — fixtures, results, table, scorers — that reads
             properly on a phone. Nobody you send it to has to sign in.
           </Feature>
-          <Feature icon="⚽" title="Squads and scorers">
+          <Feature icon={IconBall} title="Squads and scorers">
             Register players with numbers and photos, record goals, assists and clean sheets, and
             let anyone open a player's or a club's own page.
           </Feature>
-          <Feature icon="🏟️" title="Your club, your colours">
+          <Feature icon={IconStadium} title="Your club, your colours">
             Club crests, a tournament logo, the venue with a map link, and your Facebook and
             Instagram, all on the public page.
           </Feature>
-          <Feature icon="🔒" title="Private until you say so">
+          <Feature icon={IconLock} title="Private until you say so">
             Set a tournament up in private, get the draw right, and publish it when the season is
             ready to be seen.
           </Feature>
@@ -265,8 +273,8 @@ export default function HomePage() {
                               className="w-6 h-6 rounded object-contain"
                             />
                           ) : (
-                            <span className="w-6 h-6 rounded bg-white/5 flex items-center justify-center text-xs">
-                              ⚽
+                            <span className="w-6 h-6 rounded bg-white/5 flex items-center justify-center text-white/50">
+                              <IconBall size={14} />
                             </span>
                           )}
                           <span className="truncate group-hover:text-blue-300 transition-colors">
@@ -351,18 +359,18 @@ function Pitch() {
 }
 
 function Feature({
-  icon,
+  icon: Icon,
   title,
   children,
 }: {
-  icon: string
+  icon: ComponentType<{ size?: number }>
   title: string
   children: ReactNode
 }) {
   return (
     <div className="rounded-2xl bg-white/[0.03] border border-white/10 p-6 hover:border-white/20 transition-colors">
-      <div className="text-2xl mb-3" aria-hidden>
-        {icon}
+      <div className="w-10 h-10 mb-4 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center text-blue-200">
+        <Icon size={20} />
       </div>
       <h3 className="font-semibold text-lg mb-2">{title}</h3>
       <p className="text-sm text-gray-300 leading-relaxed">{children}</p>

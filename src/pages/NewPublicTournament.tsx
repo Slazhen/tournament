@@ -5,6 +5,10 @@ import { batchGetTeams } from '../lib/data'
 import ErrorBoundary from '../components/ErrorBoundary'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
+import {
+  IconTrophy,
+  IconPin,
+} from '../components/icons'
 
 interface Tournament {
   id: string
@@ -81,7 +85,7 @@ export default function NewPublicTournament() {
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center relative z-10 shadow-2xl border border-white/20">
           <div className="mb-6">
             <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-white/20 animate-pulse">
-              <span className="text-3xl">🏆</span>
+              <IconTrophy size={30} />
             </div>
             <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
               Loading Tournament
@@ -109,7 +113,7 @@ export default function NewPublicTournament() {
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center relative z-10 shadow-2xl border border-white/20">
           <div className="mb-6">
             <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-2xl flex items-center justify-center border border-white/20">
-              <span className="text-3xl">🏆</span>
+              <IconTrophy size={30} />
             </div>
             <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
               Tournament Not Found
@@ -244,7 +248,7 @@ export default function NewPublicTournament() {
               {tournament.location && typeof tournament.location === 'string' && (
                 <div className="flex items-center justify-center gap-2 text-lg sm:text-xl text-gray-300">
                   <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                  <span>📍 {tournament.location}</span>
+                  <span className="inline-flex items-center gap-1.5"><IconPin size={15} /> {tournament.location}</span>
                 </div>
               )}
               

@@ -1,5 +1,16 @@
 import type { Tournament } from '../types'
 
+/** Which drawing goes on the card. Emoji rendered differently on every device. */
+export type FormatIconName =
+  | 'table'
+  | 'repeat'
+  | 'bracket'
+  | 'medal'
+  | 'groups'
+  | 'rounds'
+  | 'rest'
+  | 'tools'
+
 export type TournamentMode = NonNullable<Tournament['format']>['mode']
 
 export type FormatOption = {
@@ -9,7 +20,7 @@ export type FormatOption = {
   rounds: number
   title: string
   tagline: string
-  icon: string
+  icon: FormatIconName
   /** Two or three plain statements about how it plays out. */
   points: string[]
   minTeams: number
@@ -38,7 +49,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     rounds: 1,
     title: 'League',
     tagline: 'Everyone plays everyone once',
-    icon: '🏆',
+    icon: 'table',
     points: ['One table, no finals', 'The team on top at the end wins'],
     minTeams: 2,
   },
@@ -48,7 +59,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     rounds: 2,
     title: 'League, home and away',
     tagline: 'Everyone plays everyone twice',
-    icon: '🔁',
+    icon: 'repeat',
     points: ['Two legs against every opponent', 'Twice the fixtures, fairer table'],
     minTeams: 2,
   },
@@ -58,7 +69,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     rounds: 1,
     title: 'Knockout cup',
     tagline: 'Lose once and you are out',
-    icon: '⚔️',
+    icon: 'bracket',
     points: [
       'Seeded by the order you pick the teams',
       'Odd numbers get byes in the first round',
@@ -72,7 +83,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     rounds: 1,
     title: 'League + playoffs',
     tagline: 'A season, then finals for the top teams',
-    icon: '🥇',
+    icon: 'medal',
     points: ['Full league first', 'The best finishers meet in a knockout'],
     minTeams: 4,
     hasSettings: true,
@@ -83,7 +94,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     rounds: 1,
     title: 'Groups + playoffs',
     tagline: 'Group stage first, then the finals',
-    icon: '🌍',
+    icon: 'groups',
     points: ['Teams split into groups', 'Group winners go through to a bracket'],
     minTeams: 4,
     needsSetup: true,
@@ -95,7 +106,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     rounds: 2,
     title: 'Swiss + elimination',
     tagline: 'Several rounds, then a cut',
-    icon: '♟️',
+    icon: 'rounds',
     points: ['Nobody is knocked out early', 'The leaders play off at the end'],
     minTeams: 4,
   },
@@ -106,7 +117,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     rounds: 1,
     title: 'League, then one out a week',
     tagline: 'Everyone keeps playing, the bottom pair play to survive',
-    icon: '🪑',
+    icon: 'rest',
     points: [
       'One round robin first, one table throughout',
       'Then each week the survivors are paired by position',
@@ -122,7 +133,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     rounds: 1,
     title: 'Custom',
     tagline: 'Build the finals yourself',
-    icon: '🛠️',
+    icon: 'tools',
     points: ['League stage as usual', 'You define each playoff round by hand'],
     minTeams: 4,
     needsSetup: true,

@@ -4,6 +4,11 @@ import { getAdminTournamentUrl, getPublicTournamentUrl } from "../utils/urls"
 import { CompactVisibilityToggle } from "../components/VisibilityToggle"
 import { FORMAT_OPTIONS } from "../utils/formats"
 import type { Tournament } from "../types"
+import {
+  IconTrophy,
+  IconGear,
+  IconGlobe,
+} from '../components/icons'
 
 /** The tournament's format in the same words the create screen used. */
 function describeFormat(tournament: Tournament): string {
@@ -88,7 +93,7 @@ export default function TournamentsPage() {
                         className="w-full h-full object-cover" 
                       />
                     ) : (
-                      <div className="text-2xl opacity-50">🏆</div>
+                      <div className="opacity-40"><IconTrophy size={22} /></div>
                     )}
                   </div>
                   
@@ -127,22 +132,22 @@ export default function TournamentsPage() {
                   <div className="flex flex-col gap-2">
                     <Link
                       to={currentOrganizer ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`}
-                      className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center"
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center"
                     >
-                      🏆 View
+                      <IconTrophy size={15} /> View
                     </Link>
                     <Link
                       to={`/tournaments/${tournament.id}/settings`}
-                      className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
                     >
-                      ⚙️ Settings
+                      <IconGear size={15} /> Settings
                     </Link>
                     <Link
                       to={currentOrganizer ? getPublicTournamentUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
                       target="_blank"
-                      className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
                     >
-                      🌐 Open public page
+                      <IconGlobe size={15} /> Open public page
                     </Link>
                   </div>
                 </div>

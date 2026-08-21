@@ -6,6 +6,14 @@ import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
+import {
+  IconArrowLeft,
+  IconClipboard,
+  IconTrophy,
+  IconUser,
+  IconGlobe,
+  IconTrash,
+} from '../components/icons'
 
 export default function TeamPage() {
   const { teamId } = useParams()
@@ -139,7 +147,7 @@ export default function TeamPage() {
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <div className="flex items-center justify-between mb-6">
           <Link to="/teams" className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2">
-            ← Back to Teams
+            <IconArrowLeft size={15} /> Back to Teams
           </Link>
           
           {/* Public Link */}
@@ -154,10 +162,10 @@ export default function TeamPage() {
               />
               <button
                 onClick={() => navigator.clipboard.writeText(`${window.location.origin}/public/teams/${team.id}`)}
-                className="px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
                 title="Copy to clipboard"
               >
-                📋 Copy
+                <IconClipboard size={15} /> Copy
               </button>
             </div>
           </div>
@@ -176,8 +184,8 @@ export default function TeamPage() {
                 className="w-24 h-24 object-cover rounded-lg"
               />
             ) : (
-              <div className="w-24 h-24 rounded-lg bg-white/10 flex items-center justify-center text-2xl opacity-50">
-                🏆
+              <div className="w-24 h-24 rounded-lg bg-white/10 flex items-center justify-center opacity-50">
+                <IconTrophy size={22} />
               </div>
             )}
             <input
@@ -283,7 +291,7 @@ export default function TeamPage() {
                 className="w-24 h-24 object-cover rounded-lg"
               />
             ) : (
-              <div className="w-24 h-24 rounded-lg bg-white/10 flex items-center justify-center text-sm opacity-50">
+              <div className="w-24 h-24 rounded-lg bg-white/10 flex items-center justify-center opacity-50">
                 Photo
               </div>
             )}
@@ -478,8 +486,8 @@ export default function TeamPage() {
                               className="w-12 h-12 object-cover rounded-full"
                             />
                           ) : (
-                            <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-sm opacity-50">
-                              👤
+                            <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center opacity-50">
+                              <IconUser size={20} />
                             </div>
                           )}
                         </div>
@@ -521,17 +529,17 @@ export default function TeamPage() {
                       <Link
                         to={`/public/players/${player.id}`}
                         target="_blank"
-                        className="px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all text-center"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all text-center"
                       >
-                        🌐 View
+                        <IconGlobe size={14} /> View
                       </Link>
                     </td>
                     <td className="py-3 px-4 text-center">
                       <button
                         onClick={() => removePlayer(player.id)}
-                        className="px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all text-red-400 hover:text-red-300"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all text-red-400 hover:text-red-300"
                       >
-                        🗑️ Remove
+                        <IconTrash size={14} /> Remove
                       </button>
                     </td>
                   </tr>
@@ -576,7 +584,7 @@ export default function TeamPage() {
                               className="w-full h-full object-cover" 
                             />
                           ) : (
-                            <div className="text-lg opacity-50">🏆</div>
+                            <div className="opacity-40"><IconTrophy size={18} /></div>
                           )}
                         </div>
                         <div>
@@ -603,16 +611,16 @@ export default function TeamPage() {
                       <div className="flex gap-2 justify-center">
                         <Link
                           to={currentOrganizer ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`}
-                          className="px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
                         >
-                          🏆 View
+                          <IconTrophy size={14} /> View
                         </Link>
                         <Link
                           to={currentOrganizer ? getPublicTournamentUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
                           target="_blank"
-                          className="px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
                         >
-                          🌐 Public
+                          <IconGlobe size={14} /> Public
                         </Link>
                       </div>
                     </td>

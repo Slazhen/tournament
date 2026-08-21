@@ -4,6 +4,11 @@ import type { PlayerContext } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import { useEffect, useState } from 'react'
+import {
+  IconUser,
+  IconTrophy,
+  IconGlobe,
+} from '../components/icons'
 
 export default function PublicPlayerPage() {
   const { playerId } = useParams()
@@ -115,7 +120,7 @@ export default function PublicPlayerPage() {
                 className="w-full h-full object-cover rounded-lg"
               />
             ) : (
-              <div className="text-4xl opacity-50">👤</div>
+              <div className="opacity-40"><IconUser size={38} /></div>
             )}
           </div>
           
@@ -166,8 +171,8 @@ export default function PublicPlayerPage() {
                   className="w-16 h-16 object-cover rounded-lg"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-lg bg-white/10 flex items-center justify-center text-2xl opacity-50">
-                  🏆
+                <div className="w-16 h-16 rounded-lg bg-white/10 flex items-center justify-center opacity-50">
+                  <IconTrophy size={22} />
                 </div>
               )}
               <div>
@@ -271,7 +276,7 @@ export default function PublicPlayerPage() {
                               className="w-full h-full object-cover" 
                             />
                           ) : (
-                            <div className="text-lg opacity-50">🏆</div>
+                            <div className="opacity-40"><IconTrophy size={18} /></div>
                           )}
                         </div>
                         <div>
@@ -335,9 +340,9 @@ export default function PublicPlayerPage() {
                       <Link
                         to={`/public/tournaments/${tournament.id}`}
                         target="_blank"
-                        className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
                       >
-                        🌐 View
+                        <IconGlobe size={14} /> View
                       </Link>
                     </td>
                   </tr>

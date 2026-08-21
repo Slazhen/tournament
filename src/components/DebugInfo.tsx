@@ -1,4 +1,7 @@
 import { useAppStore } from '../store'
+import {
+  IconGear,
+} from './icons'
 
 export default function DebugInfo() {
   const { 
@@ -74,8 +77,8 @@ export default function DebugInfo() {
         
         {currentOrganizerId && (
           <div className="mt-3 pt-2 border-t border-white/20">
-            <div className="text-xs text-gray-300">
-              🔧 AWS Database Active
+            <div className="inline-flex items-center justify-center gap-1.5 text-xs text-gray-300">
+              <IconGear size={13} /> AWS Database Active
             </div>
           </div>
         )}

@@ -1,6 +1,11 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { api } from '../lib/api'
+import FacebookIcon from '../components/FacebookIcon'
+import InstagramIcon from '../components/InstagramIcon'
+import {
+  IconBall,
+} from '../components/icons'
 
 interface Team {
   id: string
@@ -66,7 +71,7 @@ export default function NewPublicTeam() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-900 via-blue-900 to-purple-900 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-8">
-          <div className="text-6xl mb-4">⚽</div>
+          <div className="mb-4 flex justify-center opacity-60"><IconBall size={52} /></div>
           <h1 className="text-3xl font-bold text-white mb-4">Team Not Found</h1>
           <p className="text-gray-300 mb-6">{error || 'The team you\'re looking for doesn\'t exist.'}</p>
           <Link 
@@ -184,7 +189,7 @@ export default function NewPublicTeam() {
                       rel="noopener noreferrer"
                       className="flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-6 py-3 rounded-xl transition-all backdrop-blur-sm group"
                     >
-                      <span className="text-2xl group-hover:scale-110 transition-transform">📘</span>
+                      <FacebookIcon size={22} className="group-hover:scale-110 transition-transform" />
                       <span className="text-white font-medium">Facebook</span>
                     </a>
                   )}
@@ -195,7 +200,7 @@ export default function NewPublicTeam() {
                       rel="noopener noreferrer"
                       className="flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-6 py-3 rounded-xl transition-all backdrop-blur-sm group"
                     >
-                      <span className="text-2xl group-hover:scale-110 transition-transform">📷</span>
+                      <InstagramIcon size={22} className="group-hover:scale-110 transition-transform" />
                       <span className="text-white font-medium">Instagram</span>
                     </a>
                   )}
@@ -322,7 +327,7 @@ export default function NewPublicTeam() {
             </div>
           ) : (
             <div className="text-center py-16">
-              <div className="text-6xl mb-4">⚽</div>
+              <div className="mb-4 flex justify-center opacity-60"><IconBall size={52} /></div>
               <h3 className="text-2xl font-bold text-white mb-2">No Players Available</h3>
               <p className="text-gray-300">Check back later for player information</p>
             </div>
@@ -348,7 +353,7 @@ export default function NewPublicTeam() {
                     rel="noopener noreferrer"
                     className="group flex items-center justify-center gap-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/30 hover:border-blue-400/50 px-8 py-4 rounded-xl transition-all backdrop-blur-sm"
                   >
-                    <span className="text-3xl group-hover:scale-110 transition-transform">📘</span>
+                    <FacebookIcon size={28} className="group-hover:scale-110 transition-transform" />
                     <div className="text-left">
                       <div className="text-white font-semibold">Facebook</div>
                       <div className="text-sm text-gray-300">Follow us for updates</div>
@@ -362,7 +367,7 @@ export default function NewPublicTeam() {
                     rel="noopener noreferrer"
                     className="group flex items-center justify-center gap-3 bg-pink-600/20 hover:bg-pink-600/30 border border-pink-400/30 hover:border-pink-400/50 px-8 py-4 rounded-xl transition-all backdrop-blur-sm"
                   >
-                    <span className="text-3xl group-hover:scale-110 transition-transform">📷</span>
+                    <InstagramIcon size={28} className="group-hover:scale-110 transition-transform" />
                     <div className="text-left">
                       <div className="text-white font-semibold">Instagram</div>
                       <div className="text-sm text-gray-300">See our photos</div>

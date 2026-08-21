@@ -1,5 +1,8 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import {
+  IconWarning,
+} from './icons'
 
 interface Props {
   children: ReactNode
@@ -30,7 +33,7 @@ class ErrorBoundary extends Component<Props, State> {
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center">
           <div className="glass rounded-2xl p-8 max-w-md w-full text-center shadow-2xl border border-white/20">
             <div className="w-16 h-16 mx-auto mb-4 bg-red-500/20 rounded-2xl flex items-center justify-center border border-red-400/30">
-              <span className="text-2xl">⚠️</span>
+              <IconWarning size={24} />
             </div>
             <h1 className="text-xl font-bold text-white mb-4">Something went wrong</h1>
             <p className="text-gray-400 mb-6">

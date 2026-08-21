@@ -4,6 +4,12 @@ import type { TeamContext } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import { useState, useEffect } from 'react'
+import {
+  IconTrophy,
+  IconUser,
+  IconGlobe,
+  IconClose,
+} from '../components/icons'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
@@ -109,7 +115,7 @@ export default function PublicTeamPage() {
                   className="w-full h-full object-cover rounded-xl"
                 />
               ) : (
-                <div className="text-4xl opacity-80">🏆</div>
+                <div className="opacity-80"><IconTrophy size={38} /></div>
               )}
             </div>
             
@@ -227,7 +233,7 @@ export default function PublicTeamPage() {
                               className="w-full h-full object-cover rounded-full"
                             />
                           ) : (
-                            <div className="text-sm opacity-50">👤</div>
+                            <div className="opacity-40"><IconUser size={16} /></div>
                           )}
                         </div>
                         <div>
@@ -447,7 +453,7 @@ export default function PublicTeamPage() {
                               className="w-full h-full object-cover" 
                             />
                           ) : (
-                            <div className="text-lg opacity-50">🏆</div>
+                            <div className="opacity-40"><IconTrophy size={18} /></div>
                           )}
                         </div>
                         <div>
@@ -521,9 +527,9 @@ export default function PublicTeamPage() {
                     <td className="py-3 px-4 text-center">
                       <Link
                         to={`/public/tournaments/${tournament.id}`}
-                        className="px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center"
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center"
                       >
-                        🌐 View
+                        <IconGlobe size={14} /> View
                       </Link>
                     </td>
                   </tr>
@@ -552,7 +558,7 @@ export default function PublicTeamPage() {
               onClick={() => setShowPhotoModal(false)}
               className="absolute top-4 right-4 w-10 h-10 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center text-xl transition-all"
             >
-              ✕
+              <IconClose size={18} />
             </button>
             <div className="absolute bottom-4 left-4 text-white text-sm opacity-80">
               Click anywhere to close

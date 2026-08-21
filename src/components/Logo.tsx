@@ -1,12 +1,10 @@
 /**
  * The mark.
  *
- * The site had no logo — the header said "MFTournament" in the body font and
- * the tab showed the Vite default. What the product actually is, is a league
- * table: so the mark is one. Three rows, and the team on top is a football.
- *
- * It has to survive being 16 pixels wide in a browser tab, which rules out a
- * crest, a trophy or anything with a shine on it.
+ * A ball that has just been struck: real panels and seams rather than a
+ * diagram, with the trail behind it. It carries the whole brand, so the ids
+ * inside are prefixed — two of these on one page would otherwise fight over
+ * the same gradient.
  */
 export function LogoMark({ size = 32, className = '' }: { size?: number; className?: string }) {
   return (
@@ -14,36 +12,36 @@ export function LogoMark({ size = 32, className = '' }: { size?: number; classNa
       width={size}
       height={size}
       viewBox="0 0 48 48"
-      fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden
     >
-      <defs>
-        <linearGradient id="mft-tile" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#3B82F6" />
-          <stop offset="1" stopColor="#8B5CF6" />
-        </linearGradient>
-      </defs>
-
-      <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#mft-tile)" />
-
-      {/* First place: the ball is the position marker. */}
-      <circle cx="14" cy="16" r="4.5" fill="#fff" />
-      <path
-        d="M14 13.3 L16.57 15.17 L15.59 18.18 L12.41 18.18 L11.43 15.17 Z"
-        fill="#3B82F6"
-        fillOpacity="0.9"
-      />
-      <rect x="22" y="13.6" width="16" height="4.8" rx="2.4" fill="#fff" />
-
-      {/* The chasing pack, with fewer points. */}
-      <circle cx="14" cy="27" r="2.2" fill="#fff" fillOpacity="0.55" />
-      <rect x="22" y="24.8" width="12" height="4.4" rx="2.2" fill="#fff" fillOpacity="0.55" />
-
-      <circle cx="14" cy="36.5" r="2.2" fill="#fff" fillOpacity="0.35" />
-      <rect x="22" y="34.3" width="8" height="4.4" rx="2.2" fill="#fff" fillOpacity="0.35" />
-    </svg>
+    <defs>
+      <radialGradient id="mftSphere" cx="0.34" cy="0.28" r="0.85">
+        <stop offset="0" stopColor="#FFFFFF"/>
+        <stop offset="0.55" stopColor="#F1F5FF"/>
+        <stop offset="1" stopColor="#B9C6E8"/>
+      </radialGradient>
+      <linearGradient id="mftPanel" x1="8" y1="8" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#2C3E70"/><stop offset="1" stopColor="#141C33"/>
+      </linearGradient>
+      <clipPath id="mftClip"><circle cx="24" cy="24" r="20"/></clipPath>
+    </defs>
+  
+      <g stroke="#8B5CF6" strokeLinecap="round" fill="none">
+      <path d="M1.5 16.5 H9" strokeWidth="2.6" opacity="0.75"/>
+      <path d="M0 24 H7.5" strokeWidth="2.6" opacity="0.55"/>
+      <path d="M2 31.5 H9" strokeWidth="2.6" opacity="0.35"/>
+    </g>
+  
+    <g transform="translate(28.5 24) scale(0.855) translate(-24 -24)">
+    <circle cx="24" cy="24" r="20" fill="url(#mftSphere)"/>
+    <g clipPath="url(#mftClip)" fill="url(#mftPanel)"><path d="M24.00 18.20 L29.52 22.21 L27.41 28.69 L20.59 28.69 L18.48 22.21 Z"/><path d="M24.00 10.20 L17.53 5.50 L20.00 -2.10 L28.00 -2.10 L30.47 5.50 Z"/><path d="M37.12 19.74 L39.59 12.13 L47.59 12.13 L50.06 19.74 L43.59 24.43 Z"/><path d="M32.11 35.16 L40.11 35.16 L42.58 42.77 L36.11 47.47 L29.64 42.77 Z"/><path d="M15.89 35.16 L18.36 42.77 L11.89 47.47 L5.42 42.77 L7.89 35.16 Z"/><path d="M10.88 19.74 L4.41 24.43 L-2.06 19.74 L0.41 12.13 L8.41 12.13 Z"/></g>
+    <g clipPath="url(#mftClip)" stroke="#141C33" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.85"><path d="M24.00 18.20 L24.00 9.52"/><path d="M29.52 22.21 L37.77 19.53"/><path d="M27.41 28.69 L32.51 35.71"/><path d="M20.59 28.69 L15.49 35.71"/><path d="M18.48 22.21 L10.23 19.53"/></g>
+    <ellipse cx="17" cy="14.5" rx="7" ry="4.5" fill="#fff" opacity="0.45" transform="rotate(-28 17 14.5)"/>
+    <circle cx="24" cy="24" r="19.4" fill="none" stroke="#0B1120" strokeOpacity="0.18" strokeWidth="1.2"/>
+  </g>
+  </svg>
   )
 }
 

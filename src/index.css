@@ -6,12 +6,6 @@
   --glass: 255 255 255;
 }
 
-:root[data-theme="bright"] {
-  --bg: 248 250 252;
-  --fg: 15 23 42;
-  --glass: 0 0 0;
-}
-
 /*
  * Tells the browser to draw native controls — the date picker's calendar glyph,
  * the time picker's spinners, scrollbars — in dark colours. Without it Chrome
@@ -20,10 +14,6 @@
  */
 :root {
   color-scheme: dark;
-}
-
-:root[data-theme="bright"] {
-  color-scheme: light;
 }
 
 body {

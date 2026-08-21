@@ -7,6 +7,11 @@ import { organizerService } from '../lib/data'
 import type { Organizer } from '../types'
 import MatchDateTime from '../components/MatchDateTime'
 import InlineInput from '../components/InlineInput'
+import {
+  IconBall,
+  IconArrowLeft,
+  IconClipboard,
+} from '../components/icons'
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
@@ -142,7 +147,7 @@ export default function MatchPage() {
             to={currentOrganizer && tournament ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`} 
             className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2"
           >
-            ← Back to {tournament.name}
+            <IconArrowLeft size={15} /> Back to {tournament.name}
           </Link>
         
           {/* Public Link */}
@@ -165,10 +170,10 @@ export default function MatchPage() {
                     : `${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`
                   navigator.clipboard.writeText(url)
                 }}
-                className="px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm"
                 title="Copy to clipboard"
               >
-                📋 Copy
+                <IconClipboard size={15} /> Copy
               </button>
             </div>
           </div>
@@ -741,7 +746,7 @@ export default function MatchPage() {
                   })
               ) : (
                 <div className="glass rounded-xl p-8 text-center">
-                  <div className="text-4xl mb-4">⚽</div>
+                  <div className="mb-4 flex justify-center opacity-60"><IconBall size={36} /></div>
                   <h4 className="font-semibold text-lg mb-2">No Goals Yet</h4>
                   <p className="text-gray-400">Click the buttons above to add goals</p>
                 </div>

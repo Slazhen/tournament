@@ -1,4 +1,8 @@
 import { useState } from 'react'
+import {
+  IconGlobe,
+  IconLock,
+} from './icons'
 
 interface VisibilityToggleProps {
   isPublic: boolean
@@ -84,9 +88,9 @@ export default function VisibilityToggle({
           status line side by side left it unclear which one was in effect. */}
       <div className={textSizeClasses[size]}>
         {isPublic ? (
-          <span className="text-green-400 font-medium">🌐 Public — anyone with the link can see it</span>
+          <span className="text-green-400 font-medium inline-flex items-center gap-1.5"><IconGlobe size={14} /> Public — anyone with the link can see it</span>
         ) : (
-          <span className="text-gray-400 font-medium">🔒 Private — only you can see it</span>
+          <span className="text-gray-400 font-medium inline-flex items-center gap-1.5"><IconLock size={14} /> Private — only you can see it</span>
         )}
       </div>
     </div>
@@ -127,7 +131,7 @@ export function CompactVisibilityToggle({
       `}
     >
       <span className="text-sm">
-        {isPublic ? '🌐' : '🔒'}
+        {isPublic ? <IconGlobe size={13} /> : <IconLock size={13} />}
       </span>
       <span className="text-xs font-medium">
         {isPublic ? 'Public' : 'Private'}

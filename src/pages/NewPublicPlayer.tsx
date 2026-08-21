@@ -1,6 +1,9 @@
 import { useParams, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { teamService } from '../lib/data'
+import {
+  IconBall,
+} from '../components/icons'
 
 interface Player {
   id: string
@@ -88,7 +91,7 @@ export default function NewPublicPlayer() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-900 via-red-900 to-pink-900 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-8">
-          <div className="text-6xl mb-4">⚽</div>
+          <div className="mb-4 flex justify-center opacity-60"><IconBall size={52} /></div>
           <h1 className="text-3xl font-bold text-white mb-4">Player Not Found</h1>
           <p className="text-gray-300 mb-6">{error || 'The player you\'re looking for doesn\'t exist or is not publicly visible.'}</p>
           <Link 

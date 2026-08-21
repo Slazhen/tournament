@@ -4,6 +4,10 @@ import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
 import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword } from '../lib/auth'
 import { organizerService } from '../lib/data'
+import {
+  IconKey,
+  IconTrash,
+} from '../components/icons'
 
 interface Organizer {
   id: string
@@ -330,17 +334,17 @@ export default function OrganizersPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => setShowPasswordReset(organizer.name)}
-                          className="px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 rounded-lg transition-all text-yellow-400 text-sm"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 rounded-lg transition-all text-yellow-400 text-sm"
                           title="Reset Password"
                         >
-                          🔑 Reset
+                          <IconKey size={14} /> Reset
                         </button>
                         <button
                           onClick={() => handleDeleteOrganizer(organizer.id, organizer.email)}
-                          className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg transition-all text-red-400 text-sm"
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg transition-all text-red-400 text-sm"
                           title="Delete Organizer"
                         >
-                          🗑️ Delete
+                          <IconTrash size={14} /> Delete
                         </button>
                       </div>
                     </div>
