@@ -1,6 +1,8 @@
 import { ddb, QueryCommand, UpdateCommand } from '../lib/ddb.js'
-import { TABLES } from '../lib/env.js'
+import { SITE_URL, TABLES } from '../lib/env.js'
 import { badRequest, unauthorized } from '../lib/http.js'
+import { consumeResetToken, issueResetToken } from '../lib/resets.js'
+import { sendPasswordReset } from '../lib/mail.js'
 import { extractBearerToken } from '../lib/auth.js'
 import {
   assertPasswordStrength,
@@ -32,24 +34,17 @@ async function findUserByEmail(email: string): Promise<AuthUser | null> {
   return (result.Items?.[0] as AuthUser | undefined) ?? null
 }
 
-async function findUserByUsername(username: string): Promise<AuthUser | null> {
-  const result = await ddb.send(
-    new QueryCommand({
-      TableName: TABLES.AUTH_USERS,
-      IndexName: 'username-index',
-      KeyConditionExpression: 'username = :username',
-      FilterExpression: 'isActive = :isActive',
-      ExpressionAttributeValues: { ':username': username, ':isActive': true },
-      Limit: 1,
-    }),
-  )
-  return (result.Items?.[0] as AuthUser | undefined) ?? null
-}
-
+/**
+ * The login is the email address, and only the email address.
+ *
+ * Accounts could also sign in with a username, which meant two ways into the
+ * same account, two indexes to keep honest and two places for a mistake to
+ * hide. Old accounts keep their username as a label; it no longer opens a door.
+ */
 export async function findUserByCredential(credential: string): Promise<AuthUser | null> {
-  return credential.includes('@')
-    ? findUserByEmail(credential.toLowerCase().trim())
-    : findUserByUsername(credential.trim())
+  const email = credential.toLowerCase().trim()
+  if (!email.includes('@')) return null
+  return findUserByEmail(email)
 }
 
 export function registerAuthRoutes(router: Router<RequestContext>): void {
@@ -138,6 +133,66 @@ export function registerAuthRoutes(router: Router<RequestContext>): void {
     const session = await createSession(user.id, ctx.userAgent, ctx.sourceIp)
 
     const refreshed = await getUserById(user.id)
+    return {
+      user: toPublicUser(refreshed ?? user),
+      token: session.token,
+      expiresAt: session.expiresAt,
+    }
+  })
+  /**
+   * Starts a password reset.
+   *
+   * The answer is the same whether or not the address is registered: telling a
+   * stranger which emails have accounts is a gift to whoever is guessing.
+   */
+  router.post('/auth/forgot', async (ctx) => {
+    const email = typeof ctx.body.email === 'string' ? ctx.body.email.toLowerCase().trim() : ''
+    if (!email.includes('@')) throw badRequest('A valid email address is required')
+
+    const user = await findUserByEmail(email)
+    if (user) {
+      const reset = await issueResetToken(user, 'self')
+      await sendPasswordReset(email, `${SITE_URL}/reset-password?token=${reset.token}`)
+    }
+
+    return { ok: true }
+  })
+
+  /** Finishes it: the link, plus the new password. */
+  router.post('/auth/reset', async (ctx) => {
+    const token = typeof ctx.body.token === 'string' ? ctx.body.token : ''
+    const password = ctx.body.password
+
+    try {
+      assertPasswordStrength(password)
+    } catch (error) {
+      throw badRequest((error as Error).message)
+    }
+
+    const reset = await consumeResetToken(token)
+    if (!reset) throw badRequest('This link has expired or has already been used')
+
+    const user = await getUserById(reset.userId)
+    if (!user || !user.isActive) throw badRequest('This account is no longer active')
+
+    const salt = generateSalt()
+    const passwordHash = await hashPassword(password as string, salt)
+
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.AUTH_USERS,
+        Key: { id: user.id },
+        UpdateExpression: 'SET passwordHash = :hash, salt = :salt',
+        ExpressionAttributeValues: { ':hash': passwordHash, ':salt': salt },
+      }),
+    )
+
+    // Whoever was signed in with the old password is signed out. A reset is
+    // most often used because someone else might have had the account.
+    await deleteAllUserSessions(user.id)
+    const session = await createSession(user.id, ctx.userAgent, ctx.sourceIp)
+    const refreshed = await getUserById(user.id)
+
     return {
       user: toPublicUser(refreshed ?? user),
       token: session.token,

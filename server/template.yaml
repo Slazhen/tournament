@@ -21,6 +21,17 @@ Parameters:
   ServerCacheSeconds:
     Type: String
     Default: '60'
+  SiteUrl:
+    Type: String
+    Description: Where password-reset links point.
+    Default: https://myfootballtournament.com
+  MailFrom:
+    Type: String
+    Description: >
+      Sender for password-reset email, on a domain verified in SES. Leave empty
+      until SES is set up: the API then issues reset links without sending them
+      rather than failing the request.
+    Default: ''
 
 Globals:
   Function:
@@ -53,10 +64,6 @@ Resources:
           - .js=.mjs
         EntryPoints:
           - src/handler.ts
-        # The AWS SDK v3 clients call require() internally; ESM has no global
-        # require, so esbuild's bundled output crashes at runtime without this.
-        Banner:
-          - js=import { createRequire } from 'module';const require = createRequire(import.meta.url);
     Properties:
       Handler: handler.handler
       CodeUri: .
@@ -74,6 +81,10 @@ Resources:
           TABLE_MATCHES: !Sub '${TablePrefix}-matches'
           TABLE_AUTH_USERS: !Sub '${TablePrefix}-auth-users'
           TABLE_AUTH_SESSIONS: !Sub '${TablePrefix}-auth-sessions'
+          TABLE_PASSWORD_RESETS: !Ref PasswordResetsTable
+          TABLE_AUDIT: !Ref AuditTable
+          SITE_URL: !Ref SiteUrl
+          MAIL_FROM: !Ref MailFrom
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -98,12 +109,20 @@ Resources:
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-auth-users/index/*'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-auth-sessions'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-auth-sessions/index/*'
+                - !GetAtt PasswordResetsTable.Arn
+                - !GetAtt AuditTable.Arn
             - Sid: Images
               Effect: Allow
               Action:
                 - s3:PutObject
                 - s3:DeleteObject
               Resource: !Sub 'arn:${AWS::Partition}:s3:::${ImagesBucket}/*'
+            # One message: the link that gets somebody back into their account.
+            - Sid: SendPasswordResets
+              Effect: Allow
+              Action:
+                - ses:SendEmail
+              Resource: '*'
       Events:
         AnyRequest:
           Type: HttpApi
@@ -111,6 +130,46 @@ Resources:
             ApiId: !Ref Api
             Path: /{proxy+}
             Method: ANY
+
+  # A reset link is a password in an email: single use, dead within the hour,
+  # and swept up by DynamoDB itself afterwards.
+  PasswordResetsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-password-resets'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAtEpoch
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: mftournament
+
+  # Who changed what. One partition, newest first: this is a log, not a dataset.
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-audit'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: at
+          KeyType: RANGE
+      Tags:
+        - Key: Project
+          Value: mftournament
 
 # Note: sessions last seven days and the API deletes an expired one the moment
 # it is presented. If you later add a numeric "expiresAtEpoch" attribute, turn on

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import {
   IconBall,
 } from '../components/icons'
@@ -12,10 +12,6 @@ export default function AdminLoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
-  
-  // Check if this is the special super admin route
-  const isSuperAdminRoute = location.pathname === '/adminslazhen'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,7 +23,7 @@ export default function AdminLoginPage() {
       if (success) {
         navigate('/admin')
       } else {
-        setError('Invalid email/username or password')
+        setError('That email and password do not match an account')
       }
     } catch (err) {
       setError('Login failed. Please try again.')
@@ -52,30 +48,30 @@ export default function AdminLoginPage() {
             <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/20">
               <IconBall size={24} />
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">
-              {isSuperAdminRoute ? 'Super Admin Login' : 'Admin Login'}
-            </h1>
-            <p className="text-gray-400">
-              {isSuperAdminRoute 
-                ? 'Full system access - Tournament management system' 
-                : 'Access the tournament management system'
-              }
-            </p>
+            {/* One door for everyone. A separate super-admin URL protected
+                nothing — the route is in the bundle for anyone to read — and it
+                meant maintaining two login screens. */}
+            <h1 className="text-3xl font-bold text-white mb-2">Sign in</h1>
+            <p className="text-gray-400">Tournament management</p>
           </div>
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
+              {/* The login is the email address. Signing in by username was a
+                  second door into the same account, and a second thing to keep
+                  honest; old accounts keep the name, not the door. */}
               <label htmlFor="loginCredential" className="block text-sm font-medium text-gray-300 mb-2">
-                {isSuperAdminRoute ? 'Username' : 'Email Address or Username'}
+                Email address
               </label>
               <input
                 id="loginCredential"
-                type="text"
+                type="email"
+                autoComplete="email"
                 value={loginCredential}
                 onChange={(e) => setLoginCredential(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-white placeholder-gray-400"
-                placeholder={isSuperAdminRoute ? "Enter username (e.g., Slazhen)" : "Enter your email address or username"}
+                placeholder="you@example.com"
                 required
                 disabled={isLoading}
               />
@@ -110,6 +106,15 @@ export default function AdminLoginPage() {
             >
               {isLoading ? 'Signing in...' : 'Sign In'}
             </button>
+
+            <p className="text-center text-sm">
+              <Link
+                to="/forgot-password"
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                Forgotten your password?
+              </Link>
+            </p>
           </form>
 
         </div>

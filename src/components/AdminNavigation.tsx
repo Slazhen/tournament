@@ -56,8 +56,10 @@ export default function AdminNavigation() {
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + '/')
 
-  const accountName = isSuperAdmin ? 'Super admin' : currentOrganizer?.name ?? 'Account'
-  const initial = (isSuperAdmin ? 'S' : currentOrganizer?.name ?? '?').charAt(0).toUpperCase()
+  const accountName = user?.displayName || (isSuperAdmin ? 'Super admin' : currentOrganizer?.name ?? 'Account')
+  const initial = (user?.displayName || (isSuperAdmin ? 'S' : currentOrganizer?.name ?? '?'))
+    .charAt(0)
+    .toUpperCase()
 
   return (
     <header className="sticky top-0 z-50 glass-header">
@@ -119,6 +121,9 @@ export default function AdminNavigation() {
                 )}
                 {isSuperAdmin && (
                   <MenuItem onClick={() => navigate('/admin/organizers')}>Organizers</MenuItem>
+                )}
+                {isSuperAdmin && (
+                  <MenuItem onClick={() => navigate('/admin/changes')}>Changes</MenuItem>
                 )}
                 <MenuItem onClick={() => navigate('/')}>Public site</MenuItem>
               </div>

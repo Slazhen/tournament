@@ -19,7 +19,10 @@ export type UserRole = 'super_admin' | 'organizer'
 export type AuthUser = {
   id: string
   email?: string
+  /** Legacy label on old accounts. It no longer signs anyone in. */
   username?: string
+  /** What to call this person on screen. */
+  displayName?: string
   role: UserRole
   organizerId?: string
   createdAt: string
@@ -81,11 +84,32 @@ export async function createOrganizerAccount(
   organizerEmail: string,
   organizerId: string,
   password: string,
+  displayName?: string,
 ): Promise<AuthUser> {
   return api.post<AuthUser>('/admin/accounts', {
     email: organizerEmail,
     organizerId,
     password,
+    displayName,
+  })
+}
+
+/**
+ * A second super admin.
+ *
+ * The role has nobody above it to reset its password, so a single account is
+ * one forgotten password away from an unrecoverable system.
+ */
+export async function createSuperAdminAccount(
+  email: string,
+  password: string,
+  displayName?: string,
+): Promise<AuthUser> {
+  return api.post<AuthUser>('/admin/accounts', {
+    email,
+    password,
+    displayName,
+    role: 'super_admin',
   })
 }
 
@@ -117,4 +141,50 @@ export function canAccessOrganizer(user: AuthUser | null, organizerId: string): 
   if (!user) return false
   if (user.role === 'super_admin') return true
   return user.organizerId === organizerId
+}
+
+/**
+ * Asks for a password-reset link.
+ *
+ * The API answers the same whether or not the address has an account, so this
+ * never reports "no such user" — that would tell a stranger which addresses are
+ * worth guessing at.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await api.post('/auth/forgot', { email: email.trim().toLowerCase() })
+}
+
+/** Finishes a reset and signs the person straight in. */
+export async function completePasswordReset(
+  token: string,
+  password: string,
+): Promise<{ user: AuthUser; session: AuthSession }> {
+  const result = await api.post<LoginResponse>('/auth/reset', { token, password })
+  setToken(result.token)
+  return { user: result.user, session: { token: result.token, expiresAt: result.expiresAt } }
+}
+
+/** A one-time link a super admin can pass on by hand. */
+export async function issueResetLink(
+  email: string,
+  send = false,
+): Promise<{ link: string; expiresAt: string; emailed: boolean }> {
+  return api.post('/admin/accounts/reset-link', { email: email.trim().toLowerCase(), send })
+}
+
+export type AuditEntry = {
+  at: string
+  actorId: string
+  actorEmail?: string
+  actorRole: UserRole
+  action: string
+  entity: string
+  entityId: string
+  summary?: string
+  organizerId?: string
+}
+
+/** The record of who changed what. Super admin only, on the server too. */
+export async function fetchAuditLog(limit = 100): Promise<AuditEntry[]> {
+  return api.get<AuditEntry[]>(`/admin/audit?limit=${limit}`)
 }

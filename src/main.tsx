@@ -56,6 +56,9 @@ function lazyPage<T extends ComponentType<any>>(load: () => Promise<{ default: T
 const HomePage = lazyPage(() => import('./pages/HomePage.tsx'))
 const AdminPage = lazyPage(() => import('./pages/AdminPage.tsx'))
 const AdminLoginPage = lazyPage(() => import('./pages/AdminLoginPage.tsx'))
+const ForgotPasswordPage = lazyPage(() => import('./pages/ForgotPasswordPage.tsx'))
+const ResetPasswordPage = lazyPage(() => import('./pages/ResetPasswordPage.tsx'))
+const AuditLogPage = lazyPage(() => import('./pages/AuditLogPage.tsx'))
 const OrganizersPage = lazyPage(() => import('./pages/OrganizersPage.tsx'))
 const TournamentsPage = lazyPage(() => import('./pages/TournamentsPage.tsx'))
 const CreateTournamentPage = lazyPage(() => import('./pages/CreateTournamentPage.tsx'))
@@ -79,6 +82,16 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'admin/login', element: <AdminLoginPage /> },
+      { path: 'forgot-password', element: <ForgotPasswordPage /> },
+      { path: 'reset-password', element: <ResetPasswordPage /> },
+      {
+        path: 'admin/changes',
+        element: (
+          <ProtectedRoute requireSuperAdmin>
+            <AuditLogPage />
+          </ProtectedRoute>
+        ),
+      },
       { path: 'adminslazhen', element: <AdminLoginPage /> }, // Special route for super admin
       { 
         path: 'admin', 

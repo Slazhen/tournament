@@ -20,7 +20,27 @@ export const TABLES = {
   MATCHES: process.env.TABLE_MATCHES ?? '',
   AUTH_USERS: required('TABLE_AUTH_USERS'),
   AUTH_SESSIONS: required('TABLE_AUTH_SESSIONS'),
+  PASSWORD_RESETS: required('TABLE_PASSWORD_RESETS'),
+  AUDIT: required('TABLE_AUDIT'),
 } as const
+
+/** Where password-reset links point. */
+export const SITE_URL = (process.env.SITE_URL ?? 'https://myfootballtournament.com').replace(
+  /\/$/,
+  '',
+)
+
+/**
+ * The address reset emails come from.
+ *
+ * Empty means email is not configured yet, and the API says so instead of
+ * pretending a message was sent — the reset link can still be handed out by a
+ * super admin in the meantime.
+ */
+export const MAIL_FROM = process.env.MAIL_FROM ?? ''
+
+/** A reset link is short-lived on purpose: it is a password in an email. */
+export const RESET_TTL_MS = 60 * 60 * 1000
 
 export const S3_BUCKET = required('S3_BUCKET')
 

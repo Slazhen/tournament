@@ -2,10 +2,17 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
-import { createOrganizerAccount, deleteOrganizerAccount, resetOrganizerPassword } from '../lib/auth'
+import {
+  createOrganizerAccount,
+  createSuperAdminAccount,
+  deleteOrganizerAccount,
+  resetOrganizerPassword,
+  issueResetLink,
+} from '../lib/auth'
 import { organizerService } from '../lib/data'
 import {
   IconKey,
+  IconLink,
   IconTrash,
 } from '../components/icons'
 
@@ -34,6 +41,10 @@ export default function OrganizersPage() {
   const [showPasswordReset, setShowPasswordReset] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState('')
   const [passwordError, setPasswordError] = useState('')
+  /** A one-time link, per organizer email, ready to be passed on by hand. */
+  const [resetLinks, setResetLinks] = useState<Record<string, string>>({})
+  const [newAdmin, setNewAdmin] = useState({ email: '', displayName: '', password: '' })
+  const [adminMessage, setAdminMessage] = useState<string | null>(null)
 
   useEffect(() => {
     loadOrganizers()
@@ -122,6 +133,27 @@ export default function OrganizersPage() {
     }
   }
 
+  /**
+   * A link the organiser can use to choose their own password.
+   *
+   * Typing a password for somebody and reading it out means two people know it,
+   * and the one who chose it is not the one who has to remember it.
+   */
+  const handleResetLink = async (organizerEmail: string) => {
+    try {
+      const result = await issueResetLink(organizerEmail)
+      setResetLinks((current) => ({ ...current, [organizerEmail]: result.link }))
+      try {
+        await navigator.clipboard.writeText(result.link)
+      } catch {
+        // The link is on screen either way.
+      }
+    } catch (error) {
+      console.error('Error issuing a reset link:', error)
+      alert('Could not create a reset link. Is there an account for this email?')
+    }
+  }
+
   const handlePasswordReset = async (organizerEmail: string) => {
     if (!newPassword || newPassword.length < 6) {
       setPasswordError('Password must be at least 6 characters long.')
@@ -192,6 +224,79 @@ export default function OrganizersPage() {
               Back to Admin
             </Link>
           </div>
+        </div>
+
+        {/* ---------- Super admins ---------- */}
+        <div className="glass rounded-2xl p-6 mb-8 border border-yellow-400/20">
+          <h2 className="text-xl font-bold text-white mb-2">Super admins</h2>
+          <p className="text-sm text-gray-400 mb-5">
+            This role has nobody above it to reset its password, so it should never be one account.
+            A second one is the spare key.
+          </p>
+
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault()
+              setAdminMessage(null)
+              try {
+                await createSuperAdminAccount(
+                  newAdmin.email.trim().toLowerCase(),
+                  newAdmin.password,
+                  newAdmin.displayName.trim() || undefined,
+                )
+                setAdminMessage(`${newAdmin.email.trim()} can now sign in as a super admin.`)
+                setNewAdmin({ email: '', displayName: '', password: '' })
+              } catch (error) {
+                setAdminMessage(
+                  error instanceof Error && error.message
+                    ? error.message
+                    : 'That account could not be created.',
+                )
+              }
+            }}
+            className="grid gap-3 sm:grid-cols-4 items-end"
+          >
+            <label className="text-sm sm:col-span-1">
+              <span className="text-gray-300">Email</span>
+              <input
+                type="email"
+                required
+                value={newAdmin.email}
+                onChange={(event) => setNewAdmin({ ...newAdmin, email: event.target.value })}
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none text-white"
+                placeholder="you@example.com"
+              />
+            </label>
+            <label className="text-sm sm:col-span-1">
+              <span className="text-gray-300">Display name</span>
+              <input
+                type="text"
+                value={newAdmin.displayName}
+                onChange={(event) => setNewAdmin({ ...newAdmin, displayName: event.target.value })}
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none text-white"
+                placeholder="Igor"
+              />
+            </label>
+            <label className="text-sm sm:col-span-1">
+              <span className="text-gray-300">Password</span>
+              <input
+                type="password"
+                required
+                value={newAdmin.password}
+                onChange={(event) => setNewAdmin({ ...newAdmin, password: event.target.value })}
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none text-white"
+                placeholder="A real one"
+              />
+            </label>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 text-yellow-300 transition-all"
+            >
+              Add super admin
+            </button>
+          </form>
+
+          {adminMessage && <p className="mt-3 text-sm text-gray-300">{adminMessage}</p>}
         </div>
 
         {/* Create Organizer Form */}
@@ -328,16 +433,23 @@ export default function OrganizersPage() {
                           Created: {new Date(organizer.createdAtISO).toLocaleDateString()}
                         </p>
                         <p className="text-xs text-blue-400 mt-1">
-                          Login: {organizer.name} / [Custom Password]
+                          Signs in with {organizer.email}
                         </p>
                       </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => setShowPasswordReset(organizer.name)}
-                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 rounded-lg transition-all text-yellow-400 text-sm"
-                          title="Reset Password"
+                          onClick={() => handleResetLink(organizer.email)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg transition-all text-blue-300 text-sm"
+                          title="Create a one-time link so they can choose their own password"
                         >
-                          <IconKey size={14} /> Reset
+                          <IconLink size={14} /> Reset link
+                        </button>
+                        <button
+                          onClick={() => setShowPasswordReset(organizer.email)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 rounded-lg transition-all text-yellow-400 text-sm"
+                          title="Set a password directly"
+                        >
+                          <IconKey size={14} /> Set password
                         </button>
                         <button
                           onClick={() => handleDeleteOrganizer(organizer.id, organizer.email)}
@@ -350,8 +462,21 @@ export default function OrganizersPage() {
                     </div>
                   </div>
                   
+                  {/* The link, once it exists: copied already, shown so it can be re-copied. */}
+                  {resetLinks[organizer.email] && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                      <p className="text-sm text-gray-300 mb-2">
+                        One-time link, copied to your clipboard. It works once and expires in an
+                        hour.
+                      </p>
+                      <code className="block text-xs bg-black/40 border border-white/10 rounded-lg p-3 break-all text-blue-200">
+                        {resetLinks[organizer.email]}
+                      </code>
+                    </div>
+                  )}
+
                   {/* Password Reset Form */}
-                  {showPasswordReset === organizer.name && (
+                  {showPasswordReset === organizer.email && (
                     <div className="mt-4 pt-4 border-t border-white/10">
                       <div className="flex items-center gap-4">
                         <input

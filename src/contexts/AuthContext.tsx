@@ -16,6 +16,8 @@ interface AuthContextType {
   login: (loginCredential: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
   canAccess: (organizerId: string) => boolean
+  /** Re-reads the session from the API — after a password reset signs someone in. */
+  refresh: () => Promise<void>
   isSuperAdmin: boolean
   isOrganizer: boolean
 }
@@ -99,12 +101,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const canAccess = (organizerId: string): boolean => canAccessOrganizer(user, organizerId)
 
+  const refresh = async (): Promise<void> => {
+    const result = await verifySession()
+    setUser(result?.user ?? null)
+    applyOrganizerScope(result?.user ?? null)
+  }
+
   const value: AuthContextType = {
     user,
     isLoading,
     login,
     logout,
     canAccess,
+    refresh,
     isSuperAdmin: user?.role === 'super_admin',
     isOrganizer: user?.role === 'organizer',
   }

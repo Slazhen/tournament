@@ -14,6 +14,10 @@ import { organizers, teams, tournaments } from '../repos.js'
 import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
+import { record, recent } from '../lib/audit.js'
+import { issueResetToken } from '../lib/resets.js'
+import { SITE_URL } from '../lib/env.js'
+import { sendPasswordReset } from '../lib/mail.js'
 
 function requireString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -97,7 +101,15 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const user = await ctx.user()
     const organizerId = resolveOrganizerId(user, ctx.body.organizerId)
     const name = requireString(ctx.body.name, 'name')
-    return teams.create({ ...ctx.body, name, organizerId })
+    const team = await teams.create({ ...ctx.body, name, organizerId })
+    await record(user, {
+      action: 'team.create',
+      entity: 'team',
+      entityId: (team as { id?: string }).id ?? '',
+      summary: `Created the team ${name}`,
+      organizerId,
+    })
+    return team
   })
 
   router.patch('/admin/teams/:id', async (ctx, params) => {
@@ -109,6 +121,13 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const updates = { ...ctx.body }
     if (!isSuperAdmin(user)) delete updates.organizerId
     await teams.update(params.id!, updates)
+    await record(user, {
+      action: 'team.update',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Edited ${team.name}: ${describeFields(updates)}`,
+      organizerId: team.organizerId,
+    })
     return { ok: true }
   })
 
@@ -118,6 +137,13 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     if (!team) throw notFound('Team not found')
     assertCanAccessOrganizer(user, team.organizerId)
     await teams.remove(params.id!)
+    await record(user, {
+      action: 'team.delete',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Deleted the team ${team.name}`,
+      organizerId: team.organizerId,
+    })
     return { ok: true }
   })
 
@@ -133,13 +159,21 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const team = await teams.getOrThrow(params.id!)
     assertCanAccessOrganizer(user, team.organizerId)
 
-    return teams.addPlayer(params.id!, {
+    const player = await teams.addPlayer(params.id!, {
       firstName: typeof ctx.body.firstName === 'string' ? ctx.body.firstName : '',
       lastName: typeof ctx.body.lastName === 'string' ? ctx.body.lastName : '',
       position: typeof ctx.body.position === 'string' ? ctx.body.position : '',
       number: typeof ctx.body.number === 'number' ? ctx.body.number : undefined,
       isPublic: ctx.body.isPublic !== false,
     })
+    await record(user, {
+      action: 'player.create',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Added a player to ${team.name}`,
+      organizerId: team.organizerId,
+    })
+    return player
   })
 
   router.patch('/admin/teams/:id/players/:playerId', async (ctx, params) => {
@@ -152,7 +186,15 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     delete updates.id
     delete updates.createdAtISO
 
-    return teams.updatePlayer(params.id!, params.playerId!, updates)
+    const player = await teams.updatePlayer(params.id!, params.playerId!, updates)
+    await record(user, {
+      action: 'player.update',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Edited a player of ${team.name}: ${describeFields(updates)}`,
+      organizerId: team.organizerId,
+    })
+    return player
   })
 
   router.delete('/admin/teams/:id/players/:playerId', async (ctx, params) => {
@@ -161,6 +203,13 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertCanAccessOrganizer(user, team.organizerId)
 
     await teams.removePlayer(params.id!, params.playerId!)
+    await record(user, {
+      action: 'player.delete',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Removed a player from ${team.name}`,
+      organizerId: team.organizerId,
+    })
     return { ok: true }
   })
 
@@ -170,7 +219,15 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const user = await ctx.user()
     const organizerId = resolveOrganizerId(user, ctx.body.organizerId)
     const name = requireString(ctx.body.name, 'name')
-    return tournaments.create({ ...ctx.body, name, organizerId })
+    const tournament = await tournaments.create({ ...ctx.body, name, organizerId })
+    await record(user, {
+      action: 'tournament.create',
+      entity: 'tournament',
+      entityId: (tournament as { id?: string }).id ?? '',
+      summary: `Created ${name}`,
+      organizerId,
+    })
+    return tournament
   })
 
   router.patch('/admin/tournaments/:id', async (ctx, params) => {
@@ -178,6 +235,13 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const tournament = await tournaments.getOrThrow(params.id!)
     assertCanAccessOrganizer(user, tournament.organizerId)
     await tournaments.update(params.id!, ctx.body)
+    await record(user, {
+      action: 'tournament.update',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Edited ${tournament.name}: ${describeFields(ctx.body)}`,
+      organizerId: tournament.organizerId,
+    })
     return { ok: true }
   })
 
@@ -186,6 +250,13 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const tournament = await tournaments.getOrThrow(params.id!)
     assertCanAccessOrganizer(user, tournament.organizerId)
     await tournaments.remove(params.id!)
+    await record(user, {
+      action: 'tournament.delete',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Deleted ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
     return { ok: true }
   })
 
@@ -194,6 +265,13 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const tournament = await tournaments.getOrThrow(params.tournamentId!)
     assertCanAccessOrganizer(user, tournament.organizerId)
     await tournaments.updateMatch(params.tournamentId!, params.matchId!, ctx.body)
+    await record(user, {
+      action: 'match.update',
+      entity: 'match',
+      entityId: `${params.tournamentId}/${params.matchId}`,
+      summary: describeMatchEdit(ctx.body, tournament.name),
+      organizerId: tournament.organizerId,
+    })
     return { ok: true }
   })
 
@@ -208,8 +286,16 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
   router.post('/admin/accounts', async (ctx) => {
     assertSuperAdmin(await ctx.user())
     const email = requireString(ctx.body.email, 'email').toLowerCase()
-    const organizerId = requireString(ctx.body.organizerId, 'organizerId')
     const password = ctx.body.password
+    const displayName =
+      typeof ctx.body.displayName === 'string' ? ctx.body.displayName.trim() : undefined
+    // A second super admin is not a luxury: the role has nobody above it to
+    // reset its password, so one account means one lost password from disaster.
+    const role: AuthUser['role'] = ctx.body.role === 'super_admin' ? 'super_admin' : 'organizer'
+    const organizerId =
+      role === 'super_admin'
+        ? undefined
+        : requireString(ctx.body.organizerId, 'organizerId')
 
     try {
       assertPasswordStrength(password)
@@ -225,7 +311,8 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const user: AuthUser = {
       id: generateId(),
       email,
-      role: 'organizer',
+      displayName,
+      role,
       organizerId,
       passwordHash: await hashPassword(password as string, salt),
       salt,
@@ -234,7 +321,51 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     }
 
     await ddb.send(new PutCommand({ TableName: TABLES.AUTH_USERS, Item: user }))
+    await record(await ctx.user(), {
+      action: 'account.create',
+      entity: 'account',
+      entityId: email,
+      summary: `Created a ${role.replace('_', ' ')} account`,
+      organizerId,
+    })
     return toPublicUser(user)
+  })
+
+  /**
+   * A reset link the super admin can pass on by hand.
+   *
+   * Until email is out of the SES sandbox this is how anyone but the owner of a
+   * verified address gets back in — and it stays useful afterwards, for the
+   * person who cannot find the message.
+   */
+  router.post('/admin/accounts/reset-link', async (ctx) => {
+    const actor = await ctx.user()
+    assertSuperAdmin(actor)
+    const email = requireString(ctx.body.email, 'email').toLowerCase()
+
+    const target = await findUserByCredential(email)
+    if (!target) throw notFound('Account not found')
+
+    const reset = await issueResetToken(target, 'admin')
+    const link = `${SITE_URL}/reset-password?token=${reset.token}`
+    const mail = ctx.body.send === true ? await sendPasswordReset(email, link) : { sent: false }
+
+    await record(actor, {
+      action: 'account.reset_link',
+      entity: 'account',
+      entityId: email,
+      summary: mail.sent ? 'Sent a reset link by email' : 'Issued a reset link',
+      organizerId: target.organizerId,
+    })
+
+    return { link, expiresAt: reset.expiresAt, emailed: mail.sent }
+  })
+
+  /** The record of who changed what. */
+  router.get('/admin/audit', async (ctx) => {
+    assertSuperAdmin(await ctx.user())
+    const limit = Number(ctx.query?.limit ?? 100)
+    return recent(Number.isFinite(limit) ? limit : 100)
   })
 
   router.post('/admin/accounts/reset-password', async (ctx) => {
@@ -264,16 +395,48 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       }),
     )
     await deleteAllUserSessions(target.id)
+    await record(await ctx.user(), {
+      action: 'account.set_password',
+      entity: 'account',
+      entityId: email,
+      summary: 'Set a new password directly',
+      organizerId: target.organizerId,
+    })
     return { ok: true }
   })
 
   router.delete('/admin/accounts/:email', async (ctx, params) => {
-    assertSuperAdmin(await ctx.user())
+    const actor = await ctx.user()
+    assertSuperAdmin(actor)
     const target = await findUserByCredential(params.email!.toLowerCase())
     if (!target) throw notFound('Account not found')
 
     await deleteAllUserSessions(target.id)
     await ddb.send(new DeleteCommand({ TableName: TABLES.AUTH_USERS, Key: { id: target.id } }))
+    await record(actor, {
+      action: 'account.delete',
+      entity: 'account',
+      entityId: params.email!.toLowerCase(),
+      summary: 'Deleted the account',
+      organizerId: target.organizerId,
+    })
     return { ok: true }
   })
+}
+
+/** "name, visibility" — enough to know what was touched, without storing it. */
+function describeFields(updates: Record<string, unknown>): string {
+  const fields = Object.keys(updates).filter((key) => key !== 'id')
+  if (fields.length === 0) return 'nothing'
+  return fields.slice(0, 6).join(', ') + (fields.length > 6 ? ` and ${fields.length - 6} more` : '')
+}
+
+/** A score change is the one edit people come back to argue about. */
+function describeMatchEdit(updates: Record<string, unknown>, tournamentName: string): string {
+  const home = updates.homeGoals
+  const away = updates.awayGoals
+  if (typeof home === 'number' || typeof away === 'number') {
+    return `Set the score to ${home ?? '-'}:${away ?? '-'} in ${tournamentName}`
+  }
+  return `Edited a match of ${tournamentName}: ${describeFields(updates)}`
 }
