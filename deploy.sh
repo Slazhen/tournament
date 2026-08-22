@@ -41,8 +41,16 @@ if [[ "${SKIP_API:-0}" != "1" ]]; then
   step "Testing the API"
   (cd server && npm test)
 
+  step "Building the API"
+  (cd server && sam build)
+
+  # The tests import the source; Lambda imports the bundle. A bundle that will
+  # not load is a total outage, and nothing above this line would notice.
+  step "Checking the built function actually loads"
+  (cd server && node scripts/smoke-init.mjs)
+
   step "Deploying the API"
-  (cd server && sam build && sam deploy --no-confirm-changeset --no-fail-on-empty-changeset)
+  (cd server && sam deploy --no-confirm-changeset --no-fail-on-empty-changeset)
 fi
 
 if [[ "${SKIP_PUSH:-0}" != "1" ]]; then

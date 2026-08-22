@@ -64,6 +64,13 @@ Resources:
           - .js=.mjs
         EntryPoints:
           - src/handler.ts
+        # An ES module has no `require`, but parts of the AWS SDK are still
+        # CommonJS and call it for Node's own built-ins. esbuild leaves those
+        # calls in place and they throw the moment the function is loaded —
+        # every request answered by API Gateway's own "Internal Server Error"
+        # because our handler never ran. This gives the bundle a real `require`.
+        Banner:
+          - "js=import{createRequire as __createRequire}from'module';const require=__createRequire(import.meta.url);"
     Properties:
       Handler: handler.handler
       CodeUri: .
