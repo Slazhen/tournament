@@ -2,7 +2,7 @@ import { Router } from '../lib/router.js'
 import { badRequest, notFound } from '../lib/http.js'
 import { organizerSlug, tournamentSlug, seriesSlug, seasonSlug, seriesKey } from '../lib/slugs.js'
 import { isPublic, organizers, teams, toSummary, tournaments } from '../repos.js'
-import type { Organizer, Tournament } from '../lib/types.js'
+import type { Organizer, Team, Tournament } from '../lib/types.js'
 import type { RequestContext } from '../context.js'
 
 /**
@@ -13,6 +13,28 @@ import type { RequestContext } from '../context.js'
  * could read both, because the "read-only" key it shipped to every visitor was
  * allowed to Scan the users and sessions tables.
  */
+
+/**
+ * A club as the public may see it.
+ *
+ * These routes returned the stored record whole, which meant two things nobody
+ * asked for went out to anyone who asked: `managerUserIds`, the account ids of
+ * the people who run the club, and every player marked `isPublic: false` — a
+ * flag the player route already honoured and then undid by attaching the club
+ * beside it.
+ */
+function toPublicTeam(team: Team): Team {
+  const { managerUserIds: _managers, ...rest } = team
+  if (!Array.isArray(team.players)) return rest as Team
+
+  const players = (team.players as Array<{ isPublic?: boolean }>).filter(
+    (player) => player?.isPublic !== false,
+  )
+  return { ...(rest as Team), players }
+}
+
+const toPublicTeams = (list: Team[]): Team[] => list.map(toPublicTeam)
+
 export function registerPublicRoutes(router: Router<RequestContext>): void {
   router.get('/public/organizers', async () => {
     const all = await organizers.list()
@@ -41,12 +63,12 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
     return all.filter(isPublic)
   })
 
-  router.get('/public/teams', async () => teams.listAll())
+  router.get('/public/teams', async () => toPublicTeams(await teams.listAll()))
 
   router.get('/public/teams/:id', async (_ctx, params) => {
     const team = await teams.get(params.id!)
     if (!team) throw notFound('Team not found')
-    return team
+    return toPublicTeam(team)
   })
 
   router.get('/public/tournaments/:id', async (_ctx, params) => {
@@ -61,7 +83,7 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
   })
 
   router.get('/public/organizers/:organizerId/teams', async (_ctx, params) =>
-    teams.listByOrganizer(params.organizerId!),
+    toPublicTeams(await teams.listByOrganizer(params.organizerId!)),
   )
 
   /**
@@ -140,7 +162,7 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
     const teamIds = Array.isArray(tournament.teamIds) ? tournament.teamIds : []
     return {
       ...bundle(candidates, tournament, organizer),
-      teams: await teams.getMany(teamIds),
+      teams: toPublicTeams(await teams.getMany(teamIds)),
       matchedAs: exact ? 'tournament' : 'series',
     }
   })
@@ -163,7 +185,7 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
     const teamIds = Array.isArray(tournament.teamIds) ? tournament.teamIds : []
     return {
       ...bundle(candidates, tournament, organizer),
-      teams: await teams.getMany(teamIds),
+      teams: toPublicTeams(await teams.getMany(teamIds)),
       matchedAs: 'season',
     }
   })
@@ -217,7 +239,7 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
       throw badRequest('teamIds must be an array of strings')
     }
     if (ids.length > 500) throw badRequest('Too many teamIds in one request')
-    return teams.getMany(ids as string[])
+    return toPublicTeams(await teams.getMany(ids as string[]))
   })
 }
 
@@ -240,8 +262,8 @@ async function buildTeamContext(team: Awaited<ReturnType<typeof teams.get>> & ob
   }
 
   return {
-    team,
+    team: toPublicTeam(team as Team),
     tournaments: played,
-    teams: await teams.getMany([...referenced]),
+    teams: toPublicTeams(await teams.getMany([...referenced])),
   }
 }

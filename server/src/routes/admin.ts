@@ -1,7 +1,12 @@
 import { ddb, PutCommand, DeleteCommand, UpdateCommand } from '../lib/ddb.js'
 import { TABLES } from '../lib/env.js'
 import { badRequest, notFound } from '../lib/http.js'
-import { assertCanAccessOrganizer, assertSuperAdmin, isSuperAdmin } from '../lib/auth.js'
+import {
+  assertCanAccessOrganizer,
+  assertManagesTeam,
+  assertSuperAdmin,
+  isSuperAdmin,
+} from '../lib/auth.js'
 import {
   assertPasswordStrength,
   generateId,
@@ -9,8 +14,9 @@ import {
   hashPassword,
 } from '../lib/passwords.js'
 import { deleteAllUserSessions } from '../lib/sessions.js'
-import { toPublicUser, type AuthUser } from '../lib/types.js'
+import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import { organizers, teams, tournaments } from '../repos.js'
+import { unlinkManagerFromTeam } from '../repos-clubs.js'
 import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
@@ -43,6 +49,31 @@ function resolveOrganizerId(user: AuthUser, requested: unknown): string {
   return own
 }
 
+
+/**
+ * The fields of a club anyone may edit through the API.
+ *
+ * A whitelist rather than a blacklist: the club record is schemaless, so
+ * anything not named here would otherwise be persisted on it by whoever asked.
+ */
+const TEAM_FIELDS = [
+  'name',
+  'colors',
+  'logo',
+  'photo',
+  'socialMedia',
+  'establishedDate',
+  'players',
+] as const
+
+function pick(body: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) out[field] = body[field]
+  }
+  return out
+}
+
 export function registerAdminRoutes(router: Router<RequestContext>): void {
   /* ---------------- listings (include private data) ---------------- */
 
@@ -52,16 +83,19 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     return isSuperAdmin(user) ? all : all.filter((o) => o.id === user.organizerId)
   })
 
+  // A team manager belongs to no organizer, and DynamoDB rejects an empty key
+  // value — so asking anyway turned their first admin request into a 500
+  // instead of the empty list it means.
   router.get('/admin/teams', async (ctx) => {
     const user = await ctx.user()
     if (isSuperAdmin(user)) return teams.listAll()
-    return teams.listByOrganizer(user.organizerId ?? '')
+    return user.organizerId ? teams.listByOrganizer(user.organizerId) : []
   })
 
   router.get('/admin/tournaments', async (ctx) => {
     const user = await ctx.user()
     if (isSuperAdmin(user)) return tournaments.listAll()
-    return tournaments.listByOrganizer(user.organizerId ?? '')
+    return user.organizerId ? tournaments.listByOrganizer(user.organizerId) : []
   })
 
   router.get('/admin/tournaments/:id', async (ctx, params) => {
@@ -116,16 +150,51 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const user = await ctx.user()
     const team = await teams.get(params.id!)
     if (!team) throw notFound('Team not found')
-    assertCanAccessOrganizer(user, team.organizerId)
-    // A team cannot be moved to another organizer by a non-super-admin.
-    const updates = { ...ctx.body }
-    if (!isSuperAdmin(user)) delete updates.organizerId
+    assertManagesTeam(user, team)
+    // A named list rather than whatever arrived. Passing the body straight
+    // through wrote any attribute a caller invented onto the club, and put its
+    // key names verbatim into the audit log the super admin reads.
+    //
+    // Two absences are deliberate. `organizerId`: a club is not moved between
+    // organizers by editing it. `managerUserIds`: who runs a club is decided by
+    // invitation, and a manager able to write that field could hand the club to
+    // anyone or quietly remove the others.
+    const updates = pick(ctx.body, TEAM_FIELDS)
+    if (isSuperAdmin(user) && typeof ctx.body.organizerId === 'string') {
+      updates.organizerId = ctx.body.organizerId
+    }
+    if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
     await teams.update(params.id!, updates)
     await record(user, {
       action: 'team.update',
       entity: 'team',
       entityId: params.id!,
       summary: `Edited ${team.name}: ${describeFields(updates)}`,
+      organizerId: team.organizerId,
+    })
+    return { ok: true }
+  })
+
+  /**
+   * Takes somebody off a club.
+   *
+   * Without this a manager, once linked, was there forever: `PATCH` refuses to
+   * write `managerUserIds`, so a coach who left — or one who used a leaked
+   * invitation — kept full control of the club and the only remedy was deleting
+   * their whole account. This is the organizer's to do, not a manager's: the
+   * managers of a club should not be able to remove each other.
+   */
+  router.delete('/admin/teams/:id/managers/:userId', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, team.organizerId)
+
+    await unlinkManagerFromTeam(params.userId!, team as Team)
+    await record(user, {
+      action: 'team.manager.remove',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Removed a manager from ${team.name}`,
       organizerId: team.organizerId,
     })
     return { ok: true }
@@ -157,7 +226,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
   router.post('/admin/teams/:id/players', async (ctx, params) => {
     const user = await ctx.user()
     const team = await teams.getOrThrow(params.id!)
-    assertCanAccessOrganizer(user, team.organizerId)
+    assertManagesTeam(user, team)
 
     const player = await teams.addPlayer(params.id!, {
       firstName: typeof ctx.body.firstName === 'string' ? ctx.body.firstName : '',
@@ -179,7 +248,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
   router.patch('/admin/teams/:id/players/:playerId', async (ctx, params) => {
     const user = await ctx.user()
     const team = await teams.getOrThrow(params.id!)
-    assertCanAccessOrganizer(user, team.organizerId)
+    assertManagesTeam(user, team)
 
     const updates = { ...ctx.body }
     // The id is the anchor for the targeted write; it is never a field to change.
@@ -200,7 +269,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
   router.delete('/admin/teams/:id/players/:playerId', async (ctx, params) => {
     const user = await ctx.user()
     const team = await teams.getOrThrow(params.id!)
-    assertCanAccessOrganizer(user, team.organizerId)
+    assertManagesTeam(user, team)
 
     await teams.removePlayer(params.id!, params.playerId!)
     await record(user, {

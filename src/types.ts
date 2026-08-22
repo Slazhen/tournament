@@ -223,6 +223,18 @@ export type Tournament = {
     instagram?: string
   }
   visibility?: 'public' | 'private' // Tournament visibility: public (visible to everyone) or private (admin/organizer only)
+  /**
+   * Which of each club's players are entered in this competition, by club id.
+   *
+   * A club's squad belongs to the club and follows it everywhere; who is
+   * registered for one particular competition does not. A club absent from this
+   * map has its whole squad entered — which is what every competition assumed
+   * before the field existed, so nothing shifts underneath a club that never
+   * touches it.
+   */
+  squads?: Record<string, string[]>
+  /** Set by the organiser when the deadline passes: managers can no longer change their squad. */
+  squadsLocked?: boolean
 }
 
 export type AppSettings = {

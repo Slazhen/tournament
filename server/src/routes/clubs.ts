@@ -1,5 +1,5 @@
 import { badRequest, forbidden, notFound } from '../lib/http.js'
-import { assertManagesTeam, isSuperAdmin } from '../lib/auth.js'
+import { assertCanAccessOrganizer, assertManagesTeam, isSuperAdmin } from '../lib/auth.js'
 import { assertPasswordStrength, generateId, generateSalt, hashPassword } from '../lib/passwords.js'
 import { createSession } from '../lib/sessions.js'
 import { ddb, PutCommand } from '../lib/ddb.js'
@@ -37,7 +37,11 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
   router.post('/admin/teams/:id/invites', async (ctx, params) => {
     const user = await ctx.user()
     const team = await teams.getOrThrow(params.id!)
-    assertManagesTeam(user, team as Team)
+    // Deliberately the organizer's test rather than the club's. An invitation
+    // hands somebody permanent control of a club, so a manager who already has
+    // it must not be able to pass it on — nor to send mail from the product's
+    // own address to an address of their choosing.
+    assertCanAccessOrganizer(user, team.organizerId)
 
     const email = typeof ctx.body.email === 'string' ? ctx.body.email.trim().toLowerCase() : ''
     const invite = await createInvite(team as Team, user.id, email || undefined)
@@ -87,7 +91,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
    */
   router.post('/auth/claim', async (ctx) => {
     const token = typeof ctx.body.token === 'string' ? ctx.body.token : ''
-    const invite = await consumeInvite(token)
+    // Read it, check everything, and only then spend it. Consuming first meant
+    // a stale session token, a weak password or an email already in use burned
+    // the invitation permanently — and the organizer had to issue another.
+    const invite = await peekInvite(token)
     if (!invite) throw badRequest('This invitation has expired or has already been used')
 
     const team = await teams.get(invite.teamId)
@@ -97,6 +104,9 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const authorization = ctx.headers['authorization']
     if (authorization) {
       const user = await ctx.user()
+      if (!(await consumeInvite(token))) {
+        throw badRequest('This invitation has expired or has already been used')
+      }
       await linkManagerToTeam(user, team as Team)
       await record(user, {
         action: 'team.claim',
@@ -111,6 +121,13 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const email = typeof ctx.body.email === 'string' ? ctx.body.email.trim().toLowerCase() : ''
     if (!email.includes('@')) throw badRequest('A valid email address is required')
 
+    // An invitation sent to somebody is for them. Without this, holding any
+    // link — including one for your own club — was a way to open an account on
+    // any address at all, and account creation is otherwise super-admin only.
+    if (invite.email && invite.email !== email) {
+      throw badRequest('This invitation was sent to a different email address')
+    }
+
     try {
       assertPasswordStrength(ctx.body.password)
     } catch (error) {
@@ -120,6 +137,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const existing = await findActiveUserByEmail(email)
     if (existing) {
       throw badRequest('There is already an account with this email — sign in first, then open the link again')
+    }
+
+    if (!(await consumeInvite(token))) {
+      throw badRequest('This invitation has expired or has already been used')
     }
 
     const salt = generateSalt()
@@ -211,6 +232,16 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
 
     const existing = await getEntry(tournamentId, teamId)
     if (existing && existing.status === 'pending') return existing
+    // A turned-down application is a decision, with a note attached. Writing a
+    // fresh 'pending' over it would erase both, and nothing would stop a club
+    // from doing that on a loop until the organizer gave in.
+    if (existing && existing.status === 'declined') {
+      throw badRequest(
+        existing.note
+          ? `The organiser has already turned this application down: ${existing.note}`
+          : 'The organiser has already turned this application down. Ask them directly.',
+      )
+    }
 
     const entry = await putEntry({
       tournamentId,
@@ -233,14 +264,78 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     return entry
   })
 
+  /**
+   * Which of the club's players are entered in one competition.
+   *
+   * The same eleven do not necessarily play in the Sunday league and the
+   * midweek cup, and a player signed in March should not appear in a list of
+   * who played in February. So the selection lives on the competition, keyed by
+   * club, and the club's own squad stays untouched by it.
+   *
+   * No selection means everybody. That is the honest default: it is what every
+   * competition assumed before this existed, so nothing changes underneath a
+   * manager who never opens the screen.
+   */
+  router.put('/manager/tournaments/:tournamentId/squad', async (ctx, params) => {
+    const user = await ctx.user()
+    const teamId = typeof ctx.body.teamId === 'string' ? ctx.body.teamId : ''
+    if (!teamId) throw badRequest('teamId is required')
+
+    const team = await teams.getOrThrow(teamId)
+    assertManagesTeam(user, team as Team)
+
+    const tournament = await tournaments.getOrThrow(params.tournamentId!)
+    if (!(tournament.teamIds ?? []).includes(teamId)) {
+      throw badRequest('This club is not in that competition')
+    }
+
+    // The organizer can close squads once the competition is under way. That
+    // binds the managers, not the organizer: somebody still has to be able to
+    // fix a mistake after the deadline.
+    const runsTheCompetition =
+      isSuperAdmin(user) || (!!user.organizerId && user.organizerId === tournament.organizerId)
+    if (tournament.squadsLocked && !runsTheCompetition) {
+      throw forbidden('The organiser has closed squads for this competition')
+    }
+
+    const known = new Set(
+      ((team.players as Array<{ id?: string }> | undefined) ?? [])
+        .map((player) => player.id)
+        .filter((id): id is string => typeof id === 'string'),
+    )
+    const requested: unknown[] = Array.isArray(ctx.body.playerIds) ? ctx.body.playerIds : []
+    const playerIds = requested.filter(
+      (id): id is string => typeof id === 'string' && known.has(id),
+    )
+
+    // "Everybody" and "no selection" are the same state, and storing it as no
+    // selection is what keeps the two in step when the club signs somebody new
+    // afterwards.
+    const everyone = playerIds.length === known.size
+    await tournaments.setSquad(params.tournamentId!, teamId, everyone ? null : playerIds)
+
+    await record(user, {
+      action: 'squad.update',
+      entity: 'tournament',
+      entityId: params.tournamentId!,
+      summary: everyone
+        ? `Entered the whole squad of ${team.name} in ${tournament.name}`
+        : `Entered ${playerIds.length} of ${known.size} players of ${team.name} in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return { playerIds, all: everyone }
+  })
+
   /* ---------------- the organizer's side ---------------- */
 
   router.get('/admin/tournaments/:id/entries', async (ctx, params) => {
     const user = await ctx.user()
     const tournament = await tournaments.getOrThrow(params.id!)
-    if (!isSuperAdmin(user) && user.organizerId !== tournament.organizerId) {
-      throw forbidden('This competition belongs to another organizer')
-    }
+    // Not a hand-rolled comparison: a team manager has no organizer id at all,
+    // and `undefined !== undefined` is false — the inline version let them
+    // through on any row whose organizer id was missing.
+    assertCanAccessOrganizer(user, tournament.organizerId)
     return entriesForTournament(params.id!)
   })
 
@@ -255,9 +350,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
   router.patch('/admin/tournaments/:id/entries/:teamId', async (ctx, params) => {
     const user = await ctx.user()
     const tournament = await tournaments.getOrThrow(params.id!)
-    if (!isSuperAdmin(user) && user.organizerId !== tournament.organizerId) {
-      throw forbidden('This competition belongs to another organizer')
-    }
+    // Not a hand-rolled comparison: a team manager has no organizer id at all,
+    // and `undefined !== undefined` is false — the inline version let them
+    // through on any row whose organizer id was missing.
+    assertCanAccessOrganizer(user, tournament.organizerId)
 
     const status = ctx.body.status
     if (status !== 'accepted' && status !== 'declined') {

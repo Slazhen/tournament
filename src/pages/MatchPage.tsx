@@ -12,6 +12,7 @@ import {
   IconArrowLeft,
   IconClipboard,
 } from '../components/icons'
+import { playersForPicking, registeredPlayers } from '../utils/squads'
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
@@ -478,7 +479,7 @@ export default function MatchPage() {
                   <div>
                     <h5 className="text-sm font-medium mb-2 opacity-70">All Players</h5>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {homeTeam.players.map((player) => {
+                      {registeredPlayers(tournament, homeTeam).map((player) => {
                         const isSelected = match.lineups?.home.starting.includes(player.id) || false
                         return (
                           <div key={player.id} className="flex items-center justify-between p-2 glass rounded">
@@ -542,7 +543,7 @@ export default function MatchPage() {
                   <div>
                     <h5 className="text-sm font-medium mb-2 opacity-70">All Players</h5>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {awayTeam.players.map((player) => {
+                      {registeredPlayers(tournament, awayTeam).map((player) => {
                         const isSelected = match.lineups?.away.starting.includes(player.id) || false
                         return (
                           <div key={player.id} className="flex items-center justify-between p-2 glass rounded">
@@ -698,7 +699,7 @@ export default function MatchPage() {
                               }`}
                             >
                               <option value="">Select Scorer</option>
-                              {team.players.map(player => (
+                              {playersForPicking(tournament, team, goal.playerId).map(player => (
                                 <option key={player.id} value={player.id}>
                                   {player.firstName} {player.lastName}
                                 </option>
@@ -717,7 +718,7 @@ export default function MatchPage() {
                               }`}
                             >
                               <option value="">No Assist</option>
-                              {team.players.map(player => (
+                              {playersForPicking(tournament, team, goal.assistPlayerId).map(player => (
                                 <option key={player.id} value={player.id}>
                                   {player.firstName} {player.lastName}
                                 </option>

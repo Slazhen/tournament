@@ -31,6 +31,8 @@ export class Router<Ctx> {
 
   get = (pattern: string, handler: RouteHandler<Ctx>) => this.add('GET', pattern, handler)
   post = (pattern: string, handler: RouteHandler<Ctx>) => this.add('POST', pattern, handler)
+  /** For a write that replaces a whole list, where sending it twice must mean the same as once. */
+  put = (pattern: string, handler: RouteHandler<Ctx>) => this.add('PUT', pattern, handler)
   patch = (pattern: string, handler: RouteHandler<Ctx>) => this.add('PATCH', pattern, handler)
   delete = (pattern: string, handler: RouteHandler<Ctx>) => this.add('DELETE', pattern, handler)
 

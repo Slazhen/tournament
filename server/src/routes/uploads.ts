@@ -2,7 +2,7 @@ import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
 import { MAX_UPLOAD_BYTES, S3_BUCKET, S3_PUBLIC_BASE_URL } from '../lib/env.js'
 import { badRequest, forbidden } from '../lib/http.js'
-import { assertCanAccessOrganizer, isSuperAdmin } from '../lib/auth.js'
+import { assertCanAccessOrganizer, assertManagesTeam, isSuperAdmin } from '../lib/auth.js'
 import { generateId } from '../lib/passwords.js'
 import { teams, tournaments } from '../repos.js'
 import type { Router } from '../lib/router.js'
@@ -42,9 +42,28 @@ async function resolveKeyPrefix(ctx: RequestContext, scope: Scope): Promise<stri
 
   const team = await teams.get(scope.id)
   if (!team) throw badRequest('Unknown team')
-  assertCanAccessOrganizer(user, team.organizerId)
+  // A club's own manager uploads its crest and its squad photos, so the test
+  // here is "does this person run the club", not "does this person run the
+  // competition it plays in".
+  assertManagesTeam(user, team)
   return scope.kind === 'player' ? `teams/${scope.id}/players` : `teams/${scope.id}`
 }
+
+
+/**
+ * The shapes of key this API mints, and nothing else.
+ *
+ * The delete route used to authorize on the first two segments of a key and
+ * hand the whole string to S3, so a key that merely *started* with a club the
+ * caller runs — "teams/<mine>/../../tournaments/<theirs>/x.png" — passed the
+ * check with a path pointing somewhere else entirely. Matching the whole key
+ * against the layout the upload route produces removes the question.
+ *
+ * Ids here are the application's own, which are hex; the character class is
+ * wider than that on purpose, so that an id format changing later does not
+ * quietly make every existing image undeletable.
+ */
+const KEY_SHAPE = /^(teams\/[A-Za-z0-9_-]+(?:\/players)?|tournaments\/[A-Za-z0-9_-]+)\/[A-Za-z0-9_-]+\.(jpg|png|webp|gif)$/
 
 export function registerUploadRoutes(router: Router<RequestContext>): void {
   /**
@@ -102,6 +121,17 @@ export function registerUploadRoutes(router: Router<RequestContext>): void {
     }
 
     const key = url.slice(S3_PUBLIC_BASE_URL.length + 1)
+    // A traversal segment makes the first two parts of the key — the only parts
+    // the check below looks at — say nothing about where the key actually
+    // points. Nothing this API mints contains one.
+    if (key.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
+      throw badRequest('That is not an image this application stored')
+    }
+    // Keys from before this layout exist, and only the super admin may remove
+    // one — there is no owner recorded in such a path to check against.
+    if (!KEY_SHAPE.test(key) && !isSuperAdmin(user)) {
+      throw forbidden('Cannot verify who owns this image')
+    }
     const [scopeKind, scopeId] = key.split('/')
 
     if (scopeKind === 'tournaments' && scopeId) {
@@ -110,7 +140,7 @@ export function registerUploadRoutes(router: Router<RequestContext>): void {
     } else if (scopeKind === 'teams' && scopeId) {
       const team = await teams.get(scopeId)
       if (!team) throw badRequest('Unknown team')
-      assertCanAccessOrganizer(user, team.organizerId)
+      assertManagesTeam(user, team)
     } else if (!isSuperAdmin(user)) {
       // Legacy keys from before this layout exist; only the super admin may
       // remove one, because there is no owner recorded in the path.

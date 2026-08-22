@@ -504,6 +504,34 @@ export default function TournamentSettingsPage() {
         </section>
       )}
 
+      {/* ---------- Squads ---------- */}
+      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
+        <h2 className="font-semibold">Squads</h2>
+        <p className="text-sm opacity-70">
+          Each club's manager chooses which of their players are registered here. A club that
+          chooses nobody in particular has its whole squad registered, so a club that never opens
+          the screen is never left short.
+        </p>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={tournament.squadsLocked === true}
+            onChange={(event) =>
+              updateTournament(tournament.id, { squadsLocked: event.target.checked })
+            }
+            className="mt-1"
+          />
+          <span>
+            <span className="block">Close squads</span>
+            <span className="block text-sm opacity-70">
+              Managers can no longer change who is registered. You still can — somebody has to be
+              able to fix a mistake after the deadline.
+            </span>
+          </span>
+        </label>
+      </section>
+
       {/* ---------- Season ---------- */}
       <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-5">
         <div className="flex items-baseline justify-between gap-4">

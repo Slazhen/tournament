@@ -339,6 +339,51 @@ export const tournaments = {
     invalidate('tournaments:')
   },
 
+  /**
+   * Sets which of one club's players are registered for this competition.
+   *
+   * Deliberately not `update({ squads })`: every club in the competition shares
+   * that one map, and writing it whole means two managers saving their squads
+   * within the same minute would silently erase each other — the second read
+   * happened before the first write landed. Writing a single key inside the map
+   * lets DynamoDB merge them, so each manager only ever touches their own club.
+   *
+   * `playerIds` of null means "no selection", which the rest of the app reads as
+   * the whole squad.
+   */
+  async setSquad(
+    tournamentId: string,
+    teamId: string,
+    playerIds: string[] | null,
+  ): Promise<void> {
+    // A nested path cannot be written until the map it lives in exists, and the
+    // two cannot be done in one expression — DynamoDB rejects overlapping paths.
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id: tournamentId },
+        ConditionExpression: 'attribute_exists(id)',
+        UpdateExpression: 'SET #squads = if_not_exists(#squads, :empty)',
+        ExpressionAttributeNames: { '#squads': 'squads' },
+        ExpressionAttributeValues: { ':empty': {} },
+      }),
+    )
+
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id: tournamentId },
+        ConditionExpression: 'attribute_exists(id)',
+        UpdateExpression:
+          playerIds === null ? 'REMOVE #squads.#team' : 'SET #squads.#team = :ids',
+        ExpressionAttributeNames: { '#squads': 'squads', '#team': teamId },
+        ...(playerIds === null ? {} : { ExpressionAttributeValues: { ':ids': playerIds } }),
+      }),
+    )
+
+    invalidate('tournaments:')
+  },
+
   /** Applies a partial update to one match inside a tournament's matches array. */
   async updateMatch(
     tournamentId: string,

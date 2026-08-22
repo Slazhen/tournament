@@ -15,6 +15,28 @@ const ses = MAIL_FROM ? new SESv2Client({}) : null
 
 export type MailResult = { sent: boolean; reason?: string }
 
+/**
+ * Makes a name safe to put in an HTML email.
+ *
+ * A club's name is typed by a person and lands inside the markup below. Without
+ * this, naming a club with a fragment of HTML would let that markup — a link,
+ * say — be delivered from this product's own verified address.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/** A subject line is one line: a name with newlines in it could add headers. */
+function oneLine(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim()
+}
+
+
 export async function sendPasswordReset(to: string, link: string): Promise<MailResult> {
   if (!ses || !MAIL_FROM) return { sent: false, reason: 'email is not configured' }
 
@@ -88,7 +110,7 @@ export async function sendTeamInvite(
 
   const html = `
     <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.55;color:#0B1120">
-      <p>You have been invited to run <strong>${teamName}</strong> on MFTournament.</p>
+      <p>You have been invited to run <strong>${escapeHtml(teamName)}</strong> on MFTournament.</p>
       <p>
         <a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#4F46E5;color:#fff;text-decoration:none;font-weight:600">
           Take over the club
@@ -108,7 +130,7 @@ export async function sendTeamInvite(
         Destination: { ToAddresses: [to] },
         Content: {
           Simple: {
-            Subject: { Data: `You have been invited to run ${teamName}` },
+            Subject: { Data: oneLine(`You have been invited to run ${teamName}`) },
             Body: { Text: { Data: text }, Html: { Data: html } },
           },
         },

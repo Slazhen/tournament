@@ -345,6 +345,24 @@ export const clubService = {
     return api.post('/manager/entries', { teamId, tournamentId })
   },
 
+  /**
+   * Which of a club's players are entered in one competition.
+   *
+   * Sending every player is the same as sending none: the server stores that as
+   * "no selection", so a player signed later is entered automatically rather
+   * than being silently left out of a list nobody remembers editing.
+   */
+  async saveSquad(
+    tournamentId: string,
+    teamId: string,
+    playerIds: string[],
+  ): Promise<{ playerIds: string[]; all: boolean }> {
+    return api.put(`/manager/tournaments/${encodeURIComponent(tournamentId)}/squad`, {
+      teamId,
+      playerIds,
+    })
+  },
+
   async entriesFor(tournamentId: string): Promise<Entry[]> {
     return api.get(`/admin/tournaments/${encodeURIComponent(tournamentId)}/entries`)
   },

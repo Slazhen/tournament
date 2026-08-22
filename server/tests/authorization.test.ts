@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   assertCanAccessOrganizer,
+  assertManagesTeam,
   assertSuperAdmin,
   extractBearerToken,
   isSuperAdmin,
@@ -21,6 +22,20 @@ const organizerUser: AuthUser = {
 }
 
 const superAdmin: AuthUser = { ...organizerUser, id: 'u-0', role: 'super_admin', organizerId: undefined }
+
+/** A coach: no organizer at all, and one club to their name. */
+const manager: AuthUser = {
+  ...organizerUser,
+  id: 'u-9',
+  email: 'coach@example.com',
+  role: 'team_manager',
+  organizerId: undefined,
+  teamIds: ['team-mine'],
+}
+
+const myClub = { id: 'team-mine', organizerId: 'org-1', managerUserIds: ['u-9'] }
+const otherClub = { id: 'team-theirs', organizerId: 'org-2', managerUserIds: ['u-8'] }
+const unclaimedClub = { id: 'team-new', organizerId: 'org-1' }
 
 describe('bearer tokens', () => {
   it('reads a token out of the header', () => {
@@ -66,6 +81,39 @@ describe('organizer isolation', () => {
   })
 })
 
+describe('who runs a club', () => {
+  it('lets a manager touch the club they were invited to', () => {
+    expect(() => assertManagesTeam(manager, myClub)).not.toThrow()
+  })
+
+  it("keeps a manager out of somebody else's club", () => {
+    expect(() => assertManagesTeam(manager, otherClub)).toThrow(HttpError)
+  })
+
+  it('keeps a manager out of a club nobody has claimed, even in the same competition', () => {
+    expect(() => assertManagesTeam(manager, unclaimedClub)).toThrow(HttpError)
+  })
+
+  it("lets the organizer run their own clubs, claimed or not", () => {
+    expect(() => assertManagesTeam(organizerUser, myClub)).not.toThrow()
+    expect(() => assertManagesTeam(organizerUser, unclaimedClub)).not.toThrow()
+  })
+
+  it("keeps an organizer out of another organizer's club", () => {
+    expect(() => assertManagesTeam(organizerUser, otherClub)).toThrow(HttpError)
+  })
+
+  it('lets the super admin reach any club', () => {
+    expect(() => assertManagesTeam(superAdmin, otherClub)).not.toThrow()
+  })
+
+  it('does not treat a missing organizer id as a match', () => {
+    // Both sides undefined must not read as "same organizer" — the mistake the
+    // hand-rolled comparisons in the club routes used to make.
+    expect(() => assertManagesTeam(manager, { id: 'team-orphan' })).toThrow(HttpError)
+  })
+})
+
 describe('user serialization', () => {
   it('never lets the hash or salt out', () => {
     const publicUser = toPublicUser(organizerUser) as Record<string, unknown>
@@ -102,6 +150,16 @@ describe('CORS', () => {
     expect(corsHeaders('https://myfootballtournament.com')['access-control-allow-origin']).toBe(
       'https://myfootballtournament.com',
     )
+  })
+
+  it('allows every method the router registers, PUT included', () => {
+    // The squad route is a PUT, and a method missing here fails the browser's
+    // preflight rather than the request itself — which looks like the feature
+    // silently not working.
+    const methods = corsHeaders('https://myfootballtournament.com')['access-control-allow-methods']
+    for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+      expect(methods).toContain(method)
+    }
   })
 
   it('sends no CORS headers to an unknown origin', () => {
