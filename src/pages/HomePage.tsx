@@ -47,7 +47,14 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false
 
-    Promise.all([organizerService.getAll(), tournamentService.getAllSummaries()])
+    // getAllPublic, not getAll: getAll follows a signed-in user to
+    // /admin/organizers, which answers with the organisers that user may
+    // administer — one for an organiser, none at all for a club manager. This
+    // page is the public directory and must show everybody the same thing,
+    // whoever happens to be signed in. Using getAll here emptied the directory
+    // for a signed-in club manager while the tournament count, read from a
+    // genuinely public route, still said five.
+    Promise.all([organizerService.getAllPublic(), tournamentService.getAllSummaries()])
       .then(([organizerList, tournamentList]) => {
         if (cancelled) return
         setOrganizers(organizerList)

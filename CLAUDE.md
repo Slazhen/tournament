@@ -167,3 +167,11 @@ Useful scripts, run with your own AWS credentials:
 - **Public routes project their output.** `toPublicTeam` in `routes/public.ts`
   drops `managerUserIds` and players marked `isPublic: false`. A new public route
   that returns a stored record whole undoes that.
+- **A page a visitor can reach never calls a service method that branches on
+  `isSignedIn()`.** `organizerService.getAll` follows a signed-in user to
+  `/admin/organizers`, which returns what that user administers: all of them for
+  a super admin, one for an organiser, none for a club manager. The landing page
+  used it and told a signed-in club manager there were "five public tournaments
+  from zero organisers" — the count came from a public route and the directory
+  from an admin one. Public pages read `getAllPublic`; the branching methods
+  belong to the admin screens.

@@ -16,6 +16,16 @@ import type { Team, Tournament, Organizer, Match, Player } from '../types'
 const MAX_BATCH = 500
 
 export const organizerService = {
+  /**
+   * The organisers the signed-in user administers — everything for a super
+   * admin, their own one for an organiser, nothing at all for a club manager.
+   *
+   * This belongs to the admin screens and to nothing else. A page that shows
+   * organisers to whoever is looking wants `getAllPublic`: this one silently
+   * shrinks as the viewer's role narrows, and on the landing page that read as
+   * "five public tournaments from zero organisers" with an empty directory
+   * underneath.
+   */
   async getAll(): Promise<Organizer[]> {
     return isSignedIn()
       ? api.get<Organizer[]>('/admin/organizers')
@@ -23,11 +33,9 @@ export const organizerService = {
   },
 
   /**
-   * The public directory: names and crests, no contact details.
-   *
-   * Deliberately not `getAll`, which sends a signed-in user to /admin/organizers
-   * — a super-admin route. A club manager needs organiser names to make sense of
-   * a list of competitions, and this is the read they are entitled to.
+   * The public directory: names and crests, no contact details, the same list
+   * for everybody. Every page a visitor can reach — the landing page, a public
+   * match page resolving an organiser slug — reads this one.
    */
   async getAllPublic(): Promise<Organizer[]> {
     return api.get<Organizer[]>('/public/organizers')

@@ -21,9 +21,15 @@ export default function PublicMatchPage() {
   const [error, setError] = useState<string | null>(null)
   const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
 
-  // Load all organizers for slug-based lookup
+  // Load all organizers for slug-based lookup.
+  //
+  // getAllPublic, not getAll: this page resolves an organiser slug from the URL
+  // and has to see every organiser, including the ones the visitor has nothing
+  // to do with. getAll sends a signed-in user to /admin/organizers, which
+  // returns only the organiser they administer — so a signed-in club manager
+  // got an empty list here and every match link answered "Tournament not found".
   useEffect(() => {
-    organizerService.getAll().then(setAllOrganizers)
+    organizerService.getAllPublic().then(setAllOrganizers)
   }, [])
 
   // Load data directly from DynamoDB (no authentication required for public pages)
@@ -54,7 +60,7 @@ export default function PublicMatchPage() {
           // New route: /:orgSlug/:tournamentSlug/matches/:matchId
           // Resolve the id from lightweight summaries (no match data), then GetItem the one tournament.
           const [organizers, summaries] = await Promise.all([
-            organizerService.getAll(),
+            organizerService.getAllPublic(),
             tournamentService.getAllSummaries(),
           ])
           setAllOrganizers(organizers)
