@@ -7,8 +7,10 @@ import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { getSeasonUrl } from '../utils/seasons'
+import { clubService } from '../lib/data'
 import {
   IconArrowLeft,
+  IconLink,
   IconClipboard,
   IconTrophy,
   IconUser,
@@ -26,6 +28,10 @@ export default function TeamPage() {
   
   // State for upload feedback
   const [uploadMessage, setUploadMessage] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [inviteEmailed, setInviteEmailed] = useState(false)
+  const [isInviting, setIsInviting] = useState(false)
   // The add-player form. Players used to be created the instant the button was
   // pressed, appearing as "New Player" with a number nobody chose.
   const [isAddingPlayer, setIsAddingPlayer] = useState(false)
@@ -168,6 +174,60 @@ export default function TeamPage() {
               >
                 <IconClipboard size={15} /> Copy
               </button>
+            </div>
+
+            {/* Handing the club to the person who actually runs it. */}
+            <div className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl">
+              <p className="text-sm opacity-70 mb-2">
+                Invite the coach or club secretary to run {team.name}: the squad, the crest and
+                entering competitions. Results stay with you.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  placeholder="Their email (optional)"
+                  className="px-3 py-2 rounded-md bg-transparent border border-white/20 text-sm min-w-[240px]"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsInviting(true)
+                    try {
+                      const result = await clubService.invite(team.id, inviteEmail.trim() || undefined)
+                      setInviteLink(result.link)
+                      setInviteEmailed(result.emailed)
+                      try {
+                        await navigator.clipboard.writeText(result.link)
+                      } catch {
+                        // The link is on screen either way.
+                      }
+                    } catch {
+                      alert('The invitation could not be created.')
+                    } finally {
+                      setIsInviting(false)
+                    }
+                  }}
+                  disabled={isInviting}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 transition-colors text-sm disabled:opacity-50"
+                >
+                  <IconLink size={15} /> {isInviting ? 'Creating...' : 'Invite manager'}
+                </button>
+              </div>
+
+              {inviteLink && (
+                <div className="mt-3">
+                  <p className="text-sm text-gray-300 mb-1">
+                    {inviteEmailed
+                      ? 'Sent, and copied to your clipboard. It works once and lasts a fortnight.'
+                      : 'Copied to your clipboard. It works once and lasts a fortnight.'}
+                  </p>
+                  <code className="block text-xs bg-black/40 border border-white/10 rounded-lg p-3 break-all text-blue-200">
+                    {inviteLink}
+                  </code>
+                </div>
+              )}
             </div>
           </div>
         </div>

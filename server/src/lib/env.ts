@@ -22,7 +22,12 @@ export const TABLES = {
   AUTH_SESSIONS: required('TABLE_AUTH_SESSIONS'),
   PASSWORD_RESETS: required('TABLE_PASSWORD_RESETS'),
   AUDIT: required('TABLE_AUDIT'),
+  INVITES: required('TABLE_INVITES'),
+  ENTRIES: required('TABLE_ENTRIES'),
 } as const
+
+/** An invitation to run a club is passed hand to hand, so it lives for a fortnight. */
+export const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000
 
 /** Where password-reset links point. */
 export const SITE_URL = (process.env.SITE_URL ?? 'https://myfootballtournament.com').replace(

@@ -6,6 +6,7 @@ import InstagramIcon from '../components/InstagramIcon'
 import {
   IconBall,
 } from '../components/icons'
+import PublicHeader from '../components/PublicHeader'
 
 interface Team {
   id: string
@@ -59,6 +60,7 @@ export default function NewPublicTeam() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-900 via-blue-900 to-purple-900 flex items-center justify-center">
+        <PublicHeader />
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
           <p className="text-white text-xl">Loading team...</p>
@@ -70,6 +72,7 @@ export default function NewPublicTeam() {
   if (error || !team) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-900 via-blue-900 to-purple-900 flex items-center justify-center">
+        <PublicHeader />
         <div className="text-center max-w-md mx-auto p-8">
           <div className="mb-4 flex justify-center opacity-60"><IconBall size={52} /></div>
           <h1 className="text-3xl font-bold text-white mb-4">Team Not Found</h1>
@@ -89,6 +92,7 @@ export default function NewPublicTeam() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black">
+      <PublicHeader />
       {/* Hero Header with Bundesliga-style background */}
       <div className="relative overflow-hidden">
         {/* Dynamic background based on team colors */}

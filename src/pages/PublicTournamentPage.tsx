@@ -13,6 +13,7 @@ import { teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import {
   IconTrophy,
 } from '../components/icons'
+import PublicHeader from '../components/PublicHeader'
 
 const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
 
@@ -246,6 +247,7 @@ export default function PublicTournamentPage() {
   if (isLoading || !dataLoaded) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center relative overflow-hidden">
+        <PublicHeader />
         {/* Background decorative elements */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -276,6 +278,7 @@ export default function PublicTournamentPage() {
   if (!tournament) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center relative overflow-hidden">
+        <PublicHeader />
         {/* Background decorative elements */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-20 left-10 w-32 h-32 bg-red-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -635,6 +638,7 @@ export default function PublicTournamentPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
+      <PublicHeader />
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>

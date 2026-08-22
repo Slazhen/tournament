@@ -9,6 +9,7 @@ import {
   IconKnockout,
   IconVideo,
 } from '../components/icons'
+import PublicHeader from '../components/PublicHeader'
 
 export default function PublicMatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
@@ -176,6 +177,10 @@ export default function PublicMatchPage() {
 
   return (
     <div className="grid gap-6 place-items-center">
+      <div className="w-full">
+        <PublicHeader />
+      </div>
+
       {/* Header */}
       <section className={`glass rounded-xl p-6 w-full max-w-6xl ${match.isElimination ? 'border-2 border-red-500 bg-red-500/10' : ''}`}>
         <div className="flex items-center justify-between mb-6">

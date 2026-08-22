@@ -48,3 +48,25 @@ export function assertCanAccessOrganizer(user: AuthUser, organizerId: string | u
     throw forbidden('This resource belongs to another organizer')
   }
 }
+
+/**
+ * A club is run by its managers, and by the organizer whose competition it was
+ * created in until somebody claims it.
+ *
+ * This is the second question the API has to answer now — "is this your team"
+ * as well as "is this your organizer" — and it lives here rather than in the
+ * routes so that there is one answer rather than one per endpoint.
+ */
+export function managesTeam(user: AuthUser, team: { id: string; managerUserIds?: string[] }): boolean {
+  return Array.isArray(team.managerUserIds) && team.managerUserIds.includes(user.id)
+}
+
+export function assertManagesTeam(
+  user: AuthUser,
+  team: { id: string; organizerId?: string; managerUserIds?: string[] },
+): void {
+  if (isSuperAdmin(user)) return
+  if (managesTeam(user, team)) return
+  if (user.role === 'organizer' && user.organizerId && user.organizerId === team.organizerId) return
+  throw forbidden('This club belongs to someone else')
+}

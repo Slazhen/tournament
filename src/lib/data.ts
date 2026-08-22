@@ -291,3 +291,73 @@ export async function uploadImage(file: File, scope: UploadScope): Promise<strin
 export async function deleteImage(url: string): Promise<void> {
   await api.post('/admin/uploads/delete', { url })
 }
+
+/* ------------------------------------------------------------------ *
+ * Clubs run by their own managers
+ * ------------------------------------------------------------------ */
+
+export type TeamInvitePreview = {
+  teamName: string
+  organizerName: string
+  expiresAt: string
+}
+
+export type EntryStatus = 'pending' | 'accepted' | 'declined' | 'withdrawn'
+
+export type Entry = {
+  tournamentId: string
+  teamId: string
+  organizerId: string
+  status: EntryStatus
+  requestedBy: string
+  createdAt: string
+  decidedAt?: string
+  note?: string
+}
+
+export const clubService = {
+  /** Creates the one-time link that hands a club to whoever opens it. */
+  async invite(teamId: string, email?: string): Promise<{ link: string; expiresAt: string; emailed: boolean }> {
+    return api.post(`/admin/teams/${encodeURIComponent(teamId)}/invites`, { email })
+  },
+
+  /** What an invitation is for, before anyone signs up for it. */
+  async previewInvite(token: string): Promise<TeamInvitePreview | null> {
+    try {
+      return await api.get(`/public/invites/${encodeURIComponent(token)}`)
+    } catch {
+      return null
+    }
+  },
+
+  /** Everything a manager's own page needs, in one request. */
+  async overview(): Promise<{
+    teams: Team[]
+    tournaments: Tournament[]
+    entries: Entry[]
+    /** Every club these competitions contain, by id — for naming opponents. */
+    teamNames: Record<string, string>
+  }> {
+    return api.get('/manager/overview')
+  },
+
+  async apply(teamId: string, tournamentId: string): Promise<Entry> {
+    return api.post('/manager/entries', { teamId, tournamentId })
+  },
+
+  async entriesFor(tournamentId: string): Promise<Entry[]> {
+    return api.get(`/admin/tournaments/${encodeURIComponent(tournamentId)}/entries`)
+  },
+
+  async decide(
+    tournamentId: string,
+    teamId: string,
+    status: 'accepted' | 'declined',
+    note?: string,
+  ): Promise<void> {
+    await api.patch(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/entries/${encodeURIComponent(teamId)}`,
+      { status, note },
+    )
+  },
+}

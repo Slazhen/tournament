@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAppStore } from '../store'
 import LogoUploader from '../components/LogoUploader'
@@ -10,6 +10,8 @@ import { findFormat, formatOptionFor } from '../utils/formats'
 import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
 import type { TournamentFormat } from '../utils/fixtures'
 import { getAdminTournamentUrl } from '../utils/urls'
+import { clubService } from '../lib/data'
+import type { Entry } from '../lib/data'
 import Trophy from '../components/Trophy'
 import {
   championOf,
@@ -40,6 +42,7 @@ export default function TournamentSettingsPage() {
     updateTournament,
     deleteTournament,
     uploadTournamentLogo,
+    loadTournaments,
   } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
@@ -59,6 +62,26 @@ export default function TournamentSettingsPage() {
   const [isSavingFormat, setIsSavingFormat] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
   const [isLinking, setIsLinking] = useState(false)
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [deciding, setDeciding] = useState<string | null>(null)
+
+  // Clubs asking to join. The organiser decides; nothing enters a competition
+  // on its own.
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+
+    clubService
+      .entriesFor(id)
+      .then((rows) => {
+        if (!cancelled) setEntries(rows)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   const selectedTeamIds = draftTeamIds ?? tournament?.teamIds ?? []
 
@@ -153,6 +176,21 @@ export default function TournamentSettingsPage() {
   const otherCompetitions = groupIntoSeries(tournaments).filter(
     (entry) => entry.key !== seriesKey(tournament),
   )
+
+  const pendingEntries = entries.filter((entry) => entry.status === 'pending')
+
+  const decide = async (teamId: string, status: 'accepted' | 'declined') => {
+    if (!id) return
+    setDeciding(teamId)
+    try {
+      await clubService.decide(id, teamId, status)
+      const [refreshedEntries] = await Promise.all([clubService.entriesFor(id), loadTournaments()])
+      setEntries(refreshedEntries)
+      setDraftTeamIds(null)
+    } finally {
+      setDeciding(null)
+    }
+  }
 
   const resetFormatDraft = () => {
     setDraftFormatId(null)
@@ -413,6 +451,56 @@ export default function TournamentSettingsPage() {
               {seeding.reason ?? 'The bracket cannot be drawn yet.'}
             </p>
           )}
+        </section>
+      )}
+
+      {/* ---------- Applications ---------- */}
+      {pendingEntries.length > 0 && (
+        <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4 border border-amber-400/25">
+          <h2 className="font-semibold">
+            Clubs asking to join ({pendingEntries.length})
+          </h2>
+          <p className="text-sm opacity-70">
+            Accepting adds the club to the tournament. It does not touch the fixture list — do that
+            below, where you can see what it would cost first.
+          </p>
+
+          <ul className="space-y-2">
+            {pendingEntries.map((entry) => {
+              const club = teams.find((candidate) => candidate.id === entry.teamId)
+              return (
+                <li
+                  key={entry.teamId}
+                  className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
+                >
+                  <span>
+                    {club?.name ?? 'A club'}
+                    <span className="opacity-50 text-xs ml-2">
+                      {new Date(entry.createdAt).toLocaleDateString()}
+                    </span>
+                  </span>
+                  <span className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={deciding === entry.teamId}
+                      onClick={() => decide(entry.teamId, 'accepted')}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 text-emerald-300 text-sm transition-colors disabled:opacity-50"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deciding === entry.teamId}
+                      onClick={() => decide(entry.teamId, 'declined')}
+                      className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm transition-all disabled:opacity-50"
+                    >
+                      Not this time
+                    </button>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
         </section>
       )}
 

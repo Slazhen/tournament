@@ -65,3 +65,58 @@ export async function sendPasswordReset(to: string, link: string): Promise<MailR
     return { sent: false, reason: (error as Error).message }
   }
 }
+
+/** The invitation to run a club. */
+export async function sendTeamInvite(
+  to: string,
+  teamName: string,
+  link: string,
+): Promise<MailResult> {
+  if (!ses || !MAIL_FROM) return { sent: false, reason: 'email is not configured' }
+
+  const text = [
+    `You have been invited to run ${teamName} on MFTournament.`,
+    '',
+    'Open this link to take it over:',
+    link,
+    '',
+    'You will be able to edit the squad, keep the crest up to date and enter',
+    'the club into competitions. The link works once.',
+    '',
+    SITE_URL,
+  ].join('\n')
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.55;color:#0B1120">
+      <p>You have been invited to run <strong>${teamName}</strong> on MFTournament.</p>
+      <p>
+        <a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#4F46E5;color:#fff;text-decoration:none;font-weight:600">
+          Take over the club
+        </a>
+      </p>
+      <p style="color:#475569;font-size:14px">
+        You will be able to edit the squad, keep the crest up to date and enter the club into
+        competitions. The link works once.
+      </p>
+      <p style="color:#94A3B8;font-size:12px">${SITE_URL}</p>
+    </div>`
+
+  try {
+    await ses.send(
+      new SendEmailCommand({
+        FromEmailAddress: MAIL_FROM,
+        Destination: { ToAddresses: [to] },
+        Content: {
+          Simple: {
+            Subject: { Data: `You have been invited to run ${teamName}` },
+            Body: { Text: { Data: text }, Html: { Data: html } },
+          },
+        },
+      }),
+    )
+    return { sent: true }
+  } catch (error) {
+    console.error('Team invitation email failed', error)
+    return { sent: false, reason: (error as Error).message }
+  }
+}

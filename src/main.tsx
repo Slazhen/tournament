@@ -59,6 +59,8 @@ const AdminLoginPage = lazyPage(() => import('./pages/AdminLoginPage.tsx'))
 const ForgotPasswordPage = lazyPage(() => import('./pages/ForgotPasswordPage.tsx'))
 const ResetPasswordPage = lazyPage(() => import('./pages/ResetPasswordPage.tsx'))
 const AuditLogPage = lazyPage(() => import('./pages/AuditLogPage.tsx'))
+const ClaimTeamPage = lazyPage(() => import('./pages/ClaimTeamPage.tsx'))
+const MyClubPage = lazyPage(() => import('./pages/MyClubPage.tsx'))
 const OrganizersPage = lazyPage(() => import('./pages/OrganizersPage.tsx'))
 const TournamentsPage = lazyPage(() => import('./pages/TournamentsPage.tsx'))
 const CreateTournamentPage = lazyPage(() => import('./pages/CreateTournamentPage.tsx'))
@@ -83,6 +85,9 @@ const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: 'admin/login', element: <AdminLoginPage /> },
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
+      // An invitation to run a club: opened from a link somebody was sent.
+      { path: 'join', element: <ClaimTeamPage /> },
+      { path: 'my-club', element: <MyClubPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
       {
         path: 'admin/changes',

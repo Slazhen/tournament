@@ -13,7 +13,7 @@ import { api, clearToken, setToken } from './api'
  * that shipped in the public bundle.
  */
 
-export type UserRole = 'super_admin' | 'organizer'
+export type UserRole = 'super_admin' | 'organizer' | 'team_manager'
 
 /** The user as the API returns it: no password hash, no salt. */
 export type AuthUser = {
@@ -25,6 +25,8 @@ export type AuthUser = {
   displayName?: string
   role: UserRole
   organizerId?: string
+  /** The clubs this account runs. */
+  teamIds?: string[]
   createdAt: string
   lastLogin?: string
   isActive: boolean
@@ -187,4 +189,19 @@ export type AuditEntry = {
 /** The record of who changed what. Super admin only, on the server too. */
 export async function fetchAuditLog(limit = 100): Promise<AuditEntry[]> {
   return api.get<AuditEntry[]>(`/admin/audit?limit=${limit}`)
+}
+
+/** Takes up an invitation to run a club, creating the account when there is none. */
+export async function claimTeam(input: {
+  token: string
+  email?: string
+  password?: string
+  displayName?: string
+}): Promise<{ user: AuthUser; teamId: string }> {
+  const result = await api.post<{ user: AuthUser; token?: string; teamId: string }>(
+    '/auth/claim',
+    input,
+  )
+  if (result.token) setToken(result.token)
+  return { user: result.user, teamId: result.teamId }
 }

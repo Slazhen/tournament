@@ -83,6 +83,8 @@ Resources:
           TABLE_AUTH_SESSIONS: !Sub '${TablePrefix}-auth-sessions'
           TABLE_PASSWORD_RESETS: !Ref PasswordResetsTable
           TABLE_AUDIT: !Ref AuditTable
+          TABLE_INVITES: !Ref InvitesTable
+          TABLE_ENTRIES: !Ref EntriesTable
           SITE_URL: !Ref SiteUrl
           MAIL_FROM: !Ref MailFrom
       Policies:
@@ -111,6 +113,10 @@ Resources:
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TablePrefix}-auth-sessions/index/*'
                 - !GetAtt PasswordResetsTable.Arn
                 - !GetAtt AuditTable.Arn
+                - !GetAtt InvitesTable.Arn
+                - !Sub '${InvitesTable.Arn}/index/*'
+                - !GetAtt EntriesTable.Arn
+                - !Sub '${EntriesTable.Arn}/index/*'
             - Sid: Images
               Effect: Allow
               Action:
@@ -167,6 +173,54 @@ Resources:
           KeyType: HASH
         - AttributeName: at
           KeyType: RANGE
+      Tags:
+        - Key: Project
+          Value: mftournament
+
+  # An invitation to run a club: one use, a fortnight to use it.
+  InvitesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-invites'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAtEpoch
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: mftournament
+
+  # A club's participation in one competition. Keyed by the pair, because a club
+  # enters a competition once; the index answers "which competitions is this
+  # club in", which is the club page's whole question.
+  EntriesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${TablePrefix}-entries'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: tournamentId
+          AttributeType: S
+        - AttributeName: teamId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: tournamentId
+          KeyType: HASH
+        - AttributeName: teamId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: teamId-index
+          KeySchema:
+            - AttributeName: teamId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
       Tags:
         - Key: Project
           Value: mftournament

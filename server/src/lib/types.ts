@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'organizer'
+export type UserRole = 'super_admin' | 'organizer' | 'team_manager'
 
 export type AuthUser = {
   id: string
@@ -11,6 +11,13 @@ export type AuthUser = {
   passwordHash: string
   salt: string
   organizerId?: string
+  /**
+   * The clubs this account runs.
+   *
+   * Kept here as well as on the team so that "my clubs" is one read rather than
+   * a scan; the two are only ever written together, by linkManagerToTeam.
+   */
+  teamIds?: string[]
   createdAt: string
   lastLogin?: string
   isActive: boolean
@@ -42,6 +49,8 @@ export type Team = {
   id: string
   name: string
   organizerId: string
+  /** Accounts allowed to run this club: squad, crest, entering competitions. */
+  managerUserIds?: string[]
   [key: string]: unknown
 }
 

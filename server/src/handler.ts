@@ -7,6 +7,7 @@ import { registerPublicRoutes } from './routes/public.js'
 import { registerAuthRoutes } from './routes/auth.js'
 import { registerAdminRoutes } from './routes/admin.js'
 import { registerUploadRoutes } from './routes/uploads.js'
+import { registerClubRoutes } from './routes/clubs.js'
 import type { RequestContext } from './context.js'
 
 const router = new Router<RequestContext>()
@@ -14,6 +15,7 @@ registerPublicRoutes(router)
 registerAuthRoutes(router)
 registerAdminRoutes(router)
 registerUploadRoutes(router)
+registerClubRoutes(router)
 
 export { router }
 
