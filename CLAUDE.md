@@ -1,0 +1,169 @@
+# MFTournament
+
+A football league and tournament manager: organisers run competitions, clubs are
+run by their own managers, and the public sees tables, fixtures and scorers at
+`myfootballtournament.com`.
+
+This file is what a new contributor — human or agent — should read first. It is
+about how this codebase is built and why, not about what to build next.
+
+## Shape of the thing
+
+Two halves in one repository.
+
+**The site** — React 19 + TypeScript + Vite + Tailwind 4, zustand for admin
+state, react-router 7. Deployed by AWS Amplify, which builds from `main` on
+push. Routes are code-split with `React.lazy` through the `lazyPage()` helper in
+`src/main.tsx`.
+
+**The API** — `server/`, an AWS SAM application: one HTTP API in front of one
+Lambda ("lambdalith"), DynamoDB behind it, S3 for images. `server/src/handler.ts`
+is the only entry point; it builds a tiny router (`lib/router.ts`) and hands the
+request to one of the route modules.
+
+The single most important rule in the repository:
+
+> **The browser gets no AWS credentials, ever.** Every read and write goes
+> through the API, which holds its permissions in the Lambda execution role.
+> Images are uploaded with a presigned POST the API mints; the client never
+> chooses an S3 key. The app once held IAM keys in the bundle and compared
+> password hashes in React — every trace of that is gone and must stay gone.
+
+## Where things live
+
+```
+src/
+  lib/api.ts        the only place that talks to the API; holds the bearer token
+  lib/data.ts       typed service objects per resource (teams, tournaments, clubs…)
+  lib/auth.ts       sign in, password reset, invitations, roles
+  store.ts          zustand store for the organiser's admin screens
+  utils/            pure logic: fixtures, standings, seasons, squads, slugs, formats
+  pages/            one file per screen; Public* and New* are the unauthenticated ones
+  components/icons.tsx   the whole icon set — this project uses no emoji anywhere
+server/src/
+  handler.ts        entry point, CORS, error mapping
+  lib/              env, ddb, router, http, auth, sessions, passwords, mail, audit, cache
+  repos.ts          DynamoDB access for organisers, teams, tournaments
+  repos-clubs.ts    invitations, manager links, competition entries
+  routes/           public.ts, auth.ts, admin.ts, uploads.ts, clubs.ts
+```
+
+## Domain decisions worth knowing before changing anything
+
+**Seasons are not a separate entity.** A competition run again next year is the
+next season of the same competition. Every season carries the same `seriesId`
+and the grouping falls out of that — there is no "competition" record, because
+it would own no field a season does not already have. `src/utils/seasons.ts`
+holds `seriesKey`, `seasonLabel`, `championOf` and friends. Cross-season
+aggregate statistics were considered and deliberately rejected.
+
+**A club is global; its participation is not.** A `Team` is the club — name,
+crest, colours, squad — and belongs to whoever runs it. Its participation in one
+competition is separate: `tournament.teamIds` for who is in, `tournament.squads`
+for which of that club's players are registered. A club absent from `squads` has
+its whole squad registered, which is what every competition assumed before the
+field existed. `src/utils/squads.ts` is the only place that decides this.
+
+**Formats live in `src/utils/formats.ts` and `fixtures.ts`.** One of them is not
+generic: `progressive_elimination` reproduces a real organiser's system — a
+single round robin, then survivors paired by table position each week with the
+leader resting on an odd count and the bottom pair playing to go out. When
+touching playoff config, carry `format.customPlayoffConfig.preset` through every
+rebuild of that object, or editing a round silently reverts the format.
+
+**Roles.** `super_admin`, `organizer`, `team_manager`. Login is an email address
+and nothing else — usernames survive as labels on old accounts and open no door.
+There should always be two super admins: the role has nobody above it to reset
+its password.
+
+## Authorization
+
+Three questions, three helpers in `server/src/lib/auth.ts`. Use them; do not
+hand-roll the comparison.
+
+- `assertSuperAdmin(user)` — accounts, organisers, the audit log.
+- `assertCanAccessOrganizer(user, organizerId)` — anything a competition owns:
+  fixtures, results, tournament settings, deleting a club.
+- `assertManagesTeam(user, team)` — anything a club owns: its name, crest,
+  colours, squad, images, and which of its players are registered where.
+
+`assertCanAccessOrganizer` rejects a missing id on purpose. A team manager has no
+`organizerId`, so `user.organizerId !== thing.organizerId` written by hand is
+`undefined !== undefined`, which is `false` — an inline comparison lets them
+through. That bug has been written here twice.
+
+Two things are deliberately closed to a club's own manager: deleting the club
+(it may sit in someone else's league) and writing `managerUserIds` (who runs a
+club is decided by invitation, and a manager who could write it could hand the
+club away or remove the others). Invitations are the organiser's to issue.
+
+**An entry is written by both sides.** A club's application to a competition is
+one item that the club writes when it applies and the organiser writes when it
+decides, and `putEntry` replaces the whole item. It therefore takes the status
+the caller read and makes the write conditional on it: without that, a manager
+pressing "apply again" as the organiser pressed "accept" put the row back to
+`pending` while the club was already in `teamIds`, and the acceptance was gone.
+A refused club may apply again — the decision it replaces is carried onto the new
+row as `previousNote` and `previousDecidedAt` — but a pending application is
+returned rather than rewritten, so every repeat costs the organiser one
+deliberate answer.
+
+Writes that reach the database are recorded by `lib/audit.ts`. A failed audit
+write never fails the request that caused it.
+
+## Conventions
+
+- Comments explain **why**, in prose, and are worth the space when the reason is
+  not obvious from the code. Do not narrate what the next line does.
+- British-flavoured English in user-facing copy. Sentences, not labels shouted in
+  caps.
+- **No emoji anywhere** — in the UI, in copy, or in commits. `components/icons.tsx`
+  is the icon set; add to it rather than reaching for a character.
+- `PATCH` bodies are picked from a named list of fields, never passed through.
+  The records are schemaless, so anything not named gets persisted.
+- Player edits touch one player, not the whole squad — two edits made seconds
+  apart used to overwrite each other.
+- Anything derived from match results treats a score as played only when it is
+  `typeof === 'number'`. `!== undefined` counts an unplayed fixture and produces
+  `NaN` in the table.
+
+## Running and shipping
+
+`./deploy.sh "what changed"` is the only way this goes out. It type-checks the
+site, builds it, refuses to ship a bundle containing anything that looks like a
+credential, runs the API tests, builds the API, **loads the built Lambda bundle
+to prove it starts**, deploys it, then commits and pushes so Amplify builds.
+
+`SKIP_API=1` and `SKIP_PUSH=1` skip parts of it when you know why.
+
+The smoke step exists because of an outage: a CommonJS dependency called
+`require` inside an ES-module bundle, the function threw the instant Lambda
+loaded it, and every route — public pages and login alike — answered with API
+Gateway's own "Internal Server Error". Type-checking and unit tests both passed,
+because neither of them ever imports the bundle. `server/template.yaml` now gives
+the bundle a real `require` through an esbuild banner, and `scripts/smoke-init.mjs`
+refuses to let a bundle that will not load reach production.
+
+Useful scripts, run with your own AWS credentials:
+
+- `server/scripts/list-users.mjs` — every account, its role and its state.
+- `server/scripts/set-password.mjs` — set a password directly and kill sessions.
+
+## Traps
+
+- **Adding an import** to a file whose first imports are a multi-line `{ … }`
+  block: insert after the closing `} from '…'`, not after the last line starting
+  with `import`. Getting this wrong produces a syntax error in the middle of the
+  import list, and it has happened repeatedly.
+- **A new required environment variable** must be added to `server/tests/setup-env.ts`
+  as well as `template.yaml`. `lib/env.ts` reads its configuration at import time
+  and throws when something is missing, so a forgotten one fails every test — and,
+  if it reaches production, every request.
+- **Content-hashed chunks 404 after a deploy** for anyone holding the old
+  `index.html`. `lazyPage()` reloads once, guarded by `sessionStorage`.
+- **CORS is answered in application code**, not in the template, so a new HTTP
+  method has to be added to `access-control-allow-methods` in `lib/http.ts` or the
+  browser's preflight kills the feature while the API works perfectly.
+- **Public routes project their output.** `toPublicTeam` in `routes/public.ts`
+  drops `managerUserIds` and players marked `isPublic: false`. A new public route
+  that returns a stored record whole undoes that.

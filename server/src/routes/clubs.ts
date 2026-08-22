@@ -6,7 +6,7 @@ import { ddb, PutCommand } from '../lib/ddb.js'
 import { SITE_URL, TABLES } from '../lib/env.js'
 import { record } from '../lib/audit.js'
 import { sendTeamInvite } from '../lib/mail.js'
-import { teams, tournaments, organizers, isPublic } from '../repos.js'
+import { teams, tournaments, organizers, isPublic, seasonStatus } from '../repos.js'
 import {
   consumeInvite,
   createInvite,
@@ -17,6 +17,7 @@ import {
   linkManagerToTeam,
   peekInvite,
   putEntry,
+  type Entry,
 } from '../repos-clubs.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import type { Router } from '../lib/router.js'
@@ -226,38 +227,65 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const tournament = await tournaments.getOrThrow(tournamentId)
     if (!isPublic(tournament)) throw forbidden('That competition is not open for entries')
 
+    // A season every match of which has a score is over, and joining it would
+    // change a finished table. The club page never offered these, but the route
+    // has to say so itself: it is one request, and there are years of them.
+    if (seasonStatus(tournament) === 'finished') {
+      throw badRequest('That competition has finished')
+    }
+
     if ((tournament.teamIds ?? []).includes(teamId)) {
       throw badRequest('This club is already in that competition')
     }
 
     const existing = await getEntry(tournamentId, teamId)
+    // A pending application is returned rather than rewritten. That is also
+    // what stops a club badgering an organizer: asking again is only possible
+    // once the organizer has answered, so every repeat costs them one
+    // deliberate decision rather than a stream of identical rows.
     if (existing && existing.status === 'pending') return existing
-    // A turned-down application is a decision, with a note attached. Writing a
-    // fresh 'pending' over it would erase both, and nothing would stop a club
-    // from doing that on a loop until the organizer gave in.
-    if (existing && existing.status === 'declined') {
-      throw badRequest(
-        existing.note
-          ? `The organiser has already turned this application down: ${existing.note}`
-          : 'The organiser has already turned this application down. Ask them directly.',
-      )
-    }
 
-    const entry = await putEntry({
-      tournamentId,
-      teamId,
-      organizerId: tournament.organizerId,
-      status: 'pending',
-      requestedBy: user.id,
-      requestedByRole: user.role,
-      createdAt: new Date().toISOString(),
-    })
+    // A club turned down once may ask again — circumstances change, and the
+    // alternative was a dead end the manager could do nothing about. The
+    // decision this replaces is carried onto the new row, so the organizer sees
+    // it is a repeat and reads back what they said the first time rather than a
+    // request that looks new.
+    const replaced = existing && existing.status !== 'pending' ? existing : undefined
+
+    let entry: Entry
+    try {
+      entry = await putEntry(
+        {
+          tournamentId,
+          teamId,
+          organizerId: tournament.organizerId,
+          status: 'pending',
+          requestedBy: user.id,
+          requestedByRole: user.role,
+          createdAt: new Date().toISOString(),
+          previousNote: replaced?.note || undefined,
+          previousDecidedAt: replaced?.decidedAt || undefined,
+        },
+        existing ? existing.status : null,
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      // The organizer decided between the read and the write. Their decision is
+      // the current state of the application and the club should see it, not a
+      // 'pending' row written on top of it.
+      const current = await getEntry(tournamentId, teamId)
+      if (current) return current
+      throw error
+    }
 
     await record(user, {
       action: 'entry.apply',
       entity: 'tournament',
       entityId: tournamentId,
-      summary: `${team.name} applied to join ${tournament.name}`,
+      summary:
+        replaced?.status === 'declined'
+          ? `${team.name} applied to join ${tournament.name} again, after being turned down`
+          : `${team.name} applied to join ${tournament.name}`,
       organizerId: tournament.organizerId,
     })
 

@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   clubService,
+  organizerService,
   playerService,
   teamService,
   tournamentService,
   uploadImage,
 } from '../lib/data'
 import type { Entry, TournamentSummary } from '../lib/data'
-import type { Player, Team, Tournament, Match } from '../types'
+import type { Organizer, Player, Team, Tournament, Match } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
@@ -22,6 +23,8 @@ import {
   IconLock,
   IconPencil,
   IconPlus,
+  IconRepeat,
+  IconSearch,
   IconShield,
   IconTrash,
   IconTrophy,
@@ -46,19 +49,26 @@ export default function MyClubPage() {
   const [entries, setEntries] = useState<Entry[]>([])
   const [teamNames, setTeamNames] = useState<Record<string, string>>({})
   const [openCompetitions, setOpenCompetitions] = useState<TournamentSummary[]>([])
+  const [organizerNames, setOrganizerNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
-  const [applying, setApplying] = useState<string | null>(null)
 
   const load = async () => {
-    const [overview, summaries] = await Promise.all([
+    const [overview, summaries, organizers] = await Promise.all([
       clubService.overview(),
       tournamentService.getAllSummaries().catch(() => [] as TournamentSummary[]),
+      // Names only, and only to label the list of competitions to join. A club
+      // manager is not a super admin, so this is the public directory, not
+      // organizerService.getAll(), which would send them to an /admin route.
+      organizerService.getAllPublic().catch(() => [] as Organizer[]),
     ])
     setTeams(overview.teams)
     setTournaments(overview.tournaments)
     setEntries(overview.entries)
     setTeamNames(overview.teamNames ?? {})
     setOpenCompetitions(summaries.filter((summary) => summary.status !== 'finished'))
+    setOrganizerNames(
+      Object.fromEntries(organizers.map((organizer) => [organizer.id, organizer.name])),
+    )
   }
 
   useEffect(() => {
@@ -130,18 +140,14 @@ export default function MyClubPage() {
           entries={entries.filter((entry) => entry.teamId === team.id)}
           teamNames={teamNames}
           openCompetitions={openCompetitions}
-          applying={applying === team.id}
+          organizerNames={organizerNames}
           onReload={load}
+          // Errors are deliberately left to the caller: an application is made
+          // from a row in a list, and that row is where the reason it failed
+          // belongs — not in an alert that says nothing about which one.
           onApply={async (tournamentId) => {
-            setApplying(team.id)
-            try {
-              await clubService.apply(team.id, tournamentId)
-              await load()
-            } catch (error) {
-              alert(messageOf(error, 'That application could not be sent.'))
-            } finally {
-              setApplying(null)
-            }
+            await clubService.apply(team.id, tournamentId)
+            await load()
           }}
         />
       ))}
@@ -155,7 +161,7 @@ function ClubCard({
   entries,
   teamNames,
   openCompetitions,
-  applying,
+  organizerNames,
   onApply,
   onReload,
 }: {
@@ -164,8 +170,8 @@ function ClubCard({
   entries: Entry[]
   teamNames: Record<string, string>
   openCompetitions: TournamentSummary[]
-  applying: boolean
-  onApply: (tournamentId: string) => void
+  organizerNames: Record<string, string>
+  onApply: (tournamentId: string) => Promise<void>
   onReload: () => Promise<void>
 }) {
   /** The competitions this club is actually playing in. */
@@ -184,9 +190,15 @@ function ClubCard({
   const pending = entries.filter((entry) => entry.status === 'pending')
   const declined = entries.filter((entry) => entry.status === 'declined')
 
+  // What is off the list: the competitions the club is in, and the applications
+  // it is still waiting on or has been refused — those two have a row of their
+  // own above. An accepted entry whose competition no longer lists the club (the
+  // organiser removed it afterwards) deliberately stays available, or the club
+  // would have no way back in.
   const enteredIds = new Set([
     ...playing.map((tournament) => tournament.id),
-    ...entries.map((entry) => entry.tournamentId),
+    ...pending.map((entry) => entry.tournamentId),
+    ...declined.map((entry) => entry.tournamentId),
   ])
   const canApplyTo = openCompetitions.filter((summary) => !enteredIds.has(summary.id))
 
@@ -285,18 +297,12 @@ function ClubCard({
           ))}
 
           {declined.map((entry) => (
-            <div
+            <DeclinedRow
               key={entry.tournamentId}
-              className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
-            >
-              <span className="truncate">
-                {nameOf(tournaments, openCompetitions, entry.tournamentId)}
-                {entry.note && <span className="opacity-60"> — {entry.note}</span>}
-              </span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-300 shrink-0">
-                not this time
-              </span>
-            </div>
+              name={nameOf(tournaments, openCompetitions, entry.tournamentId)}
+              note={entry.note}
+              onApplyAgain={() => onApply(entry.tournamentId)}
+            />
           ))}
 
           {playing.length === 0 && entries.length === 0 && (
@@ -305,30 +311,7 @@ function ClubCard({
         </div>
 
         {canApplyTo.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-white/10">
-            <label className="text-sm">
-              <span className="opacity-70 inline-flex items-center gap-1.5">
-                <IconPlus size={14} /> Apply to a competition
-              </span>
-              <select
-                value=""
-                disabled={applying}
-                onChange={(event) => event.target.value && onApply(event.target.value)}
-                className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
-              >
-                <option value="">Choose one…</option>
-                {canApplyTo.map((summary) => (
-                  <option key={summary.id} value={summary.id}>
-                    {summary.seriesName || summary.name}
-                    {summary.seasonLabel ? ` ${summary.seasonLabel}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="text-xs text-gray-400 mt-2">
-              The organiser has to accept the application before the fixtures change.
-            </p>
-          </div>
+          <JoinCompetitions competitions={canApplyTo} organizerNames={organizerNames} onApply={onApply} />
         )}
       </div>
 
@@ -341,6 +324,222 @@ function ClubCard({
       )}
     </section>
   )
+}
+
+/* ================================================================== *
+ * Joining competitions
+ * ================================================================== */
+
+/**
+ * An application the organiser turned down.
+ *
+ * The club can ask again — circumstances change, and a refusal in March says
+ * nothing about September. The organiser sees that it is a repeat and reads
+ * back their own reason, and because a pending application is never rewritten,
+ * a second refusal is needed before a third attempt is possible.
+ */
+function DeclinedRow({
+  name,
+  note,
+  onApplyAgain,
+}: {
+  name: string
+  note?: string
+  onApplyAgain: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const again = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await onApplyAgain()
+    } catch (caught) {
+      setError(messageOf(caught, 'That application could not be sent.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="px-3 py-2 rounded-lg bg-white/[0.03]">
+      <div className="flex items-center justify-between gap-3">
+        <span className="truncate">
+          {name}
+          {note && <span className="opacity-60"> — {note}</span>}
+        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-300">
+            not this time
+          </span>
+          <button
+            onClick={again}
+            disabled={busy}
+            className="text-xs px-2 py-1 rounded-lg glass hover:bg-white/10 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
+          >
+            <IconRepeat size={13} /> {busy ? 'Asking…' : 'Ask again'}
+          </button>
+        </div>
+      </div>
+      {error && <p className="text-xs text-red-300 mt-1">{error}</p>}
+    </div>
+  )
+}
+
+/**
+ * The competitions this club could enter.
+ *
+ * A club plays in more than one thing at once — a league on Sunday, a cup in
+ * midweek — so this is a list to work down rather than a single choice: every
+ * competition it is not already in, searchable, grouped under the organiser who
+ * runs it, each with its own button. The dropdown this replaced showed one
+ * unsorted list of every season in the system, which was unusable as soon as
+ * there were more than a handful.
+ */
+function JoinCompetitions({
+  competitions,
+  organizerNames,
+  onApply,
+}: {
+  competitions: TournamentSummary[]
+  organizerNames: Record<string, string>
+  onApply: (tournamentId: string) => Promise<void>
+}) {
+  const [query, setQuery] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [failed, setFailed] = useState<{ id: string; message: string } | null>(null)
+
+  const groups = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    const matching = needle
+      ? competitions.filter((summary) =>
+          searchTextOf(summary, organizerNames).includes(needle),
+        )
+      : competitions
+
+    const byOrganizer = new Map<string, TournamentSummary[]>()
+    for (const summary of matching) {
+      const list = byOrganizer.get(summary.organizerId)
+      if (list) list.push(summary)
+      else byOrganizer.set(summary.organizerId, [summary])
+    }
+
+    return [...byOrganizer.entries()]
+      .map(([organizerId, list]) => ({
+        organizerId,
+        // An organiser whose record is missing still has competitions worth
+        // showing; they just have no name to group them under.
+        organizerName: organizerNames[organizerId] ?? 'Other competitions',
+        list: [...list].sort((a, b) => titleOf(a).localeCompare(titleOf(b))),
+      }))
+      .sort((a, b) => a.organizerName.localeCompare(b.organizerName))
+  }, [competitions, organizerNames, query])
+
+  const apply = async (tournamentId: string) => {
+    setBusy(tournamentId)
+    setFailed(null)
+    try {
+      await onApply(tournamentId)
+    } catch (caught) {
+      setFailed({ id: tournamentId, message: messageOf(caught, 'That application could not be sent.') })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <span className="text-sm opacity-70 inline-flex items-center gap-1.5">
+          <IconPlus size={14} /> Join a competition
+        </span>
+        <span className="text-xs text-gray-400">
+          {competitions.length} open to this club
+        </span>
+      </div>
+
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+          <IconSearch size={14} />
+        </span>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by competition, season or organiser"
+          className="w-full pl-9 pr-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none text-sm"
+        />
+      </div>
+
+      {groups.length === 0 ? (
+        <p className="text-sm opacity-60 mt-3 px-1">Nothing matches that.</p>
+      ) : (
+        <div className="mt-3 max-h-80 overflow-y-auto space-y-4 pr-1">
+          {groups.map((group) => (
+            <div key={group.organizerId}>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 px-1 mb-1">
+                {group.organizerName}
+              </h3>
+              <ul className="space-y-1">
+                {group.list.map((summary) => (
+                  <li key={summary.id}>
+                    <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm">
+                          {summary.seriesName || summary.name}
+                          {summary.seasonLabel && (
+                            <span className="opacity-60"> {summary.seasonLabel}</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {summary.teamCount} {summary.teamCount === 1 ? 'club' : 'clubs'}
+                          {summary.status === 'running' && ' · under way'}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => apply(summary.id)}
+                        disabled={busy !== null}
+                        className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition-colors"
+                      >
+                        {busy === summary.id ? 'Applying…' : 'Apply'}
+                      </button>
+                    </div>
+                    {failed?.id === summary.id && (
+                      <p className="text-xs text-red-300 mt-1 px-3">{failed.message}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400 mt-3">
+        Apply to as many as you like. The organiser has to accept each one before the fixtures
+        change.
+      </p>
+    </div>
+  )
+}
+
+function titleOf(summary: TournamentSummary): string {
+  return `${summary.seriesName || summary.name} ${summary.seasonLabel ?? ''}`.trim()
+}
+
+function searchTextOf(
+  summary: TournamentSummary,
+  organizerNames: Record<string, string>,
+): string {
+  return [
+    summary.seriesName,
+    summary.name,
+    summary.seasonLabel,
+    organizerNames[summary.organizerId],
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
 }
 
 /* ================================================================== *

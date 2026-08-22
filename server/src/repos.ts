@@ -237,7 +237,7 @@ const asString = (value: unknown): string | undefined =>
   typeof value === 'string' && value ? value : undefined
 
 /** Played, in the one sense the whole app uses: a score has been entered. */
-function seasonStatus(tournament: Tournament): 'upcoming' | 'running' | 'finished' {
+export function seasonStatus(tournament: Tournament): 'upcoming' | 'running' | 'finished' {
   const matches = Array.isArray(tournament.matches) ? tournament.matches : []
   const scored = matches.filter((match) => {
     const m = match as { homeGoals?: unknown; awayGoals?: unknown }

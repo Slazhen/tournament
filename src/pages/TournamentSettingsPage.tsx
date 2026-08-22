@@ -478,6 +478,15 @@ export default function TournamentSettingsPage() {
                     <span className="opacity-50 text-xs ml-2">
                       {new Date(entry.createdAt).toLocaleDateString()}
                     </span>
+                    {/* A club may ask again after a refusal. Saying so, with the
+                        reason given last time, is what keeps that from reading
+                        as a first request the organiser has never seen. */}
+                    {entry.previousDecidedAt && (
+                      <span className="block text-xs text-amber-300/80 mt-0.5">
+                        Asked before and was turned down
+                        {entry.previousNote ? ` — ${entry.previousNote}` : ''}
+                      </span>
+                    )}
                   </span>
                   <span className="flex gap-2">
                     <button

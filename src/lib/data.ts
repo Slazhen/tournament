@@ -22,6 +22,17 @@ export const organizerService = {
       : api.get<Organizer[]>('/public/organizers')
   },
 
+  /**
+   * The public directory: names and crests, no contact details.
+   *
+   * Deliberately not `getAll`, which sends a signed-in user to /admin/organizers
+   * — a super-admin route. A club manager needs organiser names to make sense of
+   * a list of competitions, and this is the read they are entitled to.
+   */
+  async getAllPublic(): Promise<Organizer[]> {
+    return api.get<Organizer[]>('/public/organizers')
+  },
+
   async create(name: string, email: string): Promise<Organizer | null> {
     return api.post<Organizer>('/admin/organizers', { name, email })
   },
@@ -313,6 +324,9 @@ export type Entry = {
   createdAt: string
   decidedAt?: string
   note?: string
+  /** The decision this application replaced, when a club asked again. */
+  previousNote?: string
+  previousDecidedAt?: string
 }
 
 export const clubService = {

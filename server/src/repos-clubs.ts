@@ -152,10 +152,40 @@ export type Entry = {
   decidedAt?: string
   /** Why an application was turned down, when the organizer says. */
   note?: string
+  /**
+   * The decision this application replaced, when a club asks again after having
+   * been turned down. One row holds one status, so without these the organizer
+   * would see a fresh request with no sign they had already answered it, and
+   * the reason they gave would be gone.
+   */
+  previousNote?: string
+  previousDecidedAt?: string
 }
 
-export async function putEntry(entry: Entry): Promise<Entry> {
-  await ddb.send(new PutCommand({ TableName: TABLES.ENTRIES, Item: entry }))
+/**
+ * Writes an entry, optionally only while it is still in the state the caller
+ * read.
+ *
+ * This is a whole-item Put, and both sides can write the same row: the club
+ * applies, the organizer decides. Passing `expected` makes the write fail
+ * rather than land on top of a decision made in between — a manager pressing
+ * "apply again" at the moment the organizer pressed "accept" would otherwise
+ * put the row back to 'pending' while the club is already in the competition.
+ * `null` means the row must not exist at all.
+ */
+export async function putEntry(entry: Entry, expected?: EntryStatus | null): Promise<Entry> {
+  const condition =
+    expected === undefined
+      ? {}
+      : expected === null
+        ? { ConditionExpression: 'attribute_not_exists(tournamentId)' }
+        : {
+            ConditionExpression: '#status = :expected',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: { ':expected': expected },
+          }
+
+  await ddb.send(new PutCommand({ TableName: TABLES.ENTRIES, Item: entry, ...condition }))
   return entry
 }
 
