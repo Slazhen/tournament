@@ -1,12 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
 
 export default function AdminPage() {
   const { user, isSuperAdmin, isOrganizer, logout } = useAuth()
-  const { getOrganizerTeams, getOrganizerTournaments, getAllTeams, getAllTournaments, organizers } = useAppStore()
+  const { getOrganizerTeams, getOrganizerTournaments, getAllTeams, getAllTournaments, organizers, loadTeams, loadTournaments, currentOrganizerId } = useAppStore()
   const [isInitialized] = useState(true)
+
+  // The super admin has no organizer to scope to, so nothing has loaded these
+  // on their behalf and the counts below would all read zero.
+  useEffect(() => {
+    if (isSuperAdmin && !currentOrganizerId) {
+      loadTeams()
+      loadTournaments()
+    }
+  }, [isSuperAdmin, currentOrganizerId, loadTeams, loadTournaments])
 
 
   // Show all data for super admin, organizer-specific data for organizers

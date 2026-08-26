@@ -5,7 +5,7 @@ import {
   DeleteCommand,
   GetCommand,
   PutCommand,
-  QueryCommand,
+  queryAll,
   scanAll,
   UpdateCommand,
 } from './lib/ddb.js'
@@ -71,15 +71,12 @@ export const teams = {
       // organizerId-index keeps this a Query instead of a full-table Scan, which
       // is the difference between paying for one organizer's teams and paying
       // for every team in the system on each request.
-      const result = await ddb.send(
-        new QueryCommand({
-          TableName: TABLES.TEAMS,
-          IndexName: 'organizerId-index',
-          KeyConditionExpression: 'organizerId = :organizerId',
-          ExpressionAttributeValues: { ':organizerId': organizerId },
-        }),
-      )
-      return (result.Items ?? []) as Team[]
+      return queryAll<Team>({
+        TableName: TABLES.TEAMS,
+        IndexName: 'organizerId-index',
+        KeyConditionExpression: 'organizerId = :organizerId',
+        ExpressionAttributeValues: { ':organizerId': organizerId },
+      })
     })
   },
 
@@ -284,15 +281,12 @@ export const tournaments = {
 
   async listByOrganizer(organizerId: string): Promise<Tournament[]> {
     return cached(`tournaments:organizer:${organizerId}`, defaultTtl, async () => {
-      const result = await ddb.send(
-        new QueryCommand({
-          TableName: TABLES.TOURNAMENTS,
-          IndexName: 'organizerId-index',
-          KeyConditionExpression: 'organizerId = :organizerId',
-          ExpressionAttributeValues: { ':organizerId': organizerId },
-        }),
-      )
-      return (result.Items ?? []) as Tournament[]
+      return queryAll<Tournament>({
+        TableName: TABLES.TOURNAMENTS,
+        IndexName: 'organizerId-index',
+        KeyConditionExpression: 'organizerId = :organizerId',
+        ExpressionAttributeValues: { ':organizerId': organizerId },
+      })
     })
   },
 

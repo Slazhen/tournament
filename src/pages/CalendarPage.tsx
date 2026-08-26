@@ -5,14 +5,15 @@ import {
 } from '../components/icons'
 
 export default function CalendarPage() {
-  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, superAdmin } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
   const teams = getOrganizerTeams()
   
-  // Redirect if no organizer is selected
-  if (!currentOrganizer) {
+  // Redirect if no organizer is selected. The super admin has none: their
+  // calendar is every organizer's matches together.
+  if (!currentOrganizer && !superAdmin) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -47,7 +48,7 @@ export default function CalendarPage() {
     <div className="min-h-[80vh] flex flex-col items-center gap-8">
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Match Calendar</h1>
-        <p className="opacity-80">Organizer: {currentOrganizer.name}</p>
+        <p className="opacity-80">{currentOrganizer ? `Organizer: ${currentOrganizer.name}` : 'Every organizer'}</p>
       </div>
       
       <section className="glass rounded-xl p-6 w-full max-w-4xl">

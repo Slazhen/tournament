@@ -14,7 +14,16 @@ type AppStore = {
   // Organizers
   organizers: Organizer[]
   currentOrganizerId: string | null
-  
+  /**
+   * The super admin administers every organizer at once rather than one of
+   * them, so their admin screens are not scoped: `currentOrganizerId` stays
+   * null and the listings return everything. Without this the store could not
+   * tell "signed in as the super admin" from "signed out on a public page",
+   * which is why the tournaments screen used to greet the super admin with
+   * "No organizer selected".
+   */
+  superAdmin: boolean
+
   // Teams and Tournaments (now isolated per organizer)
   teams: Team[]
   tournaments: Tournament[]
@@ -32,10 +41,18 @@ type AppStore = {
   // Actions
   createOrganizer: (name: string, email: string) => Promise<void>
   setCurrentOrganizer: (organizerId: string) => void
+  /** Points the admin screens at whatever the signed-in account administers. */
+  applyScope: (user: { role?: string; organizerId?: string } | null) => void
   updateOrganizer: (organizerId: string, updates: Partial<Organizer>) => Promise<void>
-  deleteOrganizer: (organizerId: string) => Promise<void>
-  
-  createTeam: (name: string, colors: string[], logo?: string) => Promise<Team | null>
+  deleteOrganizer: (organizerId: string, teamsTo?: string) => Promise<void>
+
+  createTeam: (
+    name: string,
+    colors: string[],
+    logo?: string,
+    /** Which organizer owns the new club. Only the super admin has to say. */
+    organizerId?: string,
+  ) => Promise<Team | null>
   updateTeam: (teamId: string, updates: Partial<Team>) => Promise<void>
   deleteTeam: (teamId: string) => Promise<void>
 
@@ -61,6 +78,8 @@ type AppStore = {
   
   // Getters (filtered by current organizer)
   getCurrentOrganizer: () => Organizer | null
+  /** The organizer a tournament or club belongs to, whoever is looking at it. */
+  getOrganizerById: (organizerId?: string) => Organizer | null
   getOrganizerTeams: () => Team[]
   getOrganizerTournaments: () => Tournament[]
   getAllTournaments: () => Tournament[]
@@ -81,6 +100,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Initial state
   organizers: [],
   currentOrganizerId: null,
+  superAdmin: false,
   teams: [],
   tournaments: [],
   settings: {
@@ -112,23 +132,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
-  deleteOrganizer: async (organizerId: string) => {
+  /**
+   * `teamsTo` is the organizer this one's clubs move to; the server requires it
+   * whenever there are any.
+   *
+   * The failure is rethrown rather than logged and swallowed. Swallowing it is
+   * how a delete that the server refused could still look like it had worked:
+   * the row vanished from the list on screen and came back on the next reload.
+   */
+  deleteOrganizer: async (organizerId: string, teamsTo?: string) => {
     set(state => ({ loading: { ...state.loading, organizers: true } }))
-    
+
     try {
-      await organizerService.delete(organizerId)
+      await organizerService.delete(organizerId, teamsTo)
       set(state => ({
         organizers: state.organizers.filter(org => org.id !== organizerId),
+        // The competitions went with it, and the clubs changed hands.
+        tournaments: state.tournaments.filter(t => t.organizerId !== organizerId),
+        teams: state.teams.map(team =>
+          team.organizerId === organizerId && teamsTo
+            ? { ...team, organizerId: teamsTo }
+            : team,
+        ),
         loading: { ...state.loading, organizers: false }
       }))
-      
+
       // If this was the current organizer, clear it
       if (get().currentOrganizerId === organizerId) {
         get().setCurrentOrganizer('')
       }
     } catch (error) {
-      console.error('Error deleting organizer:', error)
       set(state => ({ loading: { ...state.loading, organizers: false } }))
+      throw error
     }
   },
 
@@ -153,6 +188,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+  /**
+   * Called once the session is known, and again on every sign in and sign out.
+   *
+   * An organizer's screens are scoped to their own id. The super admin's are
+   * not scoped at all: they administer every organizer, so the listings load
+   * whole and each screen works out which organizer the thing in front of it
+   * belongs to.
+   */
+  applyScope: (user) => {
+    const superAdmin = user?.role === 'super_admin'
+    // Signing out, or in as somebody else, must not leave the previous
+    // account's clubs and competitions in the store for the next screen to
+    // render.
+    set({ superAdmin, teams: [], tournaments: [] })
+
+    if (user?.role === 'organizer' && user.organizerId) {
+      get().setCurrentOrganizer(user.organizerId)
+      return
+    }
+
+    get().setCurrentOrganizer('')
+    if (superAdmin) {
+      // Unconditionally, unlike an organiser's load: the super admin's screens
+      // are reached from anywhere, and the alternative is an effect on every
+      // page that reads a club or a competition.
+      get().loadTeams()
+      get().loadTournaments()
+    }
+  },
+
   updateOrganizer: async (organizerId: string, updates: Partial<Organizer>) => {
     try {
       const success = await organizerService.update(organizerId, updates)
@@ -169,18 +234,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   // Team actions
-  createTeam: async (name: string, colors: string[], logo?: string) => {
-    const currentOrganizerId = get().currentOrganizerId
-    if (!currentOrganizerId) return null
+  // `organizerId` is for the super admin, who administers no single organizer
+  // and so has to say which one the club belongs to. An organiser's own scope
+  // wins over anything passed in; the API would refuse a foreign id anyway.
+  createTeam: async (name: string, colors: string[], logo?: string, organizerId?: string) => {
+    const owner = get().currentOrganizerId ?? (get().superAdmin ? organizerId : undefined)
+    if (!owner) return null
 
     set(state => ({ loading: { ...state.loading, teams: true } }))
-    
+
     try {
       const team = await teamService.create({
         name,
         colors,
         logo: logo || '',
-        organizerId: currentOrganizerId,
+        organizerId: owner,
         players: [],
         socialMedia: {},
       })
@@ -318,14 +386,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     schedule?: ScheduleOptions,
     extra?: Partial<Tournament>,
   ) => {
-    const currentOrganizerId = get().currentOrganizerId
-    if (!currentOrganizerId) return null
+    // The super admin has no scope of their own, so the screen tells us which
+    // organizer is running this one through `extra.organizerId`.
+    const owner =
+      get().currentOrganizerId ?? (get().superAdmin ? extra?.organizerId : undefined)
+    if (!owner) return null
 
     console.log('Store: Creating tournament via AWS:', {
       name,
       teamIds,
       format,
-      organizerId: currentOrganizerId
+      organizerId: owner
     })
 
     set(state => ({ loading: { ...state.loading, tournaments: true } }))
@@ -338,7 +409,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         name,
         format: format || { rounds: 1, mode: 'league' },
         teamIds,
-        organizerId: currentOrganizerId,
+        organizerId: owner,
         matches: [],
         visibility: 'private', // Default to private, organizer can make it public later
       })
@@ -534,13 +605,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return organizers.find(org => org.id === currentOrganizerId) || null
   },
 
+  getOrganizerById: (organizerId?: string) => {
+    if (!organizerId) return null
+    return get().organizers.find(org => org.id === organizerId) || null
+  },
+
+  // Scoped to the organizer being administered — everything, for a super admin,
+  // who administers all of them.
   getOrganizerTeams: () => {
-    const { teams, currentOrganizerId } = get()
+    const { teams, currentOrganizerId, superAdmin } = get()
+    if (!currentOrganizerId) return superAdmin ? teams : []
     return teams.filter(team => team.organizerId === currentOrganizerId)
   },
 
   getOrganizerTournaments: () => {
-    const { tournaments, currentOrganizerId } = get()
+    const { tournaments, currentOrganizerId, superAdmin } = get()
+    if (!currentOrganizerId) return superAdmin ? tournaments : []
     return tournaments.filter(tournament => tournament.organizerId === currentOrganizerId)
   },
 
@@ -565,9 +645,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         loading: { ...get().loading, organizers: false }
       })
       
-      // Restore current organizer from localStorage
+      // Restore current organizer from localStorage. Never for the super admin:
+      // an id left over from an earlier session would quietly narrow their
+      // screens to one organizer's data with nothing on the page saying so.
       try {
-        const savedOrganizerId = localStorage.getItem('currentOrganizerId')
+        const savedOrganizerId = get().superAdmin ? null : localStorage.getItem('currentOrganizerId')
         if (savedOrganizerId && organizers.find(org => org.id === savedOrganizerId)) {
           console.log('Store: Restoring current organizer from localStorage:', savedOrganizerId)
           set({ currentOrganizerId: savedOrganizerId })
@@ -596,7 +678,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
     
     // Already loaded for a public page in this session: nothing to re-fetch.
-    if (!currentOrganizerId && state.teams.length > 0) {
+    // Not for the super admin, who never has an organizer id and would
+    // otherwise be stuck with whatever the first load returned.
+    if (!currentOrganizerId && !state.superAdmin && state.teams.length > 0) {
       return
     }
     
@@ -640,7 +724,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
     
     // Already loaded for a public page in this session: nothing to re-fetch.
-    if (!currentOrganizerId && state.tournaments.length > 0) {
+    // Not for the super admin, who never has an organizer id and would
+    // otherwise be stuck with whatever the first load returned.
+    if (!currentOrganizerId && !state.superAdmin && state.tournaments.length > 0) {
       return
     }
     

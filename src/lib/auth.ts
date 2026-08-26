@@ -115,10 +115,6 @@ export async function createSuperAdminAccount(
   })
 }
 
-export async function deleteOrganizerAccount(organizerEmail: string): Promise<void> {
-  await api.delete(`/admin/accounts/${encodeURIComponent(organizerEmail)}`)
-}
-
 export async function resetOrganizerPassword(
   organizerEmail: string,
   newPassword: string,

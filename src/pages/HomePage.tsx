@@ -70,34 +70,43 @@ export default function HomePage() {
     }
   }, [])
 
-  /** Organisers with their public tournaments underneath, filtered by the search box. */
+  /** Organisers with their public tournaments underneath. */
+  const grouped = useMemo(
+    () =>
+      organizers
+        .map((organizer) => ({
+          organizer,
+          tournaments: tournaments
+            .filter((tournament) => tournament.organizerId === organizer.id)
+            .filter((tournament) => tournament.visibility !== 'private')
+            .sort(
+              (a, b) =>
+                new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime(),
+            ),
+        }))
+        .filter((entry) => entry.tournaments.length > 0),
+    [organizers, tournaments],
+  )
+
+  /** The same list, narrowed by the search box. */
   const directory = useMemo(() => {
     const needle = query.trim().toLowerCase()
+    if (!needle) return grouped
 
-    return organizers
-      .map((organizer) => ({
-        organizer,
-        tournaments: tournaments
-          .filter((tournament) => tournament.organizerId === organizer.id)
-          .filter((tournament) => tournament.visibility !== 'private')
-          .sort(
-            (a, b) =>
-              new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime(),
-          ),
-      }))
-      .filter((entry) => entry.tournaments.length > 0)
-      .filter((entry) => {
-        if (!needle) return true
-        return (
-          Boolean(entry.organizer.name?.toLowerCase().includes(needle)) ||
-          entry.tournaments.some((tournament) => tournament.name?.toLowerCase().includes(needle))
-        )
-      })
-  }, [organizers, tournaments, query])
+    return grouped.filter(
+      (entry) =>
+        Boolean(entry.organizer.name?.toLowerCase().includes(needle)) ||
+        entry.tournaments.some((tournament) => tournament.name?.toLowerCase().includes(needle)),
+    )
+  }, [grouped, query])
 
-  const publicTournamentCount = tournaments.filter(
-    (tournament) => tournament.visibility !== 'private',
-  ).length
+  // Counted from the list underneath rather than from the tournaments array, so
+  // the sentence and the cards can never disagree. Counting the array directly
+  // is what produced "five public tournaments from zero organisers": a
+  // tournament whose organiser is missing from the list — because the viewer's
+  // role hid it, or because the organiser record was deleted and the tournament
+  // was not — is not shown, and must not be counted either.
+  const publicTournamentCount = grouped.reduce((total, entry) => total + entry.tournaments.length, 0)
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-white relative overflow-hidden">

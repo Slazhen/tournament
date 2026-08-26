@@ -1,9 +1,18 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAppStore } from "../store"
 import { Link } from "react-router-dom"
 import LogoUploader from "../components/LogoUploader"
 import { checkTeamName, parseBulkNames } from "../utils/teams"
 
+/**
+ * The clubs.
+ *
+ * Deliberately one list rather than a section per organiser, even for the super
+ * admin: a club plays in several competitions or in none at all, and which
+ * organiser happens to own its record is the least interesting thing about it.
+ * The owner is a line on the card and the thing you filter by, not the shape of
+ * the page.
+ */
 export default function TeamsPage() {
   const [teamName, setTeamName] = useState("")
   const [teamColors, setTeamColors] = useState<string[]>(["#3B82F6"])
@@ -19,21 +28,36 @@ export default function TeamsPage() {
   // With thirty-odd teams in an unordered grid, finding one meant scrolling.
   const [teamSearch, setTeamSearch] = useState("")
   
-  const { 
-    getCurrentOrganizer, 
-    getOrganizerTeams, 
-    createTeam, 
-    updateTeam, 
+  const {
+    getCurrentOrganizer,
+    getOrganizerById,
+    getOrganizerTeams,
+    createTeam,
+    updateTeam,
     deleteTeam,
     uploadTeamLogo,
-    uploadTeamPhoto
+    uploadTeamPhoto,
+    loadTeams,
+    organizers,
+    superAdmin,
+    currentOrganizerId,
   } = useAppStore()
-  
+
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
-  
+
+  /** Which organizer a new club belongs to. Only the super admin gets a choice. */
+  const [newTeamOrganizerId, setNewTeamOrganizerId] = useState("")
+  const ownerId = currentOrganizerId ?? newTeamOrganizerId
+
+  // Nothing has fetched on the super admin's behalf: their scope is not an
+  // organizer, so the load that follows choosing one never happens.
+  useEffect(() => {
+    if (superAdmin && !currentOrganizerId) loadTeams()
+  }, [superAdmin, currentOrganizerId, loadTeams])
+
   // Redirect if no organizer is selected
-  if (!currentOrganizer) {
+  if (!currentOrganizer && !superAdmin) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -47,15 +71,19 @@ export default function TeamsPage() {
     )
   }
   
-  const nameCheck = checkTeamName(teamName, teams)
-  const bulkPlan = parseBulkNames(bulkTeams, teams)
+  // Two clubs of the same name are a problem inside one organizer's
+  // competitions; the same name under two different organizers is two different
+  // clubs, so the check looks at the owner's list rather than at everything.
+  const ownerTeams = ownerId ? teams.filter((team) => team.organizerId === ownerId) : []
+  const nameCheck = checkTeamName(teamName, ownerTeams)
+  const bulkPlan = parseBulkNames(bulkTeams, ownerTeams)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const name = teamName.trim()
-    if (!name || nameCheck.duplicate) return
+    if (!name || nameCheck.duplicate || !ownerId) return
 
-    const created = await createTeam(name, teamColors)
+    const created = await createTeam(name, teamColors, undefined, ownerId)
 
     if (created && teamLogoFile) {
       await uploadTeamLogo(created.id, teamLogoFile)
@@ -69,11 +97,11 @@ export default function TeamsPage() {
   }
 
   const handleBulkAdd = async () => {
-    if (bulkPlan.toCreate.length === 0) return
+    if (bulkPlan.toCreate.length === 0 || !ownerId) return
 
     for (const name of bulkPlan.toCreate) {
       const randomColor = `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`
-      await createTeam(name, [randomColor])
+      await createTeam(name, [randomColor], undefined, ownerId)
     }
 
     const skipped = bulkPlan.duplicates.length + bulkPlan.repeated.length
@@ -100,15 +128,26 @@ export default function TeamsPage() {
 
   // Alphabetical order and a search box: the list used to come back in whatever
   // order the database returned it, with new teams landing in the middle.
+  // The organiser's name is searchable too: with every club on one page it is
+  // the quickest way to narrow it to one league's.
+  const search = teamSearch.trim().toLowerCase()
   const visibleTeams = [...teams]
-    .filter((team) => team.name.toLowerCase().includes(teamSearch.trim().toLowerCase()))
+    .filter((team) => {
+      if (!search) return true
+      const owner = getOrganizerById(team.organizerId)?.name ?? ''
+      return (
+        team.name.toLowerCase().includes(search) || owner.toLowerCase().includes(search)
+      )
+    })
     .sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <div className="min-h-[80vh] flex flex-col items-center gap-8">
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Manage Teams</h1>
-        <p className="opacity-80">Create and manage your teams</p>
+        <p className="opacity-80">
+          {currentOrganizer ? 'Create and manage your teams' : 'Every club, whoever runs it'}
+        </p>
       </div>
 
       {/* Adding teams. One card, two ways in — pasting a list is how a season
@@ -134,6 +173,28 @@ export default function TeamsPage() {
             Several at once
           </button>
         </div>
+
+        {/* A club is owned by an organizer, and the super admin is not one, so
+            they have to say which. An organiser never sees this. */}
+        {!currentOrganizer && (
+          <div className="mb-5">
+            <label className="block text-sm font-medium mb-2">Organizer</label>
+            <select
+              value={newTeamOrganizerId}
+              onChange={(e) => setNewTeamOrganizerId(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
+            >
+              <option value="">Choose an organizer…</option>
+              {[...organizers]
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((organizer) => (
+                  <option key={organizer.id} value={organizer.id}>
+                    {organizer.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
 
         {addMode === 'one' ? (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -204,7 +265,7 @@ export default function TeamsPage() {
 
             <button
               type="submit"
-              disabled={!teamName.trim() || Boolean(nameCheck.duplicate)}
+              disabled={!teamName.trim() || Boolean(nameCheck.duplicate) || !ownerId}
               className="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Add team
@@ -238,7 +299,7 @@ export default function TeamsPage() {
             <button
               type="button"
               onClick={handleBulkAdd}
-              disabled={bulkPlan.toCreate.length === 0}
+              disabled={bulkPlan.toCreate.length === 0 || !ownerId}
               className="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {bulkPlan.toCreate.length > 0
@@ -262,7 +323,8 @@ export default function TeamsPage() {
       <div className="w-full max-w-6xl">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <h2 className="text-2xl font-semibold">
-            Your Teams ({visibleTeams.length}{visibleTeams.length !== teams.length ? ` of ${teams.length}` : ''})
+            {currentOrganizer ? 'Your Teams' : 'All Clubs'} ({visibleTeams.length}
+            {visibleTeams.length !== teams.length ? ` of ${teams.length}` : ''})
           </h2>
           <input
             type="search"
@@ -291,6 +353,12 @@ export default function TeamsPage() {
                 <div>
                   <h3 className="text-xl font-semibold">{team.name}</h3>
                   <p className="text-sm opacity-80">{team.players.length} players</p>
+                  {!currentOrganizer && (
+                    <p className="text-xs opacity-60">
+                      {getOrganizerById(team.organizerId)?.name ??
+                        (organizers.length > 0 ? 'Without an organizer' : '')}
+                    </p>
+                  )}
                 </div>
               </div>
               

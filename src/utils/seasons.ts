@@ -1,6 +1,6 @@
 import type { Tournament, Match } from '../types'
 import type { TournamentSummary } from '../lib/data'
-import { slugify } from './urls'
+import { getAdminTournamentUrl, slugify, type SluggableTournament } from './urls'
 import { calculateTeamStandings, sortTeamsByStandings } from './schedule'
 
 /**
@@ -49,6 +49,26 @@ export const getSeasonUrl = (tournament: SeasonLike, organizer: { name: string }
 /** The competition's address, which always opens whichever season is current. */
 export const getSeriesUrl = (tournament: SeasonLike, organizer: { name: string }): string =>
   `/${slugify(organizer.name)}/${seriesSlug(tournament)}`
+
+/**
+ * The same two addresses, for a page that may not have the organizer to hand.
+ *
+ * Both are built from the organizer's name, and whoever is looking is not
+ * always administering one: the super admin administers all of them, and a
+ * competition whose organizer was deleted has none at all. The id route is the
+ * fallback — uglier, and it still opens.
+ */
+export const adminSeasonUrl = (
+  tournament: SluggableTournament & SeasonLike,
+  organizer: { name: string } | null | undefined,
+): string =>
+  organizer ? getAdminTournamentUrl(tournament, organizer) : `/tournaments/${tournament.id}`
+
+export const publicSeasonUrl = (
+  tournament: SluggableTournament & SeasonLike,
+  organizer: { name: string } | null | undefined,
+): string =>
+  organizer ? getSeasonUrl(tournament, organizer) : `/public/tournaments/${tournament.id}`
 
 const scored = (match: Match) =>
   typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'

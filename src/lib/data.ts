@@ -50,10 +50,37 @@ export const organizerService = {
     return true
   },
 
-  async delete(id: string): Promise<boolean> {
-    await api.delete(`/admin/organizers/${encodeURIComponent(id)}`)
-    return true
+  /** What deleting this organizer would take with it, counted by the server. */
+  async impact(id: string): Promise<OrganizerImpact> {
+    return api.get<OrganizerImpact>(`/admin/organizers/${encodeURIComponent(id)}/impact`)
   },
+
+  /**
+   * Deletes the organizer, its competitions and its logins in one request.
+   *
+   * `teamsTo` is the organizer its clubs move to, and the server insists on one
+   * whenever there are any: a club has its own managers and squad and outlives
+   * the league it was created in, so it is never deleted along with its
+   * organizer.
+   */
+  async delete(id: string, teamsTo?: string): Promise<OrganizerDeleted> {
+    const query = teamsTo ? `?teamsTo=${encodeURIComponent(teamsTo)}` : ''
+    return api.delete<OrganizerDeleted>(`/admin/organizers/${encodeURIComponent(id)}${query}`)
+  },
+}
+
+export type OrganizerImpact = {
+  tournaments: { id: string; name: string }[]
+  teams: { id: string; name: string }[]
+  accounts: string[]
+}
+
+export type OrganizerDeleted = {
+  ok: true
+  tournamentsDeleted: number
+  teamsMoved: number
+  accountsDeleted: number
+  invitesDeleted: number
 }
 
 export const teamService = {

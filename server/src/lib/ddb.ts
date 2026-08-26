@@ -36,6 +36,36 @@ export async function scanAll<T>(tableName: string): Promise<T[]> {
   return items
 }
 
+/**
+ * Every row a query matches, not just the first megabyte of them.
+ *
+ * A Query stops at 1 MB and says so only in `LastEvaluatedKey`. The
+ * `organizerId-index` reads project the whole record — and a tournament carries
+ * all of its matches — so one organizer's second season can already fall off
+ * the end of the first page. A listing that quietly loses rows is bad; deleting
+ * an organizer from one is worse, because whatever the query missed becomes an
+ * orphan nobody can reach.
+ */
+export async function queryAll<T>(input: {
+  TableName: string
+  IndexName?: string
+  KeyConditionExpression: string
+  ExpressionAttributeValues: Record<string, unknown>
+}): Promise<T[]> {
+  const items: T[] = []
+  let lastEvaluatedKey: Record<string, unknown> | undefined
+
+  do {
+    const result = await ddb.send(
+      new QueryCommand({ ...input, ExclusiveStartKey: lastEvaluatedKey }),
+    )
+    if (result.Items) items.push(...(result.Items as T[]))
+    lastEvaluatedKey = result.LastEvaluatedKey
+  } while (lastEvaluatedKey)
+
+  return items
+}
+
 /** Fetches many items by primary key, in the 100-key batches DynamoDB allows. */
 export async function batchGetByIds<T>(tableName: string, ids: string[]): Promise<T[]> {
   const unique = [...new Set(ids.filter(Boolean))]

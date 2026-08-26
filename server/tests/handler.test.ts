@@ -233,6 +233,24 @@ describe('authorization', () => {
     })
     expect(response.statusCode).toBe(403)
   })
+
+  // Deleting an organizer now takes its competitions and its logins with it, so
+  // the check that keeps an organizer out has to hold before anything is read,
+  // let alone written.
+  it('refuses to delete an organizer, their own included, and reads nothing first', async () => {
+    const response = await request('DELETE', '/admin/organizers/org-1', { token: 'good-token' })
+
+    expect(response.statusCode).toBe(403)
+    expect(repos.tournaments.listByOrganizer).not.toHaveBeenCalled()
+    expect(repos.teams.listByOrganizer).not.toHaveBeenCalled()
+  })
+
+  it('refuses to tell an organizer what deleting one would cost', async () => {
+    const response = await request('GET', '/admin/organizers/org-1/impact', {
+      token: 'good-token',
+    })
+    expect(response.statusCode).toBe(403)
+  })
 })
 
 describe('player editing', () => {

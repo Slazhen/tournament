@@ -1,12 +1,11 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useRef, useState } from 'react'
-import { getAdminTournamentUrl } from '../utils/urls'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
-import { getSeasonUrl } from '../utils/seasons'
+import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
 import { clubService } from '../lib/data'
 import {
   IconArrowLeft,
@@ -20,12 +19,12 @@ import {
 
 export default function TeamPage() {
   const { teamId } = useParams()
-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto } = useAppStore()
-  
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto, superAdmin } = useAppStore()
+
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
-  
+
   // State for upload feedback
   const [uploadMessage, setUploadMessage] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -43,8 +42,9 @@ export default function TeamPage() {
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)
   
-  // Redirect if no organizer is selected
-  if (!currentOrganizer) {
+  // Redirect if no organizer is selected. The super admin has none and needs
+  // none: the club in front of them names the organizer it belongs to.
+  if (!currentOrganizer && !superAdmin) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -671,13 +671,13 @@ export default function TeamPage() {
                     <td className="py-3 px-4 text-center">
                       <div className="flex gap-2 justify-center">
                         <Link
-                          to={currentOrganizer ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`}
+                          to={adminSeasonUrl(tournament, getOrganizerById(tournament.organizerId))}
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
                         >
                           <IconTrophy size={14} /> View
                         </Link>
                         <Link
-                          to={currentOrganizer ? getSeasonUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
+                          to={publicSeasonUrl(tournament, getOrganizerById(tournament.organizerId))}
                           target="_blank"
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
                         >

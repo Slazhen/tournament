@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { generatePlayoffBrackets, createPlayoffMatches as createPlayoffMatchesFromBrackets } from '../utils/schedule'
 import { generateMatchUID } from '../utils/uid'
 import { generateGroupsWithDivisionsSchedule } from '../utils/tournament'
-import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
+import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
 import { organizerService } from '../lib/data'
 import type { Organizer } from '../types'
 import LocationIcon from '../components/LocationIcon'
@@ -33,7 +33,7 @@ import MatchDateTime from '../components/MatchDateTime'
 import { applyDateToRound } from '../utils/matchdates'
 import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import InlineInput from '../components/InlineInput'
-import { getSeasonUrl } from '../utils/seasons'
+import { adminSeasonUrl, getSeasonUrl, publicSeasonUrl } from '../utils/seasons'
 
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
 // so we never rewrite the (large) tournament item more than once during rendering.
@@ -41,8 +41,8 @@ const persistedReconstructedGroups = new Set<string>()
 
 export default function TournamentPage() {
   const { id, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, uploadTournamentLogo, loading } = useAppStore()
-  
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTournaments, getOrganizerTeams, updateTournament, uploadTournamentLogo, loading, superAdmin } = useAppStore()
+
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
   const teams = getOrganizerTeams()
@@ -792,7 +792,14 @@ export default function TournamentPage() {
   // "not found" while the tournament list is still in flight is what made a
   // refresh look like a crash.
   const stillLoading =
-    loading.tournaments || (!organizersSettled && !currentOrganizer) || (!currentOrganizer && loading.organizers)
+    loading.tournaments ||
+    (!organizersSettled && !currentOrganizer) ||
+    (!currentOrganizer && loading.organizers)
+
+  // Who runs this competition. Not "who is signed in": the super admin runs
+  // none of them, and every link on this page is built from the organizer's
+  // name.
+  const organizer = getOrganizerById(tournament?.organizerId) ?? currentOrganizer
 
   if (stillLoading && !tournament) {
     return (
@@ -805,8 +812,9 @@ export default function TournamentPage() {
     )
   }
 
-  // Redirect if no organizer is selected
-  if (!currentOrganizer) {
+  // Redirect if no organizer is selected. The super admin selects none: the
+  // competition on screen names the organizer that runs it.
+  if (!currentOrganizer && !superAdmin) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -1012,8 +1020,8 @@ export default function TournamentPage() {
               <button
                 type="button"
                 onClick={() => {
-                  const url = currentOrganizer
-                    ? `${window.location.origin}${getSeasonUrl(tournament, currentOrganizer)}`
+                  const url = organizer
+                    ? `${window.location.origin}${getSeasonUrl(tournament, organizer)}`
                     : `${window.location.origin}/public/tournaments/${tournament.id}`
                   navigator.clipboard.writeText(url)
                   setLinkCopied(true)
@@ -1033,7 +1041,7 @@ export default function TournamentPage() {
               </button>
 
               <Link
-                to={currentOrganizer ? getSeasonUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
+                to={publicSeasonUrl(tournament, organizer)}
                 target="_blank"
                 className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
               >
@@ -1593,7 +1601,7 @@ export default function TournamentPage() {
                             </div>
                             <div>
                       <Link 
-                        to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}` : `/tournaments/${tournament.id}/matches/${match.id}`}
+                        to={`${adminSeasonUrl(tournament, organizer)}/matches/${match.id}`}
                         className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-md glass text-sm hover:bg-white/10 transition-all"
                         title="View match statistics"
                       >
@@ -1733,7 +1741,7 @@ export default function TournamentPage() {
                     {/* Actions */}
                     <div className="flex flex-col gap-1">
                       <Link 
-                        to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${mid}` : `/tournaments/${tournament.id}/matches/${mid}`}
+                        to={`${adminSeasonUrl(tournament, organizer)}/matches/${mid}`}
                         className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
                         title="View match statistics"
                       >
@@ -2257,8 +2265,8 @@ export default function TournamentPage() {
                                   <button
                                     onClick={() => {
                                       // Navigate to match page for stats
-                                      const publicUrl = currentOrganizer 
-                                        ? `${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
+                                      const publicUrl = organizer
+                                        ? `${getPublicTournamentUrl(tournament, organizer)}/matches/${match.id}`
                                         : `/public/tournaments/${tournament.id}/matches/${match.id}`
                                       window.open(publicUrl, '_blank')
                                     }}

@@ -9,11 +9,11 @@ import FormatPicker from '../components/FormatPicker'
 import { findFormat, formatOptionFor } from '../utils/formats'
 import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
 import type { TournamentFormat } from '../utils/fixtures'
-import { getAdminTournamentUrl } from '../utils/urls'
 import { clubService } from '../lib/data'
 import type { Entry } from '../lib/data'
 import Trophy from '../components/Trophy'
 import {
+  adminSeasonUrl,
   championOf,
   seasonLabel,
   seasonStatus,
@@ -37,6 +37,7 @@ export default function TournamentSettingsPage() {
 
   const {
     getCurrentOrganizer,
+    getOrganizerById,
     getOrganizerTeams,
     getOrganizerTournaments,
     updateTournament,
@@ -46,9 +47,22 @@ export default function TournamentSettingsPage() {
   } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
-  const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
   const tournament = tournaments.find((candidate) => candidate.id === id)
+  const organizer = getOrganizerById(tournament?.organizerId) ?? currentOrganizer
+
+  // Every club this page might have to name — an applicant from outside the
+  // league included — and, separately, the ones it may put in the competition.
+  // (The super admin sees every organizer's clubs, hence the split.)
+  // The super admin sees every club there is, and offering another organizer's
+  // in the picker is how one would end up in a league it never applied to.
+  const teams = getOrganizerTeams()
+  const pickableTeams = tournament
+    ? teams.filter(
+        (team) =>
+          team.organizerId === tournament.organizerId || tournament.teamIds.includes(team.id),
+      )
+    : teams
 
   const [draftTeamIds, setDraftTeamIds] = useState<string[] | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -90,7 +104,7 @@ export default function TournamentSettingsPage() {
     [tournament, selectedTeamIds],
   )
 
-  if (!currentOrganizer || !tournament) {
+  if (!tournament) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -173,9 +187,13 @@ export default function TournamentSettingsPage() {
     )
   const derivedChampion = championOf({ ...tournament, championTeamId: undefined })
   const championTeam = teams.find((team) => team.id === championOf(tournament))
-  const otherCompetitions = groupIntoSeries(tournaments).filter(
-    (entry) => entry.key !== seriesKey(tournament),
-  )
+  // Competitions this season could be joined to: its own organizer's, never
+  // another's. The super admin sees every organizer's tournaments in
+  // `tournaments`, and merging a season into a competition run by somebody else
+  // would hand it over without saying so.
+  const otherCompetitions = groupIntoSeries(
+    tournaments.filter((candidate) => candidate.organizerId === tournament.organizerId),
+  ).filter((entry) => entry.key !== seriesKey(tournament))
 
   const pendingEntries = entries.filter((entry) => entry.status === 'pending')
 
@@ -266,7 +284,7 @@ export default function TournamentSettingsPage() {
     <div className="min-h-[80vh] flex flex-col items-center gap-6 w-full">
       <div className="w-full max-w-3xl">
         <Link
-          to={getAdminTournamentUrl(tournament, currentOrganizer)}
+          to={adminSeasonUrl(tournament, organizer)}
           className="text-sm opacity-70 hover:opacity-100 transition-opacity"
         >
           ← Back to {tournament.name}
@@ -744,7 +762,7 @@ export default function TournamentSettingsPage() {
           </p>
         ) : (
           <>
-            <TeamPicker teams={teams} selectedIds={selectedTeamIds} onChange={setDraftTeamIds} />
+            <TeamPicker teams={pickableTeams} selectedIds={selectedTeamIds} onChange={setDraftTeamIds} />
 
             {teamsChanged && plan && (
               <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-sm space-y-1">

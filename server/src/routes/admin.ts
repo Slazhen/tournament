@@ -1,4 +1,4 @@
-import { ddb, PutCommand, DeleteCommand, UpdateCommand } from '../lib/ddb.js'
+import { ddb, PutCommand, DeleteCommand, UpdateCommand, scanAll } from '../lib/ddb.js'
 import { TABLES } from '../lib/env.js'
 import { badRequest, notFound } from '../lib/http.js'
 import {
@@ -16,11 +16,16 @@ import {
 import { deleteAllUserSessions } from '../lib/sessions.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import { organizers, teams, tournaments } from '../repos.js'
-import { unlinkManagerFromTeam } from '../repos-clubs.js'
+import {
+  deleteEntriesForTournament,
+  deleteInvitesOfOrganizer,
+  unlinkManagerFromTeam,
+} from '../repos-clubs.js'
 import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
 import { record, recent } from '../lib/audit.js'
+import { invalidate } from '../lib/cache.js'
 import { issueResetToken } from '../lib/resets.js'
 import { SITE_URL } from '../lib/env.js'
 import { sendPasswordReset } from '../lib/mail.js'
@@ -74,6 +79,18 @@ function pick(body: Record<string, unknown>, fields: readonly string[]): Record<
   return out
 }
 
+/**
+ * Every login that administers one organizer.
+ *
+ * A scan rather than a query: the accounts table is indexed by email, which is
+ * the only thing anybody signs in with, and it holds a handful of rows. An
+ * index on `organizerId` would cost more to keep than this read costs to run.
+ */
+async function accountsOfOrganizer(organizerId: string): Promise<AuthUser[]> {
+  const all = await scanAll<AuthUser>(TABLES.AUTH_USERS)
+  return all.filter((account) => account.organizerId === organizerId)
+}
+
 export function registerAdminRoutes(router: Router<RequestContext>): void {
   /* ---------------- listings (include private data) ---------------- */
 
@@ -123,10 +140,144 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     return { ok: true }
   })
 
-  router.delete('/admin/organizers/:id', async (ctx, params) => {
+  /**
+   * What deleting this organizer would take with it.
+   *
+   * The confirmation has to say more than "are you sure": the competitions go,
+   * the clubs do not, and the logins stop working. The page asking the question
+   * holds none of that, so the server counts it.
+   */
+  router.get('/admin/organizers/:id/impact', async (ctx, params) => {
     assertSuperAdmin(await ctx.user())
-    await organizers.remove(params.id!)
-    return { ok: true }
+    const id = params.id!
+    if (!(await organizers.get(id))) throw notFound('Organizer not found')
+
+    // Read past the cache, exactly as the delete does. Answering this one from
+    // a stale copy is worse than answering it slowly: the operator would be
+    // agreeing to a smaller deletion than the one that happens.
+    invalidate(`tournaments:organizer:${id}`)
+    invalidate(`teams:organizer:${id}`)
+
+    const [ownTournaments, ownTeams, accounts] = await Promise.all([
+      tournaments.listByOrganizer(id),
+      teams.listByOrganizer(id),
+      accountsOfOrganizer(id),
+    ])
+
+    return {
+      tournaments: ownTournaments.map((tournament) => ({
+        id: tournament.id,
+        name: tournament.name,
+      })),
+      teams: ownTeams.map((team) => ({ id: team.id, name: team.name })),
+      accounts: accounts.map((account) => account.email),
+    }
+  })
+
+  /**
+   * Deletes an organizer and everything that only makes sense alongside it.
+   *
+   * A competition belongs to whoever runs it and goes with them. A club does
+   * not: it has its own managers, its own squad and a life longer than any one
+   * league, so it is moved to another organizer named by the caller rather than
+   * deleted. Deleting the organizer row alone — all this route used to do — left
+   * both behind, owned by nobody and still listed on the public site, and the
+   * organizer's login still worked.
+   *
+   * The order is deliberate and every step is idempotent: clubs are moved to
+   * safety first, the organizer row goes last, and a request that fails halfway
+   * can simply be repeated. There is no cross-table transaction to lean on.
+   */
+  router.delete('/admin/organizers/:id', async (ctx, params) => {
+    const actor = await ctx.user()
+    assertSuperAdmin(actor)
+    const id = params.id!
+    const organizer = await organizers.get(id)
+    if (!organizer) throw notFound('Organizer not found')
+
+    // These two lists decide what gets deleted and what gets moved, so they
+    // are read past the cache. The listings live in the Lambda's memory and a
+    // write made by another warm container does not invalidate this copy: a
+    // competition created a minute ago could be missing from it and would
+    // survive as an orphan, which is the whole bug this route exists to stop.
+    // The index behind them is eventually consistent, so something created in
+    // the last second can still be missed; `scripts/delete-orphans.mjs` is the
+    // net underneath.
+    invalidate(`tournaments:organizer:${id}`)
+    invalidate(`teams:organizer:${id}`)
+
+    const [ownTournaments, ownTeams] = await Promise.all([
+      tournaments.listByOrganizer(id),
+      teams.listByOrganizer(id),
+    ])
+
+    const teamsTo = typeof ctx.query?.teamsTo === 'string' ? ctx.query.teamsTo.trim() : ''
+    if (ownTeams.length > 0) {
+      if (!teamsTo) {
+        throw badRequest(
+          `${ownTeams.length} ${ownTeams.length === 1 ? 'club belongs' : 'clubs belong'} to this organizer. Name the organizer to move them to.`,
+        )
+      }
+      if (teamsTo === id) throw badRequest('Clubs cannot be moved to the organizer being deleted')
+      if (!(await organizers.get(teamsTo))) {
+        throw badRequest('The organizer the clubs would move to does not exist')
+      }
+    }
+
+    for (const team of ownTeams) {
+      await teams.update(team.id, { organizerId: teamsTo })
+    }
+
+    for (const tournament of ownTournaments) {
+      await deleteEntriesForTournament(tournament.id)
+      await tournaments.remove(tournament.id)
+    }
+
+    // An invitation is a door into a club, and it outlives the organizer that
+    // wrote it by a fortnight unless it goes now.
+    const invitesDeleted = await deleteInvitesOfOrganizer(id)
+
+    // Every login attached to this organizer, not only the one matching its
+    // contact address. The interface used to delete the account by email in a
+    // second request of its own, which failed with "Account not found" whenever
+    // the addresses had drifted apart — and left the account able to sign in.
+    //
+    // Never a super admin, and never the caller: the role has nobody above it
+    // to recreate it, and an organizerId on such an account would be a mistake
+    // in the data rather than a licence to delete the keys to the building.
+    const accounts = (await accountsOfOrganizer(id)).filter(
+      (account) => account.role !== 'super_admin' && account.id !== actor.id,
+    )
+    for (const account of accounts) {
+      await deleteAllUserSessions(account.id)
+      await ddb.send(new DeleteCommand({ TableName: TABLES.AUTH_USERS, Key: { id: account.id } }))
+    }
+
+    await organizers.remove(id)
+
+    await record(actor, {
+      action: 'organizer.delete',
+      entity: 'organizer',
+      entityId: id,
+      // Where the clubs went belongs in here. `teamsTo` is any organizer id the
+      // caller names, so a mistyped one that happens to exist hands somebody
+      // else a league's worth of clubs, and this line is the only way back to
+      // finding out where they are.
+      summary:
+        `Deleted ${organizer.name}: ${ownTournaments.length} ${ownTournaments.length === 1 ? 'competition' : 'competitions'}` +
+        `, ${accounts.length} ${accounts.length === 1 ? 'login' : 'logins'}` +
+        `, ${invitesDeleted} ${invitesDeleted === 1 ? 'invitation' : 'invitations'}` +
+        (ownTeams.length > 0 ? `, ${ownTeams.length} clubs moved to ${teamsTo}` : ''),
+      organizerId: id,
+    })
+
+    return {
+      ok: true,
+      tournamentsDeleted: ownTournaments.length,
+      teamsMoved: ownTeams.length,
+      accountsDeleted: accounts.length,
+      invitesDeleted,
+    }
   })
 
   /* ---------------- teams ---------------- */

@@ -2,7 +2,8 @@ import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useState, useEffect, useMemo } from 'react'
 import { uid } from '../utils/uid'
-import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
+import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
+import { adminSeasonUrl } from '../utils/seasons'
 import { organizerService } from '../lib/data'
 import type { Organizer } from '../types'
 import MatchDateTime from '../components/MatchDateTime'
@@ -16,8 +17,8 @@ import { playersForPicking, registeredPlayers } from '../utils/squads'
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTournament } = useAppStore()
-  
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTournament, superAdmin } = useAppStore()
+
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
@@ -46,7 +47,11 @@ export default function MatchPage() {
 
   const [activeTab, setActiveTab] = useState<'overview' | 'statistics' | 'lineups' | 'goals' | 'content'>('overview')
 
-  if (!currentOrganizer) {
+  // The organizer running this competition, which is not the same as whoever is
+  // signed in: the super admin runs none of them.
+  const organizer = getOrganizerById(tournament?.organizerId) ?? currentOrganizer
+
+  if (!currentOrganizer && !superAdmin) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -145,7 +150,7 @@ export default function MatchPage() {
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <div className="flex items-center justify-between mb-6">
           <Link 
-            to={currentOrganizer && tournament ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`} 
+            to={adminSeasonUrl(tournament, organizer)} 
             className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2"
           >
             <IconArrowLeft size={15} /> Back to {tournament.name}
@@ -158,16 +163,16 @@ export default function MatchPage() {
               <input
                 type="text"
                 readOnly
-                value={currentOrganizer && tournament 
-                  ? `${window.location.origin}${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
+                value={organizer
+                  ? `${window.location.origin}${getPublicTournamentUrl(tournament, organizer)}/matches/${match.id}`
                   : `${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`
                 }
                 className="px-3 py-2 rounded-md bg-transparent border border-white/20 text-center min-w-[300px] text-sm"
               />
               <button
                 onClick={() => {
-                  const url = currentOrganizer && tournament 
-                    ? `${window.location.origin}${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
+                  const url = organizer
+                    ? `${window.location.origin}${getPublicTournamentUrl(tournament, organizer)}/matches/${match.id}`
                     : `${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`
                   navigator.clipboard.writeText(url)
                 }}

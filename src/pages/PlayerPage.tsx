@@ -15,7 +15,7 @@ import {
 
 export default function PlayerPage() {
   const { playerId } = useParams()
-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updatePlayer: savePlayer, uploadPlayerPhoto } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updatePlayer: savePlayer, uploadPlayerPhoto, superAdmin } = useAppStore()
   
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -37,8 +37,9 @@ export default function PlayerPage() {
     }
   }
   
-  // Redirect if no organizer is selected
-  if (!currentOrganizer) {
+  // Redirect if no organizer is selected. The super admin administers all of
+  // them, so there is nothing to select.
+  if (!currentOrganizer && !superAdmin) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">

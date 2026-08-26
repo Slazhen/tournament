@@ -39,15 +39,14 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const setCurrentOrganizer = useAppStore((state) => state.setCurrentOrganizer)
+  const applyScope = useAppStore((state) => state.applyScope)
 
-  /** Points the store at whichever organizer this user administers. */
+  /**
+   * Points the store at whatever this account administers: one organizer, all
+   * of them for a super admin, or none at all.
+   */
   const applyOrganizerScope = (nextUser: AuthUser | null) => {
-    if (nextUser?.role === 'organizer' && nextUser.organizerId) {
-      setCurrentOrganizer(nextUser.organizerId)
-    } else {
-      setCurrentOrganizer('')
-    }
+    applyScope(nextUser)
   }
 
   // On load, ask the API whether the stored token is still a valid session.

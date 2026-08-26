@@ -1,4 +1,12 @@
-import { ddb, DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from './lib/ddb.js'
+import {
+  ddb,
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  queryAll,
+  scanAll,
+  UpdateCommand,
+} from './lib/ddb.js'
 import { INVITE_TTL_MS, TABLES } from './lib/env.js'
 import { generateId, generateToken } from './lib/passwords.js'
 import type { AuthUser, Team } from './lib/types.js'
@@ -197,26 +205,60 @@ export async function getEntry(tournamentId: string, teamId: string): Promise<En
 }
 
 export async function entriesForTournament(tournamentId: string): Promise<Entry[]> {
-  const result = await ddb.send(
-    new QueryCommand({
-      TableName: TABLES.ENTRIES,
-      KeyConditionExpression: 'tournamentId = :tournamentId',
-      ExpressionAttributeValues: { ':tournamentId': tournamentId },
-    }),
-  )
-  return (result.Items ?? []) as Entry[]
+  return queryAll<Entry>({
+    TableName: TABLES.ENTRIES,
+    KeyConditionExpression: 'tournamentId = :tournamentId',
+    ExpressionAttributeValues: { ':tournamentId': tournamentId },
+  })
+}
+
+/**
+ * Invitations an organizer issued, which die with them.
+ *
+ * An invitation is a link that hands a club to whoever opens it, and claiming
+ * one creates an account. Left behind, an invitation written by a deleted
+ * organizer would still work a fortnight later — against a club that has since
+ * moved to somebody else, who never invited anybody. Deleting the organizer's
+ * sessions and leaving these would be closing one door and leaving the other
+ * open.
+ */
+export async function deleteInvitesOfOrganizer(organizerId: string): Promise<number> {
+  const all = await scanAll<TeamInvite>(TABLES.INVITES)
+  const doomed = all.filter((invite) => invite.organizerId === organizerId)
+  for (const invite of doomed) {
+    await ddb.send(new DeleteCommand({ TableName: TABLES.INVITES, Key: { token: invite.token } }))
+  }
+  return doomed.length
+}
+
+/**
+ * Removes every application to a competition that is going away.
+ *
+ * An entry is keyed by the tournament it belongs to, so once the tournament is
+ * deleted the row is unreachable through the interface but still counts against
+ * the club: `entriesForTeam` keeps returning it, and the club shows as pending
+ * in a competition nobody can open.
+ */
+export async function deleteEntriesForTournament(tournamentId: string): Promise<number> {
+  const entries = await entriesForTournament(tournamentId)
+  for (const entry of entries) {
+    await ddb.send(
+      new DeleteCommand({
+        TableName: TABLES.ENTRIES,
+        Key: { tournamentId: entry.tournamentId, teamId: entry.teamId },
+      }),
+    )
+  }
+  return entries.length
 }
 
 export async function entriesForTeam(teamId: string): Promise<Entry[]> {
-  const result = await ddb.send(
-    new QueryCommand({
-      TableName: TABLES.ENTRIES,
-      IndexName: 'teamId-index',
-      KeyConditionExpression: 'teamId = :teamId',
-      ExpressionAttributeValues: { ':teamId': teamId },
-    }),
-  )
-  return (result.Items ?? []) as Entry[]
+  return queryAll<Entry>({
+    TableName: TABLES.ENTRIES,
+    IndexName: 'teamId-index',
+    KeyConditionExpression: 'teamId = :teamId',
+    ExpressionAttributeValues: { ':teamId': teamId },
+  })
 }
 
 export async function decideEntry(

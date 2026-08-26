@@ -5,11 +5,11 @@ import { Link } from 'react-router-dom'
 import {
   createOrganizerAccount,
   createSuperAdminAccount,
-  deleteOrganizerAccount,
   resetOrganizerPassword,
   issueResetLink,
 } from '../lib/auth'
 import { organizerService } from '../lib/data'
+import type { OrganizerImpact } from '../lib/data'
 import {
   IconKey,
   IconLink,
@@ -45,6 +45,12 @@ export default function OrganizersPage() {
   const [resetLinks, setResetLinks] = useState<Record<string, string>>({})
   const [newAdmin, setNewAdmin] = useState({ email: '', displayName: '', password: '' })
   const [adminMessage, setAdminMessage] = useState<string | null>(null)
+  /** The organizer whose deletion is being confirmed, and what it would cost. */
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const [impact, setImpact] = useState<OrganizerImpact | null>(null)
+  const [teamsTo, setTeamsTo] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     loadOrganizers()
@@ -113,23 +119,58 @@ export default function OrganizersPage() {
     }
   }
 
-  const handleDeleteOrganizer = async (organizerId: string, organizerEmail: string) => {
-    if (!confirm(`Are you sure you want to delete organizer with email "${organizerEmail}"? This will also delete their authentication account and cannot be undone.`)) {
-      return
-    }
+  /**
+   * Opens the confirmation, having first asked the server what deleting this
+   * organizer would take with it.
+   *
+   * "Are you sure?" was never enough here: the competitions go, the clubs have
+   * to be given to somebody, and the count of each is the thing that decides
+   * whether this is a tidy-up or a disaster.
+   */
+  const handleDeleteOrganizer = async (organizerId: string) => {
+    setDeleteError(null)
+    setImpact(null)
+    setTeamsTo('')
+    setPendingDelete(organizerId)
 
     try {
-      // Delete from main system
-      await deleteOrganizer(organizerId)
-      
-      // Delete authentication account
-      await deleteOrganizerAccount(organizerEmail)
-      
-      // Reload organizers
+      const counted = await organizerService.impact(organizerId)
+      // Opening a second confirmation while the first is in flight would
+      // otherwise show one organizer's numbers under the other's name — and
+      // the club count is what decides whether a destination is demanded.
+      setPendingDelete((current) => {
+        if (current === organizerId) setImpact(counted)
+        return current
+      })
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Could not read what this would delete')
+    }
+  }
+
+  const closeDeletePanel = () => {
+    setPendingDelete(null)
+    setImpact(null)
+    setTeamsTo('')
+    setDeleteError(null)
+  }
+
+  const confirmDelete = async (organizerId: string) => {
+    setDeleteError(null)
+    setIsDeleting(true)
+
+    try {
+      // One request. The clubs move, the competitions and the logins go with
+      // the organizer, and none of it is the browser's to sequence: the second
+      // half of the old two-call version failed with "Account not found"
+      // whenever there was no account to delete, and reported the whole thing
+      // as a failure while the organizer had in fact gone.
+      await deleteOrganizer(organizerId, teamsTo || undefined)
+      closeDeletePanel()
       loadOrganizers()
     } catch (error) {
-      console.error('Error deleting organizer:', error)
-      alert('Failed to delete organizer. Please try again.')
+      setDeleteError(error instanceof Error ? error.message : 'Could not delete this organizer')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -452,7 +493,7 @@ export default function OrganizersPage() {
                           <IconKey size={14} /> Set password
                         </button>
                         <button
-                          onClick={() => handleDeleteOrganizer(organizer.id, organizer.email)}
+                          onClick={() => handleDeleteOrganizer(organizer.id)}
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg transition-all text-red-400 text-sm"
                           title="Delete Organizer"
                         >
@@ -462,6 +503,89 @@ export default function OrganizersPage() {
                     </div>
                   </div>
                   
+                  {/* What deleting this organizer costs, before it is done. */}
+                  {pendingDelete === organizer.id && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                      {!impact && !deleteError ? (
+                        <p className="text-sm text-gray-400">Working out what this would delete…</p>
+                      ) : (
+                        impact && (
+                          <div className="space-y-3">
+                            <p className="text-sm text-white">
+                              Deleting {organizer.name} cannot be undone.
+                            </p>
+                            <ul className="text-sm text-gray-300 space-y-1">
+                              <li>
+                                {impact.tournaments.length === 0
+                                  ? 'No competitions to delete.'
+                                  : `${impact.tournaments.length} ${impact.tournaments.length === 1 ? 'competition is' : 'competitions are'} deleted with it: ${impact.tournaments.map((t) => t.name).join(', ')}.`}
+                              </li>
+                              <li>
+                                {impact.accounts.length === 0
+                                  ? 'No login is attached to it.'
+                                  : `${impact.accounts.length === 1 ? 'This login stops working' : 'These logins stop working'}: ${impact.accounts.join(', ')}.`}
+                              </li>
+                              <li>
+                                {impact.teams.length === 0
+                                  ? 'No clubs to move.'
+                                  : `${impact.teams.length} ${impact.teams.length === 1 ? 'club moves' : 'clubs move'} to another organizer: ${impact.teams.map((t) => t.name).join(', ')}.`}
+                              </li>
+                            </ul>
+
+                            {impact.teams.length > 0 && (
+                              <div>
+                                <label className="block text-sm text-gray-300 mb-2">
+                                  Move the clubs to
+                                </label>
+                                <select
+                                  value={teamsTo}
+                                  onChange={(e) => setTeamsTo(e.target.value)}
+                                  className="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none text-white"
+                                >
+                                  <option value="">Choose an organizer…</option>
+                                  {organizers
+                                    .filter((candidate) => candidate.id !== organizer.id)
+                                    .map((candidate) => (
+                                      <option key={candidate.id} value={candidate.id}>
+                                        {candidate.name}
+                                      </option>
+                                    ))}
+                                </select>
+                                {organizers.length === 1 && (
+                                  <p className="text-sm text-amber-300/90 mt-2">
+                                    There is nobody else to give them to. Create another organizer
+                                    first, or move the clubs by hand.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => confirmDelete(organizer.id)}
+                                disabled={isDeleting || (impact.teams.length > 0 && !teamsTo)}
+                                className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed border border-red-400/30 rounded-lg transition-all text-red-300 text-sm"
+                              >
+                                {isDeleting ? 'Deleting…' : 'Delete organizer'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      )}
+
+                      {deleteError && <p className="text-red-400 text-sm mt-3">{deleteError}</p>}
+
+                      {/* Outside the panel above, so there is still a way out
+                          when reading the impact is what failed. */}
+                      <button
+                        onClick={closeDeletePanel}
+                        className="mt-3 px-4 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-400/30 rounded-lg transition-all text-gray-300 text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+
                   {/* The link, once it exists: copied already, shown so it can be re-copied. */}
                   {resetLinks[organizer.email] && (
                     <div className="mt-4 pt-4 border-t border-white/10">

@@ -202,16 +202,25 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ) 
       },
-      // Original routes for top navigation
-      { path: 'tournaments', element: <TournamentsPage /> },
-      { path: 'tournaments/new', element: <CreateTournamentPage /> },
-      { path: 'tournaments/:id', element: <TournamentPage /> },
-      { path: 'tournaments/:id/settings', element: <TournamentSettingsPage /> },
-      { path: 'tournaments/:tournamentId/matches/:matchId', element: <MatchPage /> },
-      { path: 'teams', element: <TeamsPage /> },
-      { path: 'teams/:teamId', element: <TeamPage /> },
-      { path: 'players/:playerId', element: <PlayerPage /> },
-      { path: 'calendar', element: <CalendarPage /> },
+      // The addresses the admin bar links to. Protected like their /admin
+      // equivalents: what stood in for a gate here was the "No organizer
+      // selected" screen inside each page, and that screen now also means
+      // "signed in as the super admin", so it stopped being a gate at all.
+      { path: 'tournaments', element: <ProtectedRoute><TournamentsPage /></ProtectedRoute> },
+      { path: 'tournaments/new', element: <ProtectedRoute><CreateTournamentPage /></ProtectedRoute> },
+      { path: 'tournaments/:id', element: <ProtectedRoute><TournamentPage /></ProtectedRoute> },
+      {
+        path: 'tournaments/:id/settings',
+        element: <ProtectedRoute><TournamentSettingsPage /></ProtectedRoute>,
+      },
+      {
+        path: 'tournaments/:tournamentId/matches/:matchId',
+        element: <ProtectedRoute><MatchPage /></ProtectedRoute>,
+      },
+      { path: 'teams', element: <ProtectedRoute><TeamsPage /></ProtectedRoute> },
+      { path: 'teams/:teamId', element: <ProtectedRoute><TeamPage /></ProtectedRoute> },
+      { path: 'players/:playerId', element: <ProtectedRoute><PlayerPage /></ProtectedRoute> },
+      { path: 'calendar', element: <ProtectedRoute><CalendarPage /></ProtectedRoute> },
     ],
   },
   {

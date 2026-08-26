@@ -1,0 +1,2362 @@
+diff --git a/server/scripts/delete-orphans.mjs b/server/scripts/delete-orphans.mjs
+new file mode 100644
+index 0000000..95b32c8
+--- /dev/null
++++ b/server/scripts/delete-orphans.mjs
+@@ -0,0 +1,139 @@
++#!/usr/bin/env node
++/**
++ * Deletes tournaments, clubs, entries and invitations whose organizer no longer
++ * exists.
++ *
++ * These are what the old delete-organizer route left behind: it removed the
++ * organizer row and nothing else, so the competitions stayed on the public site
++ * with nobody able to administer them, and the clubs sat in a list no screen
++ * shows. The route no longer works that way; this clears up what it did before
++ * it was fixed.
++ *
++ * Run it from your own machine with your own AWS credentials. It prints what it
++ * would delete and stops, unless you pass --apply:
++ *
++ *   node scripts/delete-orphans.mjs
++ *   node scripts/delete-orphans.mjs --apply
++ *
++ * Two things it deliberately will not do. A club still playing in a competition
++ * whose organizer is alive is left alone and reported instead — deleting it
++ * would leave that organizer's fixtures pointing at nothing. And a row with no
++ * `organizerId` at all is not treated as an orphan: that is a missing field,
++ * not a deleted organizer, and the two look identical to a lookup.
++ *
++ * Images in S3 are not touched: they cost almost nothing, and deleting one that
++ * another club is also using cannot be undone.
++ */
++
++import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
++import { DynamoDBDocumentClient, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
++
++const TABLE_ORGANIZERS = process.env.TABLE_ORGANIZERS ?? 'football-tournaments-organizers'
++const TABLE_TEAMS = process.env.TABLE_TEAMS ?? 'football-tournaments-teams'
++const TABLE_TOURNAMENTS = process.env.TABLE_TOURNAMENTS ?? 'football-tournaments-tournaments'
++const TABLE_ENTRIES = process.env.TABLE_ENTRIES ?? 'football-tournaments-entries'
++const TABLE_INVITES = process.env.TABLE_INVITES ?? 'football-tournaments-invites'
++
++const apply = process.argv.includes('--apply')
++const client = new DynamoDBClient({})
++const ddb = DynamoDBDocumentClient.from(client)
++
++async function scanAll(TableName, ProjectionExpression, ExpressionAttributeNames) {
++  const items = []
++  let ExclusiveStartKey
++  do {
++    const page = await ddb.send(
++      new ScanCommand({ TableName, ProjectionExpression, ExpressionAttributeNames, ExclusiveStartKey }),
++    )
++    items.push(...(page.Items ?? []))
++    ExclusiveStartKey = page.LastEvaluatedKey
++  } while (ExclusiveStartKey)
++  return items
++}
++
++// Which stack this is about to rewrite. Exporting one table name for a test
++// stack and forgetting the rest would otherwise read every organizer from one
++// database and call the whole of another database orphaned.
++console.log(`Region: ${await client.config.region()}`)
++console.log(`Tables: ${[TABLE_ORGANIZERS, TABLE_TEAMS, TABLE_TOURNAMENTS, TABLE_ENTRIES, TABLE_INVITES].join(', ')}\n`)
++
++const organizers = await scanAll(TABLE_ORGANIZERS, 'id')
++const alive = new Set(organizers.map((organizer) => organizer.id))
++
++const tournaments = await scanAll(TABLE_TOURNAMENTS, 'id, #name, organizerId, teamIds', {
++  '#name': 'name',
++})
++const teams = await scanAll(TABLE_TEAMS, 'id, #name, organizerId, managerUserIds', {
++  '#name': 'name',
++})
++const entries = await scanAll(TABLE_ENTRIES, 'tournamentId, teamId')
++const invites = await scanAll(TABLE_INVITES, '#token, teamId, organizerId', { '#token': 'token' })
++
++const orphaned = (row) => typeof row.organizerId === 'string' && row.organizerId !== '' && !alive.has(row.organizerId)
++const unowned = (row) => typeof row.organizerId !== 'string' || row.organizerId === ''
++
++const orphanedTournaments = tournaments.filter(orphaned)
++const doomedTournamentIds = new Set(orphanedTournaments.map((t) => t.id))
++
++// A club playing in a competition that survives is not ours to delete.
++const survivingTournaments = tournaments.filter((t) => !doomedTournamentIds.has(t.id))
++const stillPlaying = new Set(survivingTournaments.flatMap((t) => t.teamIds ?? []))
++
++const orphanedTeams = teams.filter((team) => orphaned(team) && !stillPlaying.has(team.id))
++const keptTeams = teams.filter((team) => orphaned(team) && stillPlaying.has(team.id))
++const doomedTeamIds = new Set(orphanedTeams.map((t) => t.id))
++
++const orphanedEntries = entries.filter(
++  (entry) => doomedTournamentIds.has(entry.tournamentId) || doomedTeamIds.has(entry.teamId),
++)
++// An invitation dies with the club it names or with the organizer that wrote it:
++// a link written by an organizer who no longer exists still hands over a club.
++const orphanedInvites = invites.filter(
++  (invite) => doomedTeamIds.has(invite.teamId) || orphaned(invite),
++)
++
++const unownedRows = [...tournaments.filter(unowned), ...teams.filter(unowned)]
++
++console.log(`Organizers that exist: ${alive.size}`)
++console.log(`\nTournaments to delete (${orphanedTournaments.length}):`)
++for (const t of orphanedTournaments) console.log(`  ${t.name}  [${t.id}] of ${t.organizerId}`)
++console.log(`\nClubs to delete (${orphanedTeams.length}):`)
++for (const t of orphanedTeams) {
++  const managers = (t.managerUserIds ?? []).length
++  console.log(`  ${t.name}  [${t.id}] of ${t.organizerId}${managers ? `, ${managers} manager(s) lose it` : ''}`)
++}
++if (keptTeams.length > 0) {
++  console.log(`\nClubs kept — their organizer is gone but they still play somewhere (${keptTeams.length}):`)
++  for (const t of keptTeams) console.log(`  ${t.name}  [${t.id}] — give them an organizer by hand`)
++}
++if (unownedRows.length > 0) {
++  console.log(`\nRows with no organizerId at all, left alone (${unownedRows.length}):`)
++  for (const row of unownedRows) console.log(`  ${row.name ?? '(unnamed)'}  [${row.id}]`)
++}
++console.log(`\nEntries to delete: ${orphanedEntries.length}`)
++console.log(`Invitations to delete: ${orphanedInvites.length}`)
++
++if (!apply) {
++  console.log('\nNothing was deleted. Run again with --apply to do it.')
++  process.exit(0)
++}
++
++for (const entry of orphanedEntries) {
++  await ddb.send(
++    new DeleteCommand({
++      TableName: TABLE_ENTRIES,
++      Key: { tournamentId: entry.tournamentId, teamId: entry.teamId },
++    }),
++  )
++}
++for (const invite of orphanedInvites) {
++  await ddb.send(new DeleteCommand({ TableName: TABLE_INVITES, Key: { token: invite.token } }))
++}
++for (const tournament of orphanedTournaments) {
++  await ddb.send(new DeleteCommand({ TableName: TABLE_TOURNAMENTS, Key: { id: tournament.id } }))
++}
++for (const team of orphanedTeams) {
++  await ddb.send(new DeleteCommand({ TableName: TABLE_TEAMS, Key: { id: team.id } }))
++}
++
++console.log('\nDone.')
+diff --git a/server/src/lib/ddb.ts b/server/src/lib/ddb.ts
+index e7060b4..576b167 100644
+--- a/server/src/lib/ddb.ts
++++ b/server/src/lib/ddb.ts
+@@ -36,6 +36,36 @@ export async function scanAll<T>(tableName: string): Promise<T[]> {
+   return items
+ }
+ 
++/**
++ * Every row a query matches, not just the first megabyte of them.
++ *
++ * A Query stops at 1 MB and says so only in `LastEvaluatedKey`. The
++ * `organizerId-index` reads project the whole record — and a tournament carries
++ * all of its matches — so one organizer's second season can already fall off
++ * the end of the first page. A listing that quietly loses rows is bad; deleting
++ * an organizer from one is worse, because whatever the query missed becomes an
++ * orphan nobody can reach.
++ */
++export async function queryAll<T>(input: {
++  TableName: string
++  IndexName?: string
++  KeyConditionExpression: string
++  ExpressionAttributeValues: Record<string, unknown>
++}): Promise<T[]> {
++  const items: T[] = []
++  let lastEvaluatedKey: Record<string, unknown> | undefined
++
++  do {
++    const result = await ddb.send(
++      new QueryCommand({ ...input, ExclusiveStartKey: lastEvaluatedKey }),
++    )
++    if (result.Items) items.push(...(result.Items as T[]))
++    lastEvaluatedKey = result.LastEvaluatedKey
++  } while (lastEvaluatedKey)
++
++  return items
++}
++
+ /** Fetches many items by primary key, in the 100-key batches DynamoDB allows. */
+ export async function batchGetByIds<T>(tableName: string, ids: string[]): Promise<T[]> {
+   const unique = [...new Set(ids.filter(Boolean))]
+diff --git a/server/src/repos-clubs.ts b/server/src/repos-clubs.ts
+index c9886b6..8ba9944 100644
+--- a/server/src/repos-clubs.ts
++++ b/server/src/repos-clubs.ts
+@@ -1,4 +1,12 @@
+-import { ddb, DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from './lib/ddb.js'
++import {
++  ddb,
++  DeleteCommand,
++  GetCommand,
++  PutCommand,
++  queryAll,
++  scanAll,
++  UpdateCommand,
++} from './lib/ddb.js'
+ import { INVITE_TTL_MS, TABLES } from './lib/env.js'
+ import { generateId, generateToken } from './lib/passwords.js'
+ import type { AuthUser, Team } from './lib/types.js'
+@@ -197,26 +205,60 @@ export async function getEntry(tournamentId: string, teamId: string): Promise<En
+ }
+ 
+ export async function entriesForTournament(tournamentId: string): Promise<Entry[]> {
+-  const result = await ddb.send(
+-    new QueryCommand({
+-      TableName: TABLES.ENTRIES,
+-      KeyConditionExpression: 'tournamentId = :tournamentId',
+-      ExpressionAttributeValues: { ':tournamentId': tournamentId },
+-    }),
+-  )
+-  return (result.Items ?? []) as Entry[]
++  return queryAll<Entry>({
++    TableName: TABLES.ENTRIES,
++    KeyConditionExpression: 'tournamentId = :tournamentId',
++    ExpressionAttributeValues: { ':tournamentId': tournamentId },
++  })
++}
++
++/**
++ * Invitations an organizer issued, which die with them.
++ *
++ * An invitation is a link that hands a club to whoever opens it, and claiming
++ * one creates an account. Left behind, an invitation written by a deleted
++ * organizer would still work a fortnight later — against a club that has since
++ * moved to somebody else, who never invited anybody. Deleting the organizer's
++ * sessions and leaving these would be closing one door and leaving the other
++ * open.
++ */
++export async function deleteInvitesOfOrganizer(organizerId: string): Promise<number> {
++  const all = await scanAll<TeamInvite>(TABLES.INVITES)
++  const doomed = all.filter((invite) => invite.organizerId === organizerId)
++  for (const invite of doomed) {
++    await ddb.send(new DeleteCommand({ TableName: TABLES.INVITES, Key: { token: invite.token } }))
++  }
++  return doomed.length
++}
++
++/**
++ * Removes every application to a competition that is going away.
++ *
++ * An entry is keyed by the tournament it belongs to, so once the tournament is
++ * deleted the row is unreachable through the interface but still counts against
++ * the club: `entriesForTeam` keeps returning it, and the club shows as pending
++ * in a competition nobody can open.
++ */
++export async function deleteEntriesForTournament(tournamentId: string): Promise<number> {
++  const entries = await entriesForTournament(tournamentId)
++  for (const entry of entries) {
++    await ddb.send(
++      new DeleteCommand({
++        TableName: TABLES.ENTRIES,
++        Key: { tournamentId: entry.tournamentId, teamId: entry.teamId },
++      }),
++    )
++  }
++  return entries.length
+ }
+ 
+ export async function entriesForTeam(teamId: string): Promise<Entry[]> {
+-  const result = await ddb.send(
+-    new QueryCommand({
+-      TableName: TABLES.ENTRIES,
+-      IndexName: 'teamId-index',
+-      KeyConditionExpression: 'teamId = :teamId',
+-      ExpressionAttributeValues: { ':teamId': teamId },
+-    }),
+-  )
+-  return (result.Items ?? []) as Entry[]
++  return queryAll<Entry>({
++    TableName: TABLES.ENTRIES,
++    IndexName: 'teamId-index',
++    KeyConditionExpression: 'teamId = :teamId',
++    ExpressionAttributeValues: { ':teamId': teamId },
++  })
+ }
+ 
+ export async function decideEntry(
+diff --git a/server/src/repos.ts b/server/src/repos.ts
+index 8f24e6f..568f860 100644
+--- a/server/src/repos.ts
++++ b/server/src/repos.ts
+@@ -5,7 +5,7 @@ import {
+   DeleteCommand,
+   GetCommand,
+   PutCommand,
+-  QueryCommand,
++  queryAll,
+   scanAll,
+   UpdateCommand,
+ } from './lib/ddb.js'
+@@ -71,15 +71,12 @@ export const teams = {
+       // organizerId-index keeps this a Query instead of a full-table Scan, which
+       // is the difference between paying for one organizer's teams and paying
+       // for every team in the system on each request.
+-      const result = await ddb.send(
+-        new QueryCommand({
+-          TableName: TABLES.TEAMS,
+-          IndexName: 'organizerId-index',
+-          KeyConditionExpression: 'organizerId = :organizerId',
+-          ExpressionAttributeValues: { ':organizerId': organizerId },
+-        }),
+-      )
+-      return (result.Items ?? []) as Team[]
++      return queryAll<Team>({
++        TableName: TABLES.TEAMS,
++        IndexName: 'organizerId-index',
++        KeyConditionExpression: 'organizerId = :organizerId',
++        ExpressionAttributeValues: { ':organizerId': organizerId },
++      })
+     })
+   },
+ 
+@@ -284,15 +281,12 @@ export const tournaments = {
+ 
+   async listByOrganizer(organizerId: string): Promise<Tournament[]> {
+     return cached(`tournaments:organizer:${organizerId}`, defaultTtl, async () => {
+-      const result = await ddb.send(
+-        new QueryCommand({
+-          TableName: TABLES.TOURNAMENTS,
+-          IndexName: 'organizerId-index',
+-          KeyConditionExpression: 'organizerId = :organizerId',
+-          ExpressionAttributeValues: { ':organizerId': organizerId },
+-        }),
+-      )
+-      return (result.Items ?? []) as Tournament[]
++      return queryAll<Tournament>({
++        TableName: TABLES.TOURNAMENTS,
++        IndexName: 'organizerId-index',
++        KeyConditionExpression: 'organizerId = :organizerId',
++        ExpressionAttributeValues: { ':organizerId': organizerId },
++      })
+     })
+   },
+ 
+diff --git a/server/src/routes/admin.ts b/server/src/routes/admin.ts
+index c752d53..257bbc6 100644
+--- a/server/src/routes/admin.ts
++++ b/server/src/routes/admin.ts
+@@ -1,4 +1,4 @@
+-import { ddb, PutCommand, DeleteCommand, UpdateCommand } from '../lib/ddb.js'
++import { ddb, PutCommand, DeleteCommand, UpdateCommand, scanAll } from '../lib/ddb.js'
+ import { TABLES } from '../lib/env.js'
+ import { badRequest, notFound } from '../lib/http.js'
+ import {
+@@ -16,11 +16,16 @@ import {
+ import { deleteAllUserSessions } from '../lib/sessions.js'
+ import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
+ import { organizers, teams, tournaments } from '../repos.js'
+-import { unlinkManagerFromTeam } from '../repos-clubs.js'
++import {
++  deleteEntriesForTournament,
++  deleteInvitesOfOrganizer,
++  unlinkManagerFromTeam,
++} from '../repos-clubs.js'
+ import { findUserByCredential } from './auth.js'
+ import type { Router } from '../lib/router.js'
+ import type { RequestContext } from '../context.js'
+ import { record, recent } from '../lib/audit.js'
++import { invalidate } from '../lib/cache.js'
+ import { issueResetToken } from '../lib/resets.js'
+ import { SITE_URL } from '../lib/env.js'
+ import { sendPasswordReset } from '../lib/mail.js'
+@@ -74,6 +79,18 @@ function pick(body: Record<string, unknown>, fields: readonly string[]): Record<
+   return out
+ }
+ 
++/**
++ * Every login that administers one organizer.
++ *
++ * A scan rather than a query: the accounts table is indexed by email, which is
++ * the only thing anybody signs in with, and it holds a handful of rows. An
++ * index on `organizerId` would cost more to keep than this read costs to run.
++ */
++async function accountsOfOrganizer(organizerId: string): Promise<AuthUser[]> {
++  const all = await scanAll<AuthUser>(TABLES.AUTH_USERS)
++  return all.filter((account) => account.organizerId === organizerId)
++}
++
+ export function registerAdminRoutes(router: Router<RequestContext>): void {
+   /* ---------------- listings (include private data) ---------------- */
+ 
+@@ -123,10 +140,144 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
+     return { ok: true }
+   })
+ 
+-  router.delete('/admin/organizers/:id', async (ctx, params) => {
++  /**
++   * What deleting this organizer would take with it.
++   *
++   * The confirmation has to say more than "are you sure": the competitions go,
++   * the clubs do not, and the logins stop working. The page asking the question
++   * holds none of that, so the server counts it.
++   */
++  router.get('/admin/organizers/:id/impact', async (ctx, params) => {
+     assertSuperAdmin(await ctx.user())
+-    await organizers.remove(params.id!)
+-    return { ok: true }
++    const id = params.id!
++    if (!(await organizers.get(id))) throw notFound('Organizer not found')
++
++    // Read past the cache, exactly as the delete does. Answering this one from
++    // a stale copy is worse than answering it slowly: the operator would be
++    // agreeing to a smaller deletion than the one that happens.
++    invalidate(`tournaments:organizer:${id}`)
++    invalidate(`teams:organizer:${id}`)
++
++    const [ownTournaments, ownTeams, accounts] = await Promise.all([
++      tournaments.listByOrganizer(id),
++      teams.listByOrganizer(id),
++      accountsOfOrganizer(id),
++    ])
++
++    return {
++      tournaments: ownTournaments.map((tournament) => ({
++        id: tournament.id,
++        name: tournament.name,
++      })),
++      teams: ownTeams.map((team) => ({ id: team.id, name: team.name })),
++      accounts: accounts.map((account) => account.email),
++    }
++  })
++
++  /**
++   * Deletes an organizer and everything that only makes sense alongside it.
++   *
++   * A competition belongs to whoever runs it and goes with them. A club does
++   * not: it has its own managers, its own squad and a life longer than any one
++   * league, so it is moved to another organizer named by the caller rather than
++   * deleted. Deleting the organizer row alone — all this route used to do — left
++   * both behind, owned by nobody and still listed on the public site, and the
++   * organizer's login still worked.
++   *
++   * The order is deliberate and every step is idempotent: clubs are moved to
++   * safety first, the organizer row goes last, and a request that fails halfway
++   * can simply be repeated. There is no cross-table transaction to lean on.
++   */
++  router.delete('/admin/organizers/:id', async (ctx, params) => {
++    const actor = await ctx.user()
++    assertSuperAdmin(actor)
++    const id = params.id!
++    const organizer = await organizers.get(id)
++    if (!organizer) throw notFound('Organizer not found')
++
++    // These two lists decide what gets deleted and what gets moved, so they
++    // are read past the cache. The listings live in the Lambda's memory and a
++    // write made by another warm container does not invalidate this copy: a
++    // competition created a minute ago could be missing from it and would
++    // survive as an orphan, which is the whole bug this route exists to stop.
++    // The index behind them is eventually consistent, so something created in
++    // the last second can still be missed; `scripts/delete-orphans.mjs` is the
++    // net underneath.
++    invalidate(`tournaments:organizer:${id}`)
++    invalidate(`teams:organizer:${id}`)
++
++    const [ownTournaments, ownTeams] = await Promise.all([
++      tournaments.listByOrganizer(id),
++      teams.listByOrganizer(id),
++    ])
++
++    const teamsTo = typeof ctx.query?.teamsTo === 'string' ? ctx.query.teamsTo.trim() : ''
++    if (ownTeams.length > 0) {
++      if (!teamsTo) {
++        throw badRequest(
++          `${ownTeams.length} ${ownTeams.length === 1 ? 'club belongs' : 'clubs belong'} to this organizer. Name the organizer to move them to.`,
++        )
++      }
++      if (teamsTo === id) throw badRequest('Clubs cannot be moved to the organizer being deleted')
++      if (!(await organizers.get(teamsTo))) {
++        throw badRequest('The organizer the clubs would move to does not exist')
++      }
++    }
++
++    for (const team of ownTeams) {
++      await teams.update(team.id, { organizerId: teamsTo })
++    }
++
++    for (const tournament of ownTournaments) {
++      await deleteEntriesForTournament(tournament.id)
++      await tournaments.remove(tournament.id)
++    }
++
++    // An invitation is a door into a club, and it outlives the organizer that
++    // wrote it by a fortnight unless it goes now.
++    const invitesDeleted = await deleteInvitesOfOrganizer(id)
++
++    // Every login attached to this organizer, not only the one matching its
++    // contact address. The interface used to delete the account by email in a
++    // second request of its own, which failed with "Account not found" whenever
++    // the addresses had drifted apart — and left the account able to sign in.
++    //
++    // Never a super admin, and never the caller: the role has nobody above it
++    // to recreate it, and an organizerId on such an account would be a mistake
++    // in the data rather than a licence to delete the keys to the building.
++    const accounts = (await accountsOfOrganizer(id)).filter(
++      (account) => account.role !== 'super_admin' && account.id !== actor.id,
++    )
++    for (const account of accounts) {
++      await deleteAllUserSessions(account.id)
++      await ddb.send(new DeleteCommand({ TableName: TABLES.AUTH_USERS, Key: { id: account.id } }))
++    }
++
++    await organizers.remove(id)
++
++    await record(actor, {
++      action: 'organizer.delete',
++      entity: 'organizer',
++      entityId: id,
++      // Where the clubs went belongs in here. `teamsTo` is any organizer id the
++      // caller names, so a mistyped one that happens to exist hands somebody
++      // else a league's worth of clubs, and this line is the only way back to
++      // finding out where they are.
++      summary:
++        `Deleted ${organizer.name}: ${ownTournaments.length} ${ownTournaments.length === 1 ? 'competition' : 'competitions'}` +
++        `, ${accounts.length} ${accounts.length === 1 ? 'login' : 'logins'}` +
++        `, ${invitesDeleted} ${invitesDeleted === 1 ? 'invitation' : 'invitations'}` +
++        (ownTeams.length > 0 ? `, ${ownTeams.length} clubs moved to ${teamsTo}` : ''),
++      organizerId: id,
++    })
++
++    return {
++      ok: true,
++      tournamentsDeleted: ownTournaments.length,
++      teamsMoved: ownTeams.length,
++      accountsDeleted: accounts.length,
++      invitesDeleted,
++    }
+   })
+ 
+   /* ---------------- teams ---------------- */
+diff --git a/server/tests/handler.test.ts b/server/tests/handler.test.ts
+index 7d5290e..0bb64b2 100644
+--- a/server/tests/handler.test.ts
++++ b/server/tests/handler.test.ts
+@@ -233,6 +233,24 @@ describe('authorization', () => {
+     })
+     expect(response.statusCode).toBe(403)
+   })
++
++  // Deleting an organizer now takes its competitions and its logins with it, so
++  // the check that keeps an organizer out has to hold before anything is read,
++  // let alone written.
++  it('refuses to delete an organizer, their own included, and reads nothing first', async () => {
++    const response = await request('DELETE', '/admin/organizers/org-1', { token: 'good-token' })
++
++    expect(response.statusCode).toBe(403)
++    expect(repos.tournaments.listByOrganizer).not.toHaveBeenCalled()
++    expect(repos.teams.listByOrganizer).not.toHaveBeenCalled()
++  })
++
++  it('refuses to tell an organizer what deleting one would cost', async () => {
++    const response = await request('GET', '/admin/organizers/org-1/impact', {
++      token: 'good-token',
++    })
++    expect(response.statusCode).toBe(403)
++  })
+ })
+ 
+ describe('player editing', () => {
+diff --git a/src/contexts/AuthContext.tsx b/src/contexts/AuthContext.tsx
+index 5c95efb..67689c9 100644
+--- a/src/contexts/AuthContext.tsx
++++ b/src/contexts/AuthContext.tsx
+@@ -39,15 +39,14 @@ interface AuthProviderProps {
+ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+   const [user, setUser] = useState<AuthUser | null>(null)
+   const [isLoading, setIsLoading] = useState(true)
+-  const setCurrentOrganizer = useAppStore((state) => state.setCurrentOrganizer)
++  const applyScope = useAppStore((state) => state.applyScope)
+ 
+-  /** Points the store at whichever organizer this user administers. */
++  /**
++   * Points the store at whatever this account administers: one organizer, all
++   * of them for a super admin, or none at all.
++   */
+   const applyOrganizerScope = (nextUser: AuthUser | null) => {
+-    if (nextUser?.role === 'organizer' && nextUser.organizerId) {
+-      setCurrentOrganizer(nextUser.organizerId)
+-    } else {
+-      setCurrentOrganizer('')
+-    }
++    applyScope(nextUser)
+   }
+ 
+   // On load, ask the API whether the stored token is still a valid session.
+diff --git a/src/lib/auth.ts b/src/lib/auth.ts
+index cec2137..c614383 100644
+--- a/src/lib/auth.ts
++++ b/src/lib/auth.ts
+@@ -115,10 +115,6 @@ export async function createSuperAdminAccount(
+   })
+ }
+ 
+-export async function deleteOrganizerAccount(organizerEmail: string): Promise<void> {
+-  await api.delete(`/admin/accounts/${encodeURIComponent(organizerEmail)}`)
+-}
+-
+ export async function resetOrganizerPassword(
+   organizerEmail: string,
+   newPassword: string,
+diff --git a/src/lib/data.ts b/src/lib/data.ts
+index 004ea7e..3427ea8 100644
+--- a/src/lib/data.ts
++++ b/src/lib/data.ts
+@@ -50,10 +50,37 @@ export const organizerService = {
+     return true
+   },
+ 
+-  async delete(id: string): Promise<boolean> {
+-    await api.delete(`/admin/organizers/${encodeURIComponent(id)}`)
+-    return true
++  /** What deleting this organizer would take with it, counted by the server. */
++  async impact(id: string): Promise<OrganizerImpact> {
++    return api.get<OrganizerImpact>(`/admin/organizers/${encodeURIComponent(id)}/impact`)
+   },
++
++  /**
++   * Deletes the organizer, its competitions and its logins in one request.
++   *
++   * `teamsTo` is the organizer its clubs move to, and the server insists on one
++   * whenever there are any: a club has its own managers and squad and outlives
++   * the league it was created in, so it is never deleted along with its
++   * organizer.
++   */
++  async delete(id: string, teamsTo?: string): Promise<OrganizerDeleted> {
++    const query = teamsTo ? `?teamsTo=${encodeURIComponent(teamsTo)}` : ''
++    return api.delete<OrganizerDeleted>(`/admin/organizers/${encodeURIComponent(id)}${query}`)
++  },
++}
++
++export type OrganizerImpact = {
++  tournaments: { id: string; name: string }[]
++  teams: { id: string; name: string }[]
++  accounts: string[]
++}
++
++export type OrganizerDeleted = {
++  ok: true
++  tournamentsDeleted: number
++  teamsMoved: number
++  accountsDeleted: number
++  invitesDeleted: number
+ }
+ 
+ export const teamService = {
+diff --git a/src/main.tsx b/src/main.tsx
+index 00cc50e..f80844f 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -202,16 +202,25 @@ const router = createBrowserRouter([
+           </ProtectedRoute>
+         ) 
+       },
+-      // Original routes for top navigation
+-      { path: 'tournaments', element: <TournamentsPage /> },
+-      { path: 'tournaments/new', element: <CreateTournamentPage /> },
+-      { path: 'tournaments/:id', element: <TournamentPage /> },
+-      { path: 'tournaments/:id/settings', element: <TournamentSettingsPage /> },
+-      { path: 'tournaments/:tournamentId/matches/:matchId', element: <MatchPage /> },
+-      { path: 'teams', element: <TeamsPage /> },
+-      { path: 'teams/:teamId', element: <TeamPage /> },
+-      { path: 'players/:playerId', element: <PlayerPage /> },
+-      { path: 'calendar', element: <CalendarPage /> },
++      // The addresses the admin bar links to. Protected like their /admin
++      // equivalents: what stood in for a gate here was the "No organizer
++      // selected" screen inside each page, and that screen now also means
++      // "signed in as the super admin", so it stopped being a gate at all.
++      { path: 'tournaments', element: <ProtectedRoute><TournamentsPage /></ProtectedRoute> },
++      { path: 'tournaments/new', element: <ProtectedRoute><CreateTournamentPage /></ProtectedRoute> },
++      { path: 'tournaments/:id', element: <ProtectedRoute><TournamentPage /></ProtectedRoute> },
++      {
++        path: 'tournaments/:id/settings',
++        element: <ProtectedRoute><TournamentSettingsPage /></ProtectedRoute>,
++      },
++      {
++        path: 'tournaments/:tournamentId/matches/:matchId',
++        element: <ProtectedRoute><MatchPage /></ProtectedRoute>,
++      },
++      { path: 'teams', element: <ProtectedRoute><TeamsPage /></ProtectedRoute> },
++      { path: 'teams/:teamId', element: <ProtectedRoute><TeamPage /></ProtectedRoute> },
++      { path: 'players/:playerId', element: <ProtectedRoute><PlayerPage /></ProtectedRoute> },
++      { path: 'calendar', element: <ProtectedRoute><CalendarPage /></ProtectedRoute> },
+     ],
+   },
+   {
+diff --git a/src/pages/AdminPage.tsx b/src/pages/AdminPage.tsx
+index dd1cc1b..aa215ea 100644
+--- a/src/pages/AdminPage.tsx
++++ b/src/pages/AdminPage.tsx
+@@ -1,13 +1,22 @@
+-import { useState } from 'react'
++import { useEffect, useState } from 'react'
+ import { useAuth } from '../contexts/AuthContext'
+ import { useAppStore } from '../store'
+ import { Link } from 'react-router-dom'
+ 
+ export default function AdminPage() {
+   const { user, isSuperAdmin, isOrganizer, logout } = useAuth()
+-  const { getOrganizerTeams, getOrganizerTournaments, getAllTeams, getAllTournaments, organizers } = useAppStore()
++  const { getOrganizerTeams, getOrganizerTournaments, getAllTeams, getAllTournaments, organizers, loadTeams, loadTournaments, currentOrganizerId } = useAppStore()
+   const [isInitialized] = useState(true)
+ 
++  // The super admin has no organizer to scope to, so nothing has loaded these
++  // on their behalf and the counts below would all read zero.
++  useEffect(() => {
++    if (isSuperAdmin && !currentOrganizerId) {
++      loadTeams()
++      loadTournaments()
++    }
++  }, [isSuperAdmin, currentOrganizerId, loadTeams, loadTournaments])
++
+ 
+   // Show all data for super admin, organizer-specific data for organizers
+   const teams = isSuperAdmin ? getAllTeams() : getOrganizerTeams()
+diff --git a/src/pages/CalendarPage.tsx b/src/pages/CalendarPage.tsx
+index c32fdc0..5bdd0f7 100644
+--- a/src/pages/CalendarPage.tsx
++++ b/src/pages/CalendarPage.tsx
+@@ -5,14 +5,15 @@ import {
+ } from '../components/icons'
+ 
+ export default function CalendarPage() {
+-  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams } = useAppStore()
++  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, superAdmin } = useAppStore()
+   
+   const currentOrganizer = getCurrentOrganizer()
+   const tournaments = getOrganizerTournaments()
+   const teams = getOrganizerTeams()
+   
+-  // Redirect if no organizer is selected
+-  if (!currentOrganizer) {
++  // Redirect if no organizer is selected. The super admin has none: their
++  // calendar is every organizer's matches together.
++  if (!currentOrganizer && !superAdmin) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+@@ -47,7 +48,7 @@ export default function CalendarPage() {
+     <div className="min-h-[80vh] flex flex-col items-center gap-8">
+       <div className="text-center">
+         <h1 className="text-3xl font-bold mb-2">Match Calendar</h1>
+-        <p className="opacity-80">Organizer: {currentOrganizer.name}</p>
++        <p className="opacity-80">{currentOrganizer ? `Organizer: ${currentOrganizer.name}` : 'Every organizer'}</p>
+       </div>
+       
+       <section className="glass rounded-xl p-6 w-full max-w-4xl">
+diff --git a/src/pages/CreateTournamentPage.tsx b/src/pages/CreateTournamentPage.tsx
+index b1fd226..c84a1a0 100644
+--- a/src/pages/CreateTournamentPage.tsx
++++ b/src/pages/CreateTournamentPage.tsx
+@@ -5,8 +5,7 @@ import LogoUploader from "../components/LogoUploader"
+ import FormatPicker from "../components/FormatPicker"
+ import TeamPicker from "../components/TeamPicker"
+ import { findFormat, planSchedule, formatOptionFor } from "../utils/formats"
+-import { seriesName, nextSeasonLabel, seriesKey } from "../utils/seasons"
+-import { getAdminTournamentUrl } from "../utils/urls"
++import { adminSeasonUrl, seriesName, nextSeasonLabel, seriesKey } from "../utils/seasons"
+ import {
+   IconArrowLeft,
+   IconWarning,
+@@ -45,16 +44,31 @@ export default function CreateTournamentPage() {
+ 
+   const {
+     getCurrentOrganizer,
++    getOrganizerById,
+     getOrganizerTeams,
+     getOrganizerTournaments,
+     createTournament,
+     uploadTournamentLogo,
++    organizers,
++    superAdmin,
++    currentOrganizerId,
+   } = useAppStore()
+ 
+   const currentOrganizer = getCurrentOrganizer()
+-  const teams = getOrganizerTeams()
+   const tournaments = getOrganizerTournaments()
+ 
++  /**
++   * Whose competition this is.
++   *
++   * An organiser can only be creating their own. The super admin administers
++   * every organizer and none of them, so they choose — and the clubs on offer
++   * follow that choice, because a competition is made of one organizer's clubs.
++   */
++  const [chosenOrganizerId, setChosenOrganizerId] = useState("")
++  const ownerId = currentOrganizerId ?? chosenOrganizerId
++  const owner = getOrganizerById(ownerId)
++  const teams = getOrganizerTeams().filter((team) => team.organizerId === ownerId)
++
+   const previousSeason = previousSeasonId
+     ? tournaments.find((candidate) => candidate.id === previousSeasonId)
+     : undefined
+@@ -86,6 +100,8 @@ export default function CreateTournamentPage() {
+       setGroupRounds(groups.groupRounds)
+     }
+     if (previousSeason.logo) setLogoPreview(previousSeason.logo)
++    // A new season belongs to whoever ran the last one.
++    setChosenOrganizerId(previousSeason.organizerId)
+     setPrefilled(true)
+   }, [previousSeason, prefilled])
+ 
+@@ -93,7 +109,7 @@ export default function CreateTournamentPage() {
+   const mode = selectedFormat.mode
+   const plan = planSchedule(selectedFormat, selectedTeamIds.length, qualifiers)
+ 
+-  if (!currentOrganizer) {
++  if (!currentOrganizer && !superAdmin) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+@@ -109,7 +125,7 @@ export default function CreateTournamentPage() {
+ 
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault()
+-    if (!tournamentName.trim() || selectedTeamIds.length < 2 || isCreating) return
++    if (!tournamentName.trim() || selectedTeamIds.length < 2 || isCreating || !ownerId) return
+ 
+     setIsCreating(true)
+     try {
+@@ -140,6 +156,9 @@ export default function CreateTournamentPage() {
+         {
+           seriesName: tournamentName.trim(),
+           seasonLabel: seasonLabelDraft.trim() || undefined,
++          // Only the super admin's choice reaches this; an organiser's own
++          // scope wins over it in the store.
++          organizerId: ownerId,
+           // A new season joins the competition of the one it was started from.
+           ...(previousSeason
+             ? {
+@@ -159,7 +178,7 @@ export default function CreateTournamentPage() {
+       // Take the organiser straight to what they just made, instead of leaving
+       // them on an empty form wondering whether it worked.
+       if (created) {
+-        navigate(getAdminTournamentUrl(created, currentOrganizer))
++        navigate(adminSeasonUrl(created, owner))
+       } else {
+         navigate('/tournaments')
+       }
+@@ -183,13 +202,42 @@ export default function CreateTournamentPage() {
+         <p className="opacity-80">
+           {previousSeason
+             ? `Starting from ${seriesName(previousSeason)} ${previousSeason.seasonLabel || ''}`.trim()
+-            : `Organizer: ${currentOrganizer.name}`}
++            : owner
++              ? `Organizer: ${owner.name}`
++              : 'Choose the organizer running it'}
+         </p>
+       </div>
+ 
+       <section className="glass rounded-xl p-6 w-full max-w-2xl">
+         
+         <form onSubmit={handleSubmit} className="space-y-4">
++          {/* Only the super admin has a choice to make here. */}
++          {!currentOrganizer && (
++            <div>
++              <label className="block text-sm font-medium mb-2">Organizer</label>
++              <select
++                value={chosenOrganizerId}
++                onChange={(e) => {
++                  setChosenOrganizerId(e.target.value)
++                  // The clubs on offer belong to the organizer; a selection made
++                  // under the previous one is not theirs to enter.
++                  setSelectedTeamIds([])
++                }}
++                className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
++                disabled={Boolean(previousSeason)}
++              >
++                <option value="">Choose an organizer…</option>
++                {[...organizers]
++                  .sort((a, b) => a.name.localeCompare(b.name))
++                  .map((organizer) => (
++                    <option key={organizer.id} value={organizer.id}>
++                      {organizer.name}
++                    </option>
++                  ))}
++              </select>
++            </div>
++          )}
++
+           <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
+             <div>
+               <label className="block text-sm font-medium mb-2">
+@@ -250,7 +298,7 @@ export default function CreateTournamentPage() {
+               teams={teams}
+               selectedIds={selectedTeamIds}
+               onChange={setSelectedTeamIds}
+-              previousTournaments={tournaments}
++              previousTournaments={tournaments.filter((t) => t.organizerId === ownerId)}
+             />
+           </div>
+ 
+diff --git a/src/pages/MatchPage.tsx b/src/pages/MatchPage.tsx
+index 9a8082d..b9a6b78 100644
+--- a/src/pages/MatchPage.tsx
++++ b/src/pages/MatchPage.tsx
+@@ -2,7 +2,8 @@ import { useParams, Link } from 'react-router-dom'
+ import { useAppStore } from '../store'
+ import { useState, useEffect, useMemo } from 'react'
+ import { uid } from '../utils/uid'
+-import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
++import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
++import { adminSeasonUrl } from '../utils/seasons'
+ import { organizerService } from '../lib/data'
+ import type { Organizer } from '../types'
+ import MatchDateTime from '../components/MatchDateTime'
+@@ -16,8 +17,8 @@ import { playersForPicking, registeredPlayers } from '../utils/squads'
+ 
+ export default function MatchPage() {
+   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
+-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTournament } = useAppStore()
+-  
++  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTournament, superAdmin } = useAppStore()
++
+   const currentOrganizer = getCurrentOrganizer()
+   const teams = getOrganizerTeams()
+   const tournaments = getOrganizerTournaments()
+@@ -46,7 +47,11 @@ export default function MatchPage() {
+ 
+   const [activeTab, setActiveTab] = useState<'overview' | 'statistics' | 'lineups' | 'goals' | 'content'>('overview')
+ 
+-  if (!currentOrganizer) {
++  // The organizer running this competition, which is not the same as whoever is
++  // signed in: the super admin runs none of them.
++  const organizer = getOrganizerById(tournament?.organizerId) ?? currentOrganizer
++
++  if (!currentOrganizer && !superAdmin) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+@@ -145,7 +150,7 @@ export default function MatchPage() {
+       <section className="glass rounded-xl p-6 w-full max-w-6xl">
+         <div className="flex items-center justify-between mb-6">
+           <Link 
+-            to={currentOrganizer && tournament ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`} 
++            to={adminSeasonUrl(tournament, organizer)} 
+             className="text-sm opacity-70 hover:opacity-100 flex items-center gap-2"
+           >
+             <IconArrowLeft size={15} /> Back to {tournament.name}
+@@ -158,16 +163,16 @@ export default function MatchPage() {
+               <input
+                 type="text"
+                 readOnly
+-                value={currentOrganizer && tournament 
+-                  ? `${window.location.origin}${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
++                value={organizer
++                  ? `${window.location.origin}${getPublicTournamentUrl(tournament, organizer)}/matches/${match.id}`
+                   : `${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`
+                 }
+                 className="px-3 py-2 rounded-md bg-transparent border border-white/20 text-center min-w-[300px] text-sm"
+               />
+               <button
+                 onClick={() => {
+-                  const url = currentOrganizer && tournament 
+-                    ? `${window.location.origin}${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
++                  const url = organizer
++                    ? `${window.location.origin}${getPublicTournamentUrl(tournament, organizer)}/matches/${match.id}`
+                     : `${window.location.origin}/public/tournaments/${tournament.id}/matches/${match.id}`
+                   navigator.clipboard.writeText(url)
+                 }}
+diff --git a/src/pages/OrganizersPage.tsx b/src/pages/OrganizersPage.tsx
+index 173ea7c..57b3f14 100644
+--- a/src/pages/OrganizersPage.tsx
++++ b/src/pages/OrganizersPage.tsx
+@@ -5,11 +5,11 @@ import { Link } from 'react-router-dom'
+ import {
+   createOrganizerAccount,
+   createSuperAdminAccount,
+-  deleteOrganizerAccount,
+   resetOrganizerPassword,
+   issueResetLink,
+ } from '../lib/auth'
+ import { organizerService } from '../lib/data'
++import type { OrganizerImpact } from '../lib/data'
+ import {
+   IconKey,
+   IconLink,
+@@ -45,6 +45,12 @@ export default function OrganizersPage() {
+   const [resetLinks, setResetLinks] = useState<Record<string, string>>({})
+   const [newAdmin, setNewAdmin] = useState({ email: '', displayName: '', password: '' })
+   const [adminMessage, setAdminMessage] = useState<string | null>(null)
++  /** The organizer whose deletion is being confirmed, and what it would cost. */
++  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
++  const [impact, setImpact] = useState<OrganizerImpact | null>(null)
++  const [teamsTo, setTeamsTo] = useState('')
++  const [isDeleting, setIsDeleting] = useState(false)
++  const [deleteError, setDeleteError] = useState<string | null>(null)
+ 
+   useEffect(() => {
+     loadOrganizers()
+@@ -113,23 +119,58 @@ export default function OrganizersPage() {
+     }
+   }
+ 
+-  const handleDeleteOrganizer = async (organizerId: string, organizerEmail: string) => {
+-    if (!confirm(`Are you sure you want to delete organizer with email "${organizerEmail}"? This will also delete their authentication account and cannot be undone.`)) {
+-      return
++  /**
++   * Opens the confirmation, having first asked the server what deleting this
++   * organizer would take with it.
++   *
++   * "Are you sure?" was never enough here: the competitions go, the clubs have
++   * to be given to somebody, and the count of each is the thing that decides
++   * whether this is a tidy-up or a disaster.
++   */
++  const handleDeleteOrganizer = async (organizerId: string) => {
++    setDeleteError(null)
++    setImpact(null)
++    setTeamsTo('')
++    setPendingDelete(organizerId)
++
++    try {
++      const counted = await organizerService.impact(organizerId)
++      // Opening a second confirmation while the first is in flight would
++      // otherwise show one organizer's numbers under the other's name — and
++      // the club count is what decides whether a destination is demanded.
++      setPendingDelete((current) => {
++        if (current === organizerId) setImpact(counted)
++        return current
++      })
++    } catch (error) {
++      setDeleteError(error instanceof Error ? error.message : 'Could not read what this would delete')
+     }
++  }
++
++  const closeDeletePanel = () => {
++    setPendingDelete(null)
++    setImpact(null)
++    setTeamsTo('')
++    setDeleteError(null)
++  }
++
++  const confirmDelete = async (organizerId: string) => {
++    setDeleteError(null)
++    setIsDeleting(true)
+ 
+     try {
+-      // Delete from main system
+-      await deleteOrganizer(organizerId)
+-      
+-      // Delete authentication account
+-      await deleteOrganizerAccount(organizerEmail)
+-      
+-      // Reload organizers
++      // One request. The clubs move, the competitions and the logins go with
++      // the organizer, and none of it is the browser's to sequence: the second
++      // half of the old two-call version failed with "Account not found"
++      // whenever there was no account to delete, and reported the whole thing
++      // as a failure while the organizer had in fact gone.
++      await deleteOrganizer(organizerId, teamsTo || undefined)
++      closeDeletePanel()
+       loadOrganizers()
+     } catch (error) {
+-      console.error('Error deleting organizer:', error)
+-      alert('Failed to delete organizer. Please try again.')
++      setDeleteError(error instanceof Error ? error.message : 'Could not delete this organizer')
++    } finally {
++      setIsDeleting(false)
+     }
+   }
+ 
+@@ -452,7 +493,7 @@ export default function OrganizersPage() {
+                           <IconKey size={14} /> Set password
+                         </button>
+                         <button
+-                          onClick={() => handleDeleteOrganizer(organizer.id, organizer.email)}
++                          onClick={() => handleDeleteOrganizer(organizer.id)}
+                           className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg transition-all text-red-400 text-sm"
+                           title="Delete Organizer"
+                         >
+@@ -462,6 +503,89 @@ export default function OrganizersPage() {
+                     </div>
+                   </div>
+                   
++                  {/* What deleting this organizer costs, before it is done. */}
++                  {pendingDelete === organizer.id && (
++                    <div className="mt-4 pt-4 border-t border-white/10">
++                      {!impact && !deleteError ? (
++                        <p className="text-sm text-gray-400">Working out what this would delete…</p>
++                      ) : (
++                        impact && (
++                          <div className="space-y-3">
++                            <p className="text-sm text-white">
++                              Deleting {organizer.name} cannot be undone.
++                            </p>
++                            <ul className="text-sm text-gray-300 space-y-1">
++                              <li>
++                                {impact.tournaments.length === 0
++                                  ? 'No competitions to delete.'
++                                  : `${impact.tournaments.length} ${impact.tournaments.length === 1 ? 'competition is' : 'competitions are'} deleted with it: ${impact.tournaments.map((t) => t.name).join(', ')}.`}
++                              </li>
++                              <li>
++                                {impact.accounts.length === 0
++                                  ? 'No login is attached to it.'
++                                  : `${impact.accounts.length === 1 ? 'This login stops working' : 'These logins stop working'}: ${impact.accounts.join(', ')}.`}
++                              </li>
++                              <li>
++                                {impact.teams.length === 0
++                                  ? 'No clubs to move.'
++                                  : `${impact.teams.length} ${impact.teams.length === 1 ? 'club moves' : 'clubs move'} to another organizer: ${impact.teams.map((t) => t.name).join(', ')}.`}
++                              </li>
++                            </ul>
++
++                            {impact.teams.length > 0 && (
++                              <div>
++                                <label className="block text-sm text-gray-300 mb-2">
++                                  Move the clubs to
++                                </label>
++                                <select
++                                  value={teamsTo}
++                                  onChange={(e) => setTeamsTo(e.target.value)}
++                                  className="w-full px-4 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none text-white"
++                                >
++                                  <option value="">Choose an organizer…</option>
++                                  {organizers
++                                    .filter((candidate) => candidate.id !== organizer.id)
++                                    .map((candidate) => (
++                                      <option key={candidate.id} value={candidate.id}>
++                                        {candidate.name}
++                                      </option>
++                                    ))}
++                                </select>
++                                {organizers.length === 1 && (
++                                  <p className="text-sm text-amber-300/90 mt-2">
++                                    There is nobody else to give them to. Create another organizer
++                                    first, or move the clubs by hand.
++                                  </p>
++                                )}
++                              </div>
++                            )}
++
++                            <div className="flex gap-2">
++                              <button
++                                onClick={() => confirmDelete(organizer.id)}
++                                disabled={isDeleting || (impact.teams.length > 0 && !teamsTo)}
++                                className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed border border-red-400/30 rounded-lg transition-all text-red-300 text-sm"
++                              >
++                                {isDeleting ? 'Deleting…' : 'Delete organizer'}
++                              </button>
++                            </div>
++                          </div>
++                        )
++                      )}
++
++                      {deleteError && <p className="text-red-400 text-sm mt-3">{deleteError}</p>}
++
++                      {/* Outside the panel above, so there is still a way out
++                          when reading the impact is what failed. */}
++                      <button
++                        onClick={closeDeletePanel}
++                        className="mt-3 px-4 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-400/30 rounded-lg transition-all text-gray-300 text-sm"
++                      >
++                        Cancel
++                      </button>
++                    </div>
++                  )}
++
+                   {/* The link, once it exists: copied already, shown so it can be re-copied. */}
+                   {resetLinks[organizer.email] && (
+                     <div className="mt-4 pt-4 border-t border-white/10">
+diff --git a/src/pages/PlayerPage.tsx b/src/pages/PlayerPage.tsx
+index 6384cb1..507a233 100644
+--- a/src/pages/PlayerPage.tsx
++++ b/src/pages/PlayerPage.tsx
+@@ -15,7 +15,7 @@ import {
+ 
+ export default function PlayerPage() {
+   const { playerId } = useParams()
+-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updatePlayer: savePlayer, uploadPlayerPhoto } = useAppStore()
++  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updatePlayer: savePlayer, uploadPlayerPhoto, superAdmin } = useAppStore()
+   
+   const currentOrganizer = getCurrentOrganizer()
+   const teams = getOrganizerTeams()
+@@ -37,8 +37,9 @@ export default function PlayerPage() {
+     }
+   }
+   
+-  // Redirect if no organizer is selected
+-  if (!currentOrganizer) {
++  // Redirect if no organizer is selected. The super admin administers all of
++  // them, so there is nothing to select.
++  if (!currentOrganizer && !superAdmin) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+diff --git a/src/pages/TeamPage.tsx b/src/pages/TeamPage.tsx
+index a0c1d51..f7146cf 100644
+--- a/src/pages/TeamPage.tsx
++++ b/src/pages/TeamPage.tsx
+@@ -1,12 +1,11 @@
+ import { useParams, Link } from 'react-router-dom'
+ import { useAppStore } from '../store'
+ import { useRef, useState } from 'react'
+-import { getAdminTournamentUrl } from '../utils/urls'
+ import FacebookIcon from '../components/FacebookIcon'
+ import InstagramIcon from '../components/InstagramIcon'
+ import CustomDatePicker from '../components/CustomDatePicker'
+ import InlineInput from '../components/InlineInput'
+-import { getSeasonUrl } from '../utils/seasons'
++import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
+ import { clubService } from '../lib/data'
+ import {
+   IconArrowLeft,
+@@ -20,12 +19,12 @@ import {
+ 
+ export default function TeamPage() {
+   const { teamId } = useParams()
+-  const { getCurrentOrganizer, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto } = useAppStore()
+-  
++  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto, superAdmin } = useAppStore()
++
+   const currentOrganizer = getCurrentOrganizer()
+   const teams = getOrganizerTeams()
+   const tournaments = getOrganizerTournaments()
+-  
++
+   // State for upload feedback
+   const [uploadMessage, setUploadMessage] = useState('')
+   const [inviteEmail, setInviteEmail] = useState('')
+@@ -43,8 +42,9 @@ export default function TeamPage() {
+   // Find the specific team by ID
+   const team = teams.find(t => t.id === teamId)
+   
+-  // Redirect if no organizer is selected
+-  if (!currentOrganizer) {
++  // Redirect if no organizer is selected. The super admin has none and needs
++  // none: the club in front of them names the organizer it belongs to.
++  if (!currentOrganizer && !superAdmin) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+@@ -671,13 +671,13 @@ export default function TeamPage() {
+                     <td className="py-3 px-4 text-center">
+                       <div className="flex gap-2 justify-center">
+                         <Link
+-                          to={currentOrganizer ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`}
++                          to={adminSeasonUrl(tournament, getOrganizerById(tournament.organizerId))}
+                           className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
+                         >
+                           <IconTrophy size={14} /> View
+                         </Link>
+                         <Link
+-                          to={currentOrganizer ? getSeasonUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
++                          to={publicSeasonUrl(tournament, getOrganizerById(tournament.organizerId))}
+                           target="_blank"
+                           className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
+                         >
+diff --git a/src/pages/TeamsPage.tsx b/src/pages/TeamsPage.tsx
+index 4de30e3..2603777 100644
+--- a/src/pages/TeamsPage.tsx
++++ b/src/pages/TeamsPage.tsx
+@@ -1,9 +1,18 @@
+-import { useState } from "react"
++import { useEffect, useState } from "react"
+ import { useAppStore } from "../store"
+ import { Link } from "react-router-dom"
+ import LogoUploader from "../components/LogoUploader"
+ import { checkTeamName, parseBulkNames } from "../utils/teams"
+ 
++/**
++ * The clubs.
++ *
++ * Deliberately one list rather than a section per organiser, even for the super
++ * admin: a club plays in several competitions or in none at all, and which
++ * organiser happens to own its record is the least interesting thing about it.
++ * The owner is a line on the card and the thing you filter by, not the shape of
++ * the page.
++ */
+ export default function TeamsPage() {
+   const [teamName, setTeamName] = useState("")
+   const [teamColors, setTeamColors] = useState<string[]>(["#3B82F6"])
+@@ -19,21 +28,36 @@ export default function TeamsPage() {
+   // With thirty-odd teams in an unordered grid, finding one meant scrolling.
+   const [teamSearch, setTeamSearch] = useState("")
+   
+-  const { 
+-    getCurrentOrganizer, 
+-    getOrganizerTeams, 
+-    createTeam, 
+-    updateTeam, 
++  const {
++    getCurrentOrganizer,
++    getOrganizerById,
++    getOrganizerTeams,
++    createTeam,
++    updateTeam,
+     deleteTeam,
+     uploadTeamLogo,
+-    uploadTeamPhoto
++    uploadTeamPhoto,
++    loadTeams,
++    organizers,
++    superAdmin,
++    currentOrganizerId,
+   } = useAppStore()
+-  
++
+   const currentOrganizer = getCurrentOrganizer()
+   const teams = getOrganizerTeams()
+-  
++
++  /** Which organizer a new club belongs to. Only the super admin gets a choice. */
++  const [newTeamOrganizerId, setNewTeamOrganizerId] = useState("")
++  const ownerId = currentOrganizerId ?? newTeamOrganizerId
++
++  // Nothing has fetched on the super admin's behalf: their scope is not an
++  // organizer, so the load that follows choosing one never happens.
++  useEffect(() => {
++    if (superAdmin && !currentOrganizerId) loadTeams()
++  }, [superAdmin, currentOrganizerId, loadTeams])
++
+   // Redirect if no organizer is selected
+-  if (!currentOrganizer) {
++  if (!currentOrganizer && !superAdmin) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+@@ -47,15 +71,19 @@ export default function TeamsPage() {
+     )
+   }
+   
+-  const nameCheck = checkTeamName(teamName, teams)
+-  const bulkPlan = parseBulkNames(bulkTeams, teams)
++  // Two clubs of the same name are a problem inside one organizer's
++  // competitions; the same name under two different organizers is two different
++  // clubs, so the check looks at the owner's list rather than at everything.
++  const ownerTeams = ownerId ? teams.filter((team) => team.organizerId === ownerId) : []
++  const nameCheck = checkTeamName(teamName, ownerTeams)
++  const bulkPlan = parseBulkNames(bulkTeams, ownerTeams)
+ 
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault()
+     const name = teamName.trim()
+-    if (!name || nameCheck.duplicate) return
++    if (!name || nameCheck.duplicate || !ownerId) return
+ 
+-    const created = await createTeam(name, teamColors)
++    const created = await createTeam(name, teamColors, undefined, ownerId)
+ 
+     if (created && teamLogoFile) {
+       await uploadTeamLogo(created.id, teamLogoFile)
+@@ -69,11 +97,11 @@ export default function TeamsPage() {
+   }
+ 
+   const handleBulkAdd = async () => {
+-    if (bulkPlan.toCreate.length === 0) return
++    if (bulkPlan.toCreate.length === 0 || !ownerId) return
+ 
+     for (const name of bulkPlan.toCreate) {
+       const randomColor = `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`
+-      await createTeam(name, [randomColor])
++      await createTeam(name, [randomColor], undefined, ownerId)
+     }
+ 
+     const skipped = bulkPlan.duplicates.length + bulkPlan.repeated.length
+@@ -100,15 +128,26 @@ export default function TeamsPage() {
+ 
+   // Alphabetical order and a search box: the list used to come back in whatever
+   // order the database returned it, with new teams landing in the middle.
++  // The organiser's name is searchable too: with every club on one page it is
++  // the quickest way to narrow it to one league's.
++  const search = teamSearch.trim().toLowerCase()
+   const visibleTeams = [...teams]
+-    .filter((team) => team.name.toLowerCase().includes(teamSearch.trim().toLowerCase()))
++    .filter((team) => {
++      if (!search) return true
++      const owner = getOrganizerById(team.organizerId)?.name ?? ''
++      return (
++        team.name.toLowerCase().includes(search) || owner.toLowerCase().includes(search)
++      )
++    })
+     .sort((a, b) => a.name.localeCompare(b.name))
+ 
+   return (
+     <div className="min-h-[80vh] flex flex-col items-center gap-8">
+       <div className="text-center">
+         <h1 className="text-3xl font-bold mb-2">Manage Teams</h1>
+-        <p className="opacity-80">Create and manage your teams</p>
++        <p className="opacity-80">
++          {currentOrganizer ? 'Create and manage your teams' : 'Every club, whoever runs it'}
++        </p>
+       </div>
+ 
+       {/* Adding teams. One card, two ways in — pasting a list is how a season
+@@ -135,6 +174,28 @@ export default function TeamsPage() {
+           </button>
+         </div>
+ 
++        {/* A club is owned by an organizer, and the super admin is not one, so
++            they have to say which. An organiser never sees this. */}
++        {!currentOrganizer && (
++          <div className="mb-5">
++            <label className="block text-sm font-medium mb-2">Organizer</label>
++            <select
++              value={newTeamOrganizerId}
++              onChange={(e) => setNewTeamOrganizerId(e.target.value)}
++              className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
++            >
++              <option value="">Choose an organizer…</option>
++              {[...organizers]
++                .sort((a, b) => a.name.localeCompare(b.name))
++                .map((organizer) => (
++                  <option key={organizer.id} value={organizer.id}>
++                    {organizer.name}
++                  </option>
++                ))}
++            </select>
++          </div>
++        )}
++
+         {addMode === 'one' ? (
+           <form onSubmit={handleSubmit} className="space-y-4">
+             <div>
+@@ -204,7 +265,7 @@ export default function TeamsPage() {
+ 
+             <button
+               type="submit"
+-              disabled={!teamName.trim() || Boolean(nameCheck.duplicate)}
++              disabled={!teamName.trim() || Boolean(nameCheck.duplicate) || !ownerId}
+               className="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+             >
+               Add team
+@@ -238,7 +299,7 @@ export default function TeamsPage() {
+             <button
+               type="button"
+               onClick={handleBulkAdd}
+-              disabled={bulkPlan.toCreate.length === 0}
++              disabled={bulkPlan.toCreate.length === 0 || !ownerId}
+               className="w-full px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+             >
+               {bulkPlan.toCreate.length > 0
+@@ -262,7 +323,8 @@ export default function TeamsPage() {
+       <div className="w-full max-w-6xl">
+         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+           <h2 className="text-2xl font-semibold">
+-            Your Teams ({visibleTeams.length}{visibleTeams.length !== teams.length ? ` of ${teams.length}` : ''})
++            {currentOrganizer ? 'Your Teams' : 'All Clubs'} ({visibleTeams.length}
++            {visibleTeams.length !== teams.length ? ` of ${teams.length}` : ''})
+           </h2>
+           <input
+             type="search"
+@@ -291,6 +353,12 @@ export default function TeamsPage() {
+                 <div>
+                   <h3 className="text-xl font-semibold">{team.name}</h3>
+                   <p className="text-sm opacity-80">{team.players.length} players</p>
++                  {!currentOrganizer && (
++                    <p className="text-xs opacity-60">
++                      {getOrganizerById(team.organizerId)?.name ??
++                        (organizers.length > 0 ? 'Without an organizer' : '')}
++                    </p>
++                  )}
+                 </div>
+               </div>
+               
+diff --git a/src/pages/TournamentPage.tsx b/src/pages/TournamentPage.tsx
+index a842f1c..25536a7 100644
+--- a/src/pages/TournamentPage.tsx
++++ b/src/pages/TournamentPage.tsx
+@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react'
+ import { generatePlayoffBrackets, createPlayoffMatches as createPlayoffMatchesFromBrackets } from '../utils/schedule'
+ import { generateMatchUID } from '../utils/uid'
+ import { generateGroupsWithDivisionsSchedule } from '../utils/tournament'
+-import { findTournamentBySlug, getAdminTournamentUrl, getPublicTournamentUrl } from '../utils/urls'
++import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
+ import { organizerService } from '../lib/data'
+ import type { Organizer } from '../types'
+ import LocationIcon from '../components/LocationIcon'
+@@ -33,7 +33,7 @@ import MatchDateTime from '../components/MatchDateTime'
+ import { applyDateToRound } from '../utils/matchdates'
+ import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
+ import InlineInput from '../components/InlineInput'
+-import { getSeasonUrl } from '../utils/seasons'
++import { adminSeasonUrl, getSeasonUrl, publicSeasonUrl } from '../utils/seasons'
+ 
+ // Tracks tournaments whose reconstructed groups we've already persisted this session,
+ // so we never rewrite the (large) tournament item more than once during rendering.
+@@ -41,8 +41,8 @@ const persistedReconstructedGroups = new Set<string>()
+ 
+ export default function TournamentPage() {
+   const { id, orgSlug, tournamentSlug } = useParams()
+-  const { getCurrentOrganizer, getOrganizerTournaments, getOrganizerTeams, updateTournament, uploadTournamentLogo, loading } = useAppStore()
+-  
++  const { getCurrentOrganizer, getOrganizerById, getOrganizerTournaments, getOrganizerTeams, updateTournament, uploadTournamentLogo, loading, superAdmin } = useAppStore()
++
+   const currentOrganizer = getCurrentOrganizer()
+   const tournaments = getOrganizerTournaments()
+   const teams = getOrganizerTeams()
+@@ -792,7 +792,14 @@ export default function TournamentPage() {
+   // "not found" while the tournament list is still in flight is what made a
+   // refresh look like a crash.
+   const stillLoading =
+-    loading.tournaments || (!organizersSettled && !currentOrganizer) || (!currentOrganizer && loading.organizers)
++    loading.tournaments ||
++    (!organizersSettled && !currentOrganizer) ||
++    (!currentOrganizer && loading.organizers)
++
++  // Who runs this competition. Not "who is signed in": the super admin runs
++  // none of them, and every link on this page is built from the organizer's
++  // name.
++  const organizer = getOrganizerById(tournament?.organizerId) ?? currentOrganizer
+ 
+   if (stillLoading && !tournament) {
+     return (
+@@ -805,8 +812,9 @@ export default function TournamentPage() {
+     )
+   }
+ 
+-  // Redirect if no organizer is selected
+-  if (!currentOrganizer) {
++  // Redirect if no organizer is selected. The super admin selects none: the
++  // competition on screen names the organizer that runs it.
++  if (!currentOrganizer && !superAdmin) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+@@ -1012,8 +1020,8 @@ export default function TournamentPage() {
+               <button
+                 type="button"
+                 onClick={() => {
+-                  const url = currentOrganizer
+-                    ? `${window.location.origin}${getSeasonUrl(tournament, currentOrganizer)}`
++                  const url = organizer
++                    ? `${window.location.origin}${getSeasonUrl(tournament, organizer)}`
+                     : `${window.location.origin}/public/tournaments/${tournament.id}`
+                   navigator.clipboard.writeText(url)
+                   setLinkCopied(true)
+@@ -1033,7 +1041,7 @@ export default function TournamentPage() {
+               </button>
+ 
+               <Link
+-                to={currentOrganizer ? getSeasonUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
++                to={publicSeasonUrl(tournament, organizer)}
+                 target="_blank"
+                 className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+               >
+@@ -1593,7 +1601,7 @@ export default function TournamentPage() {
+                             </div>
+                             <div>
+                       <Link 
+-                        to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}` : `/tournaments/${tournament.id}/matches/${match.id}`}
++                        to={`${adminSeasonUrl(tournament, organizer)}/matches/${match.id}`}
+                         className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-md glass text-sm hover:bg-white/10 transition-all"
+                         title="View match statistics"
+                       >
+@@ -1733,7 +1741,7 @@ export default function TournamentPage() {
+                     {/* Actions */}
+                     <div className="flex flex-col gap-1">
+                       <Link 
+-                        to={currentOrganizer ? `${getAdminTournamentUrl(tournament, currentOrganizer)}/matches/${mid}` : `/tournaments/${tournament.id}/matches/${mid}`}
++                        to={`${adminSeasonUrl(tournament, organizer)}/matches/${mid}`}
+                         className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
+                         title="View match statistics"
+                       >
+@@ -2257,8 +2265,8 @@ export default function TournamentPage() {
+                                   <button
+                                     onClick={() => {
+                                       // Navigate to match page for stats
+-                                      const publicUrl = currentOrganizer 
+-                                        ? `${getPublicTournamentUrl(tournament, currentOrganizer)}/matches/${match.id}`
++                                      const publicUrl = organizer
++                                        ? `${getPublicTournamentUrl(tournament, organizer)}/matches/${match.id}`
+                                         : `/public/tournaments/${tournament.id}/matches/${match.id}`
+                                       window.open(publicUrl, '_blank')
+                                     }}
+diff --git a/src/pages/TournamentSettingsPage.tsx b/src/pages/TournamentSettingsPage.tsx
+index 8ec5ce8..29d9b60 100644
+--- a/src/pages/TournamentSettingsPage.tsx
++++ b/src/pages/TournamentSettingsPage.tsx
+@@ -9,11 +9,11 @@ import FormatPicker from '../components/FormatPicker'
+ import { findFormat, formatOptionFor } from '../utils/formats'
+ import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
+ import type { TournamentFormat } from '../utils/fixtures'
+-import { getAdminTournamentUrl } from '../utils/urls'
+ import { clubService } from '../lib/data'
+ import type { Entry } from '../lib/data'
+ import Trophy from '../components/Trophy'
+ import {
++  adminSeasonUrl,
+   championOf,
+   seasonLabel,
+   seasonStatus,
+@@ -37,6 +37,7 @@ export default function TournamentSettingsPage() {
+ 
+   const {
+     getCurrentOrganizer,
++    getOrganizerById,
+     getOrganizerTeams,
+     getOrganizerTournaments,
+     updateTournament,
+@@ -46,9 +47,22 @@ export default function TournamentSettingsPage() {
+   } = useAppStore()
+ 
+   const currentOrganizer = getCurrentOrganizer()
+-  const teams = getOrganizerTeams()
+   const tournaments = getOrganizerTournaments()
+   const tournament = tournaments.find((candidate) => candidate.id === id)
++  const organizer = getOrganizerById(tournament?.organizerId) ?? currentOrganizer
++
++  // Every club this page might have to name — an applicant from outside the
++  // league included — and, separately, the ones it may put in the competition.
++  // (The super admin sees every organizer's clubs, hence the split.)
++  // The super admin sees every club there is, and offering another organizer's
++  // in the picker is how one would end up in a league it never applied to.
++  const teams = getOrganizerTeams()
++  const pickableTeams = tournament
++    ? teams.filter(
++        (team) =>
++          team.organizerId === tournament.organizerId || tournament.teamIds.includes(team.id),
++      )
++    : teams
+ 
+   const [draftTeamIds, setDraftTeamIds] = useState<string[] | null>(null)
+   const [isSaving, setIsSaving] = useState(false)
+@@ -90,7 +104,7 @@ export default function TournamentSettingsPage() {
+     [tournament, selectedTeamIds],
+   )
+ 
+-  if (!currentOrganizer || !tournament) {
++  if (!tournament) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+@@ -173,9 +187,13 @@ export default function TournamentSettingsPage() {
+     )
+   const derivedChampion = championOf({ ...tournament, championTeamId: undefined })
+   const championTeam = teams.find((team) => team.id === championOf(tournament))
+-  const otherCompetitions = groupIntoSeries(tournaments).filter(
+-    (entry) => entry.key !== seriesKey(tournament),
+-  )
++  // Competitions this season could be joined to: its own organizer's, never
++  // another's. The super admin sees every organizer's tournaments in
++  // `tournaments`, and merging a season into a competition run by somebody else
++  // would hand it over without saying so.
++  const otherCompetitions = groupIntoSeries(
++    tournaments.filter((candidate) => candidate.organizerId === tournament.organizerId),
++  ).filter((entry) => entry.key !== seriesKey(tournament))
+ 
+   const pendingEntries = entries.filter((entry) => entry.status === 'pending')
+ 
+@@ -266,7 +284,7 @@ export default function TournamentSettingsPage() {
+     <div className="min-h-[80vh] flex flex-col items-center gap-6 w-full">
+       <div className="w-full max-w-3xl">
+         <Link
+-          to={getAdminTournamentUrl(tournament, currentOrganizer)}
++          to={adminSeasonUrl(tournament, organizer)}
+           className="text-sm opacity-70 hover:opacity-100 transition-opacity"
+         >
+           ← Back to {tournament.name}
+@@ -744,7 +762,7 @@ export default function TournamentSettingsPage() {
+           </p>
+         ) : (
+           <>
+-            <TeamPicker teams={teams} selectedIds={selectedTeamIds} onChange={setDraftTeamIds} />
++            <TeamPicker teams={pickableTeams} selectedIds={selectedTeamIds} onChange={setDraftTeamIds} />
+ 
+             {teamsChanged && plan && (
+               <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-sm space-y-1">
+diff --git a/src/pages/TournamentsPage.tsx b/src/pages/TournamentsPage.tsx
+index df5ca75..3f778db 100644
+--- a/src/pages/TournamentsPage.tsx
++++ b/src/pages/TournamentsPage.tsx
+@@ -1,10 +1,16 @@
++import { useEffect } from "react"
+ import { Link } from "react-router-dom"
+ import { useAppStore } from "../store"
+-import { getAdminTournamentUrl } from "../utils/urls"
+ import { CompactVisibilityToggle } from "../components/VisibilityToggle"
+ import { FORMAT_OPTIONS } from "../utils/formats"
+-import type { Tournament } from "../types"
+-import { getSeasonUrl, groupIntoSeries, seasonLabel, seasonStatus } from '../utils/seasons'
++import type { Organizer, Tournament } from "../types"
++import {
++  adminSeasonUrl,
++  groupIntoSeries,
++  publicSeasonUrl,
++  seasonLabel,
++  seasonStatus,
++} from '../utils/seasons'
+ import Trophy from '../components/Trophy'
+ import {
+   IconTrophy,
+@@ -12,6 +18,12 @@ import {
+   IconGlobe,
+ } from '../components/icons'
+ 
++type OrganizerSection = {
++  key: string
++  organizer: Organizer | null
++  tournaments: Tournament[]
++}
++
+ /** The tournament's format in the same words the create screen used. */
+ function describeFormat(tournament: Tournament): string {
+   const mode = tournament.format?.mode ?? 'league'
+@@ -23,19 +35,39 @@ function describeFormat(tournament: Tournament): string {
+ }
+ 
+ /**
+- * The list of an organiser's tournaments.
++ * The list of tournaments.
++ *
++ * An organiser sees their own. The super admin sees every organiser's, under a
++ * heading each, with the same controls on every card — before this the page
++ * asked them to "select an organizer first" and there was nowhere to do it.
+  *
+  * Creating one moved to its own screen: this page is what an organiser opens to
+  * check on a season in progress, and it used to greet them with a long empty
+  * form before they could see any of it.
+  */
+ export default function TournamentsPage() {
+-  const { getCurrentOrganizer, getOrganizerTournaments, updateTournament } = useAppStore()
++  const {
++    getCurrentOrganizer,
++    getOrganizerById,
++    getOrganizerTournaments,
++    updateTournament,
++    loadTournaments,
++    superAdmin,
++    currentOrganizerId,
++    organizers,
++    loading,
++  } = useAppStore()
+ 
+   const currentOrganizer = getCurrentOrganizer()
+   const tournaments = getOrganizerTournaments()
+ 
+-  if (!currentOrganizer) {
++  // Nothing has fetched on the super admin's behalf: their scope is not an
++  // organizer, so the load that follows choosing one never happens.
++  useEffect(() => {
++    if (superAdmin && !currentOrganizerId) loadTournaments()
++  }, [superAdmin, currentOrganizerId, loadTournaments])
++
++  if (!currentOrganizer && !superAdmin) {
+     return (
+       <div className="min-h-[80vh] flex items-center justify-center">
+         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+@@ -49,13 +81,23 @@ export default function TournamentsPage() {
+     )
+   }
+ 
++  // Until the organizers have arrived every tournament looks like an orphan,
++  // and the page would accuse the lot of having a deleted organizer.
++  const organizersKnown = organizers.length > 0 && !loading.organizers
++
++  // One section per organizer for the super admin, one section full stop for an
++  // organiser looking at their own.
++  const sections: OrganizerSection[] = currentOrganizer
++    ? [{ key: currentOrganizer.id, organizer: currentOrganizer, tournaments }]
++    : groupByOrganizer(tournaments, getOrganizerById)
++
+   return (
+     <div className="min-h-[80vh] flex flex-col items-center gap-6">
+       <div className="w-full max-w-4xl flex flex-wrap items-center justify-between gap-4">
+         <div>
+           <h1 className="text-3xl font-bold">Tournaments</h1>
+           <p className="opacity-80">
+-            {currentOrganizer.name} — {tournaments.length}{' '}
++            {currentOrganizer ? currentOrganizer.name : 'All organizers'} — {tournaments.length}{' '}
+             {tournaments.length === 1 ? 'tournament' : 'tournaments'}
+           </p>
+         </div>
+@@ -67,9 +109,8 @@ export default function TournamentsPage() {
+         </Link>
+       </div>
+ 
+-      {/* Tournaments List */}
+-      <section className="glass rounded-xl p-6 w-full max-w-4xl">
+-        {tournaments.length === 0 ? (
++      {tournaments.length === 0 ? (
++        <section className="glass rounded-xl p-6 w-full max-w-4xl">
+           <div className="text-center py-8">
+             <p className="opacity-70 mb-4">No tournaments yet.</p>
+             <Link
+@@ -79,72 +120,65 @@ export default function TournamentsPage() {
+               Create your first tournament
+             </Link>
+           </div>
+-        ) : (
+-          <div className="grid gap-8">
+-            {/* Grouped by competition: two or three leagues, each with its
+-                seasons, rather than one flat list where the 2026 season looks
+-                like an unrelated tournament. */}
+-            {groupIntoSeries(tournaments).map((series) => (
+-              <div key={series.key} className="grid gap-4">
+-                <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-2">
+-                  <h2 className="font-semibold">
+-                    {series.name}
+-                    <span className="ml-2 text-sm opacity-60">
+-                      {series.seasons.length}{' '}
+-                      {series.seasons.length === 1 ? 'season' : 'seasons'}
+-                    </span>
+-                  </h2>
+-                  <Link
+-                    to={`/tournaments/new?season=${series.seasons[0].id}`}
+-                    className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+-                  >
+-                    + New season
+-                  </Link>
+-                </div>
++        </section>
++      ) : (
++        sections.map((section) => (
++          <section key={section.key} className="glass rounded-xl p-6 w-full max-w-4xl">
++            {/* The organiser's own page has its name in the header already. */}
++            {!currentOrganizer && (
++              <div className="flex items-baseline justify-between gap-4 mb-5">
++                <h2 className="text-xl font-semibold">
++                  {section.organizer
++                    ? section.organizer.name
++                    : organizersKnown
++                      ? 'Without an organizer'
++                      : 'Loading…'}
++                </h2>
++                <span className="text-sm opacity-60">
++                  {section.tournaments.length}{' '}
++                  {section.tournaments.length === 1 ? 'tournament' : 'tournaments'}
++                </span>
++              </div>
++            )}
+ 
+-                {series.seasons.map((tournament) => (
+-              <div key={tournament.id} className="glass rounded-lg p-4">
+-                <div className="flex items-center gap-4">
+-                  {/* Tournament Logo */}
+-                  <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10 flex-shrink-0">
+-                    {tournament.logo ? (
+-                      <img
+-              loading="lazy"
+-              decoding="async" 
+-                        src={tournament.logo} 
+-                        alt={`${tournament.name} logo`} 
+-                        className="w-full h-full object-cover" 
+-                      />
+-                    ) : (
+-                      <div className="opacity-40"><IconTrophy size={22} /></div>
+-                    )}
+-                  </div>
+-                  
+-                  {/* Tournament Info */}
+-                  <div className="flex-1">
+-                    <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+-                      {seasonLabel(tournament)}
+-                      {seasonStatus(tournament) === 'finished' && <Trophy size={16} />}
++            {!section.organizer && organizersKnown && (
++              <p className="mb-5 text-sm text-amber-300/80">
++                The organizer that ran these was deleted. They are still on the public site and
++                nobody can administer them.
++              </p>
++            )}
++
++            <div className="grid gap-8">
++              {/* Grouped by competition: two or three leagues, each with its
++                  seasons, rather than one flat list where the 2026 season looks
++                  like an unrelated tournament. */}
++              {groupIntoSeries(section.tournaments).map((series) => (
++                <div key={series.key} className="grid gap-4">
++                  <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-2">
++                    <h3 className="font-semibold">
++                      {series.name}
++                      <span className="ml-2 text-sm opacity-60">
++                        {series.seasons.length}{' '}
++                        {series.seasons.length === 1 ? 'season' : 'seasons'}
++                      </span>
+                     </h3>
+-                    <div className="text-sm opacity-70 space-y-1">
+-                      <div>Teams: {tournament.teamIds.length}</div>
+-                      <div>Format: {describeFormat(tournament)}</div>
+-                      {tournament.format?.mode === 'league_playoff' && (
+-                        <div>Playoff Qualifiers: {tournament.format.playoffQualifiers}</div>
+-                      )}
+-                      <div>Created: {new Date(tournament.createdAtISO).toLocaleDateString()}</div>
+-                    </div>
++                    <Link
++                      to={`/tournaments/new?season=${series.seasons[0].id}`}
++                      className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
++                    >
++                      + New season
++                    </Link>
+                   </div>
+ 
+-                  {/* Current visibility — click to switch it */}
+-                  <div className="flex flex-col items-center gap-2">
+-                    <span className="text-[10px] uppercase tracking-wide opacity-50">Visibility</span>
+-                    <CompactVisibilityToggle
+-                      isPublic={tournament.visibility !== 'private'}
+-                      onToggle={async (isPublic) => {
++                  {series.seasons.map((tournament) => (
++                    <TournamentCard
++                      key={tournament.id}
++                      tournament={tournament}
++                      organizer={section.organizer}
++                      onVisibilityChange={async (isPublic) => {
+                         try {
+-                          await updateTournament(tournament.id, { 
+-                            visibility: isPublic ? 'public' : 'private' 
++                          await updateTournament(tournament.id, {
++                            visibility: isPublic ? 'public' : 'private',
+                           })
+                         } catch (error) {
+                           console.error('Failed to update tournament visibility:', error)
+@@ -152,38 +186,127 @@ export default function TournamentsPage() {
+                         }
+                       }}
+                     />
+-                  </div>
+-                  
+-                  {/* Actions */}
+-                  <div className="flex flex-col gap-2">
+-                    <Link
+-                      to={currentOrganizer ? getAdminTournamentUrl(tournament, currentOrganizer) : `/tournaments/${tournament.id}`}
+-                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center"
+-                    >
+-                      <IconTrophy size={15} /> View
+-                    </Link>
+-                    <Link
+-                      to={`/tournaments/${tournament.id}/settings`}
+-                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
+-                    >
+-                      <IconGear size={15} /> Settings
+-                    </Link>
+-                    <Link
+-                      to={currentOrganizer ? getSeasonUrl(tournament, currentOrganizer) : `/public/tournaments/${tournament.id}`}
+-                      target="_blank"
+-                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
+-                    >
+-                      <IconGlobe size={15} /> Open public page
+-                    </Link>
+-                  </div>
++                  ))}
+                 </div>
+-              </div>
+-                ))}
+-              </div>
+-            ))}
++              ))}
++            </div>
++          </section>
++        ))
++      )}
++    </div>
++  )
++}
++
++/**
++ * One card, whoever is looking.
++ *
++ * The links are built from the organizer the tournament belongs to rather than
++ * from whoever is signed in, which is the whole difference between an organiser
++ * and the super admin here.
++ */
++function TournamentCard({
++  tournament,
++  organizer,
++  onVisibilityChange,
++}: {
++  tournament: Tournament
++  organizer: Organizer | null
++  onVisibilityChange: (isPublic: boolean) => Promise<void>
++}) {
++  return (
++    <div className="glass rounded-lg p-4">
++      <div className="flex items-center gap-4">
++        {/* Tournament Logo */}
++        <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10 flex-shrink-0">
++          {tournament.logo ? (
++            <img
++              loading="lazy"
++              decoding="async"
++              src={tournament.logo}
++              alt={`${tournament.name} logo`}
++              className="w-full h-full object-cover"
++            />
++          ) : (
++            <div className="opacity-40"><IconTrophy size={22} /></div>
++          )}
++        </div>
++
++        {/* Tournament Info */}
++        <div className="flex-1">
++          <h4 className="text-lg font-semibold mb-1 flex items-center gap-2">
++            {seasonLabel(tournament)}
++            {seasonStatus(tournament) === 'finished' && <Trophy size={16} />}
++          </h4>
++          <div className="text-sm opacity-70 space-y-1">
++            <div>Teams: {tournament.teamIds.length}</div>
++            <div>Format: {describeFormat(tournament)}</div>
++            {tournament.format?.mode === 'league_playoff' && (
++              <div>Playoff Qualifiers: {tournament.format.playoffQualifiers}</div>
++            )}
++            <div>Created: {new Date(tournament.createdAtISO).toLocaleDateString()}</div>
+           </div>
+-        )}
+-      </section>
++        </div>
++
++        {/* Current visibility — click to switch it */}
++        <div className="flex flex-col items-center gap-2">
++          <span className="text-[10px] uppercase tracking-wide opacity-50">Visibility</span>
++          <CompactVisibilityToggle
++            isPublic={tournament.visibility !== 'private'}
++            onToggle={onVisibilityChange}
++          />
++        </div>
++
++        {/* Actions */}
++        <div className="flex flex-col gap-2">
++          <Link
++            to={adminSeasonUrl(tournament, organizer)}
++            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center"
++          >
++            <IconTrophy size={15} /> View
++          </Link>
++          <Link
++            to={`/tournaments/${tournament.id}/settings`}
++            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
++          >
++            <IconGear size={15} /> Settings
++          </Link>
++          <Link
++            to={publicSeasonUrl(tournament, organizer)}
++            target="_blank"
++            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded glass hover:bg-white/10 transition-all text-center text-sm"
++          >
++            <IconGlobe size={15} /> Open public page
++          </Link>
++        </div>
++      </div>
+     </div>
+   )
+ }
++
++/**
++ * Tournaments in sections, one organizer each, by name.
++ *
++ * A tournament whose organizer no longer exists gets a section of its own at the
++ * end rather than being dropped: it is still on the public site, and hiding it
++ * here is how it came to be forgotten in the first place.
++ */
++function groupByOrganizer(
++  tournaments: Tournament[],
++  getOrganizerById: (organizerId?: string) => Organizer | null,
++): OrganizerSection[] {
++  const sections = new Map<string, OrganizerSection>()
++
++  for (const tournament of tournaments) {
++    const organizer = getOrganizerById(tournament.organizerId)
++    const key = organizer?.id ?? '__orphaned__'
++    const section = sections.get(key) ?? { key, organizer, tournaments: [] }
++    section.tournaments.push(tournament)
++    sections.set(key, section)
++  }
++
++  return [...sections.values()].sort((a, b) => {
++    if (!a.organizer) return 1
++    if (!b.organizer) return -1
++    return a.organizer.name.localeCompare(b.organizer.name)
++  })
++}
+diff --git a/src/store.ts b/src/store.ts
+index d792ad4..95bf53e 100644
+--- a/src/store.ts
++++ b/src/store.ts
+@@ -14,7 +14,16 @@ type AppStore = {
+   // Organizers
+   organizers: Organizer[]
+   currentOrganizerId: string | null
+-  
++  /**
++   * The super admin administers every organizer at once rather than one of
++   * them, so their admin screens are not scoped: `currentOrganizerId` stays
++   * null and the listings return everything. Without this the store could not
++   * tell "signed in as the super admin" from "signed out on a public page",
++   * which is why the tournaments screen used to greet the super admin with
++   * "No organizer selected".
++   */
++  superAdmin: boolean
++
+   // Teams and Tournaments (now isolated per organizer)
+   teams: Team[]
+   tournaments: Tournament[]
+@@ -32,10 +41,18 @@ type AppStore = {
+   // Actions
+   createOrganizer: (name: string, email: string) => Promise<void>
+   setCurrentOrganizer: (organizerId: string) => void
++  /** Points the admin screens at whatever the signed-in account administers. */
++  applyScope: (user: { role?: string; organizerId?: string } | null) => void
+   updateOrganizer: (organizerId: string, updates: Partial<Organizer>) => Promise<void>
+-  deleteOrganizer: (organizerId: string) => Promise<void>
+-  
+-  createTeam: (name: string, colors: string[], logo?: string) => Promise<Team | null>
++  deleteOrganizer: (organizerId: string, teamsTo?: string) => Promise<void>
++
++  createTeam: (
++    name: string,
++    colors: string[],
++    logo?: string,
++    /** Which organizer owns the new club. Only the super admin has to say. */
++    organizerId?: string,
++  ) => Promise<Team | null>
+   updateTeam: (teamId: string, updates: Partial<Team>) => Promise<void>
+   deleteTeam: (teamId: string) => Promise<void>
+ 
+@@ -61,6 +78,8 @@ type AppStore = {
+   
+   // Getters (filtered by current organizer)
+   getCurrentOrganizer: () => Organizer | null
++  /** The organizer a tournament or club belongs to, whoever is looking at it. */
++  getOrganizerById: (organizerId?: string) => Organizer | null
+   getOrganizerTeams: () => Team[]
+   getOrganizerTournaments: () => Tournament[]
+   getAllTournaments: () => Tournament[]
+@@ -81,6 +100,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
+   // Initial state
+   organizers: [],
+   currentOrganizerId: null,
++  superAdmin: false,
+   teams: [],
+   tournaments: [],
+   settings: {
+@@ -112,23 +132,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
+     }
+   },
+ 
+-  deleteOrganizer: async (organizerId: string) => {
++  /**
++   * `teamsTo` is the organizer this one's clubs move to; the server requires it
++   * whenever there are any.
++   *
++   * The failure is rethrown rather than logged and swallowed. Swallowing it is
++   * how a delete that the server refused could still look like it had worked:
++   * the row vanished from the list on screen and came back on the next reload.
++   */
++  deleteOrganizer: async (organizerId: string, teamsTo?: string) => {
+     set(state => ({ loading: { ...state.loading, organizers: true } }))
+-    
++
+     try {
+-      await organizerService.delete(organizerId)
++      await organizerService.delete(organizerId, teamsTo)
+       set(state => ({
+         organizers: state.organizers.filter(org => org.id !== organizerId),
++        // The competitions went with it, and the clubs changed hands.
++        tournaments: state.tournaments.filter(t => t.organizerId !== organizerId),
++        teams: state.teams.map(team =>
++          team.organizerId === organizerId && teamsTo
++            ? { ...team, organizerId: teamsTo }
++            : team,
++        ),
+         loading: { ...state.loading, organizers: false }
+       }))
+-      
++
+       // If this was the current organizer, clear it
+       if (get().currentOrganizerId === organizerId) {
+         get().setCurrentOrganizer('')
+       }
+     } catch (error) {
+-      console.error('Error deleting organizer:', error)
+       set(state => ({ loading: { ...state.loading, organizers: false } }))
++      throw error
+     }
+   },
+ 
+@@ -153,6 +188,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
+     }
+   },
+ 
++  /**
++   * Called once the session is known, and again on every sign in and sign out.
++   *
++   * An organizer's screens are scoped to their own id. The super admin's are
++   * not scoped at all: they administer every organizer, so the listings load
++   * whole and each screen works out which organizer the thing in front of it
++   * belongs to.
++   */
++  applyScope: (user) => {
++    const superAdmin = user?.role === 'super_admin'
++    // Signing out, or in as somebody else, must not leave the previous
++    // account's clubs and competitions in the store for the next screen to
++    // render.
++    set({ superAdmin, teams: [], tournaments: [] })
++
++    if (user?.role === 'organizer' && user.organizerId) {
++      get().setCurrentOrganizer(user.organizerId)
++      return
++    }
++
++    get().setCurrentOrganizer('')
++    if (superAdmin) {
++      // Unconditionally, unlike an organiser's load: the super admin's screens
++      // are reached from anywhere, and the alternative is an effect on every
++      // page that reads a club or a competition.
++      get().loadTeams()
++      get().loadTournaments()
++    }
++  },
++
+   updateOrganizer: async (organizerId: string, updates: Partial<Organizer>) => {
+     try {
+       const success = await organizerService.update(organizerId, updates)
+@@ -169,18 +234,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
+   },
+ 
+   // Team actions
+-  createTeam: async (name: string, colors: string[], logo?: string) => {
+-    const currentOrganizerId = get().currentOrganizerId
+-    if (!currentOrganizerId) return null
++  // `organizerId` is for the super admin, who administers no single organizer
++  // and so has to say which one the club belongs to. An organiser's own scope
++  // wins over anything passed in; the API would refuse a foreign id anyway.
++  createTeam: async (name: string, colors: string[], logo?: string, organizerId?: string) => {
++    const owner = get().currentOrganizerId ?? (get().superAdmin ? organizerId : undefined)
++    if (!owner) return null
+ 
+     set(state => ({ loading: { ...state.loading, teams: true } }))
+-    
++
+     try {
+       const team = await teamService.create({
+         name,
+         colors,
+         logo: logo || '',
+-        organizerId: currentOrganizerId,
++        organizerId: owner,
+         players: [],
+         socialMedia: {},
+       })
+@@ -318,14 +386,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
+     schedule?: ScheduleOptions,
+     extra?: Partial<Tournament>,
+   ) => {
+-    const currentOrganizerId = get().currentOrganizerId
+-    if (!currentOrganizerId) return null
++    // The super admin has no scope of their own, so the screen tells us which
++    // organizer is running this one through `extra.organizerId`.
++    const owner =
++      get().currentOrganizerId ?? (get().superAdmin ? extra?.organizerId : undefined)
++    if (!owner) return null
+ 
+     console.log('Store: Creating tournament via AWS:', {
+       name,
+       teamIds,
+       format,
+-      organizerId: currentOrganizerId
++      organizerId: owner
+     })
+ 
+     set(state => ({ loading: { ...state.loading, tournaments: true } }))
+@@ -338,7 +409,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
+         name,
+         format: format || { rounds: 1, mode: 'league' },
+         teamIds,
+-        organizerId: currentOrganizerId,
++        organizerId: owner,
+         matches: [],
+         visibility: 'private', // Default to private, organizer can make it public later
+       })
+@@ -534,13 +605,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
+     return organizers.find(org => org.id === currentOrganizerId) || null
+   },
+ 
++  getOrganizerById: (organizerId?: string) => {
++    if (!organizerId) return null
++    return get().organizers.find(org => org.id === organizerId) || null
++  },
++
++  // Scoped to the organizer being administered — everything, for a super admin,
++  // who administers all of them.
+   getOrganizerTeams: () => {
+-    const { teams, currentOrganizerId } = get()
++    const { teams, currentOrganizerId, superAdmin } = get()
++    if (!currentOrganizerId) return superAdmin ? teams : []
+     return teams.filter(team => team.organizerId === currentOrganizerId)
+   },
+ 
+   getOrganizerTournaments: () => {
+-    const { tournaments, currentOrganizerId } = get()
++    const { tournaments, currentOrganizerId, superAdmin } = get()
++    if (!currentOrganizerId) return superAdmin ? tournaments : []
+     return tournaments.filter(tournament => tournament.organizerId === currentOrganizerId)
+   },
+ 
+@@ -565,9 +645,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
+         loading: { ...get().loading, organizers: false }
+       })
+       
+-      // Restore current organizer from localStorage
++      // Restore current organizer from localStorage. Never for the super admin:
++      // an id left over from an earlier session would quietly narrow their
++      // screens to one organizer's data with nothing on the page saying so.
+       try {
+-        const savedOrganizerId = localStorage.getItem('currentOrganizerId')
++        const savedOrganizerId = get().superAdmin ? null : localStorage.getItem('currentOrganizerId')
+         if (savedOrganizerId && organizers.find(org => org.id === savedOrganizerId)) {
+           console.log('Store: Restoring current organizer from localStorage:', savedOrganizerId)
+           set({ currentOrganizerId: savedOrganizerId })
+@@ -596,7 +678,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
+     }
+     
+     // Already loaded for a public page in this session: nothing to re-fetch.
+-    if (!currentOrganizerId && state.teams.length > 0) {
++    // Not for the super admin, who never has an organizer id and would
++    // otherwise be stuck with whatever the first load returned.
++    if (!currentOrganizerId && !state.superAdmin && state.teams.length > 0) {
+       return
+     }
+     
+@@ -640,7 +724,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
+     }
+     
+     // Already loaded for a public page in this session: nothing to re-fetch.
+-    if (!currentOrganizerId && state.tournaments.length > 0) {
++    // Not for the super admin, who never has an organizer id and would
++    // otherwise be stuck with whatever the first load returned.
++    if (!currentOrganizerId && !state.superAdmin && state.tournaments.length > 0) {
+       return
+     }
+     
+diff --git a/src/utils/seasons.ts b/src/utils/seasons.ts
+index 4003879..3adb4f5 100644
+--- a/src/utils/seasons.ts
++++ b/src/utils/seasons.ts
+@@ -1,6 +1,6 @@
+ import type { Tournament, Match } from '../types'
+ import type { TournamentSummary } from '../lib/data'
+-import { slugify } from './urls'
++import { getAdminTournamentUrl, slugify, type SluggableTournament } from './urls'
+ import { calculateTeamStandings, sortTeamsByStandings } from './schedule'
+ 
+ /**
+@@ -50,6 +50,26 @@ export const getSeasonUrl = (tournament: SeasonLike, organizer: { name: string }
+ export const getSeriesUrl = (tournament: SeasonLike, organizer: { name: string }): string =>
+   `/${slugify(organizer.name)}/${seriesSlug(tournament)}`
+ 
++/**
++ * The same two addresses, for a page that may not have the organizer to hand.
++ *
++ * Both are built from the organizer's name, and whoever is looking is not
++ * always administering one: the super admin administers all of them, and a
++ * competition whose organizer was deleted has none at all. The id route is the
++ * fallback — uglier, and it still opens.
++ */
++export const adminSeasonUrl = (
++  tournament: SluggableTournament & SeasonLike,
++  organizer: { name: string } | null | undefined,
++): string =>
++  organizer ? getAdminTournamentUrl(tournament, organizer) : `/tournaments/${tournament.id}`
++
++export const publicSeasonUrl = (
++  tournament: SluggableTournament & SeasonLike,
++  organizer: { name: string } | null | undefined,
++): string =>
++  organizer ? getSeasonUrl(tournament, organizer) : `/public/tournaments/${tournament.id}`
++
+ const scored = (match: Match) =>
+   typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'
+ 

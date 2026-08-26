@@ -5,8 +5,7 @@ import LogoUploader from "../components/LogoUploader"
 import FormatPicker from "../components/FormatPicker"
 import TeamPicker from "../components/TeamPicker"
 import { findFormat, planSchedule, formatOptionFor } from "../utils/formats"
-import { seriesName, nextSeasonLabel, seriesKey } from "../utils/seasons"
-import { getAdminTournamentUrl } from "../utils/urls"
+import { adminSeasonUrl, seriesName, nextSeasonLabel, seriesKey } from "../utils/seasons"
 import {
   IconArrowLeft,
   IconWarning,
@@ -45,15 +44,30 @@ export default function CreateTournamentPage() {
 
   const {
     getCurrentOrganizer,
+    getOrganizerById,
     getOrganizerTeams,
     getOrganizerTournaments,
     createTournament,
     uploadTournamentLogo,
+    organizers,
+    superAdmin,
+    currentOrganizerId,
   } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
-  const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
+
+  /**
+   * Whose competition this is.
+   *
+   * An organiser can only be creating their own. The super admin administers
+   * every organizer and none of them, so they choose — and the clubs on offer
+   * follow that choice, because a competition is made of one organizer's clubs.
+   */
+  const [chosenOrganizerId, setChosenOrganizerId] = useState("")
+  const ownerId = currentOrganizerId ?? chosenOrganizerId
+  const owner = getOrganizerById(ownerId)
+  const teams = getOrganizerTeams().filter((team) => team.organizerId === ownerId)
 
   const previousSeason = previousSeasonId
     ? tournaments.find((candidate) => candidate.id === previousSeasonId)
@@ -86,6 +100,8 @@ export default function CreateTournamentPage() {
       setGroupRounds(groups.groupRounds)
     }
     if (previousSeason.logo) setLogoPreview(previousSeason.logo)
+    // A new season belongs to whoever ran the last one.
+    setChosenOrganizerId(previousSeason.organizerId)
     setPrefilled(true)
   }, [previousSeason, prefilled])
 
@@ -93,7 +109,7 @@ export default function CreateTournamentPage() {
   const mode = selectedFormat.mode
   const plan = planSchedule(selectedFormat, selectedTeamIds.length, qualifiers)
 
-  if (!currentOrganizer) {
+  if (!currentOrganizer && !superAdmin) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
@@ -109,7 +125,7 @@ export default function CreateTournamentPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!tournamentName.trim() || selectedTeamIds.length < 2 || isCreating) return
+    if (!tournamentName.trim() || selectedTeamIds.length < 2 || isCreating || !ownerId) return
 
     setIsCreating(true)
     try {
@@ -140,6 +156,9 @@ export default function CreateTournamentPage() {
         {
           seriesName: tournamentName.trim(),
           seasonLabel: seasonLabelDraft.trim() || undefined,
+          // Only the super admin's choice reaches this; an organiser's own
+          // scope wins over it in the store.
+          organizerId: ownerId,
           // A new season joins the competition of the one it was started from.
           ...(previousSeason
             ? {
@@ -159,7 +178,7 @@ export default function CreateTournamentPage() {
       // Take the organiser straight to what they just made, instead of leaving
       // them on an empty form wondering whether it worked.
       if (created) {
-        navigate(getAdminTournamentUrl(created, currentOrganizer))
+        navigate(adminSeasonUrl(created, owner))
       } else {
         navigate('/tournaments')
       }
@@ -183,13 +202,42 @@ export default function CreateTournamentPage() {
         <p className="opacity-80">
           {previousSeason
             ? `Starting from ${seriesName(previousSeason)} ${previousSeason.seasonLabel || ''}`.trim()
-            : `Organizer: ${currentOrganizer.name}`}
+            : owner
+              ? `Organizer: ${owner.name}`
+              : 'Choose the organizer running it'}
         </p>
       </div>
 
       <section className="glass rounded-xl p-6 w-full max-w-2xl">
         
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Only the super admin has a choice to make here. */}
+          {!currentOrganizer && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Organizer</label>
+              <select
+                value={chosenOrganizerId}
+                onChange={(e) => {
+                  setChosenOrganizerId(e.target.value)
+                  // The clubs on offer belong to the organizer; a selection made
+                  // under the previous one is not theirs to enter.
+                  setSelectedTeamIds([])
+                }}
+                className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
+                disabled={Boolean(previousSeason)}
+              >
+                <option value="">Choose an organizer…</option>
+                {[...organizers]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((organizer) => (
+                    <option key={organizer.id} value={organizer.id}>
+                      {organizer.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -250,7 +298,7 @@ export default function CreateTournamentPage() {
               teams={teams}
               selectedIds={selectedTeamIds}
               onChange={setSelectedTeamIds}
-              previousTournaments={tournaments}
+              previousTournaments={tournaments.filter((t) => t.organizerId === ownerId)}
             />
           </div>
 
