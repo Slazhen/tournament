@@ -398,6 +398,23 @@ export const clubService = {
     return api.get(`/admin/teams/${encodeURIComponent(teamId)}/managers`)
   },
 
+  /**
+   * Taking one's own club under management, for the organizer who owns it.
+   *
+   * The alternative was inviting yourself: a one-time link, opened in the same
+   * browser, to grant a permission the organizer already had.
+   */
+  async manageSelf(teamId: string): Promise<void> {
+    await api.post(`/admin/teams/${encodeURIComponent(teamId)}/managers/me`, {})
+  },
+
+  /** Takes somebody off a club. The organizer who owns it only. */
+  async removeManager(teamId: string, userId: string): Promise<void> {
+    await api.delete(
+      `/admin/teams/${encodeURIComponent(teamId)}/managers/${encodeURIComponent(userId)}`,
+    )
+  },
+
   /** Who runs each club in one competition, by club id. */
   async managersForTournament(tournamentId: string): Promise<Record<string, ClubManager[]>> {
     return api.get(`/admin/tournaments/${encodeURIComponent(tournamentId)}/managers`)

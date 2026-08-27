@@ -19,6 +19,7 @@ import { organizers, teams, tournaments } from '../repos.js'
 import {
   deleteEntriesForTournament,
   deleteInvitesOfOrganizer,
+  linkManagerToTeam,
   unlinkManagerFromTeam,
 } from '../repos-clubs.js'
 import { findUserByCredential } from './auth.js'
@@ -427,6 +428,34 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       (team) => isSuperAdmin(user) || team.organizerId === tournament.organizerId,
     )
     return managersOfTeams(own)
+  })
+
+  /**
+   * An organizer taking their own club under management.
+   *
+   * Some organizers run a club as well as the competition, and the only way in
+   * was to issue themselves an invitation and open the link — a one-time token
+   * emailed nowhere, used to grant a permission they already had the standing
+   * to grant. This is the same write without the detour.
+   *
+   * It is the organizer's own test, not the club's: whoever owns the club may
+   * take it on, and nobody else. A club manager pressing this on somebody
+   * else's club is exactly the write `PATCH` refuses to make.
+   */
+  router.post('/admin/teams/:id/managers/me', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, team.organizerId)
+
+    await linkManagerToTeam(user, team as Team)
+    await record(user, {
+      action: 'team.manager.self',
+      entity: 'team',
+      entityId: team.id,
+      summary: `Took ${team.name} under their own management`,
+      organizerId: team.organizerId,
+    })
+    return { ok: true }
   })
 
   router.delete('/admin/teams/:id/managers/:userId', async (ctx, params) => {

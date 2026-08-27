@@ -5,11 +5,13 @@ import { useAppStore } from '../store'
 import Logo from './Logo'
 import { useAuth } from '../contexts/AuthContext'
 
-const NAV_ITEMS = [
+const ORGANIZER_NAV_ITEMS = [
   { to: '/tournaments', label: 'Tournaments' },
   { to: '/teams', label: 'Teams' },
   { to: '/calendar', label: 'Calendar' },
 ]
+
+const CLUB_NAV_ITEM = { to: '/my-club', label: 'My club' }
 
 /**
  * The admin bar.
@@ -51,7 +53,19 @@ export default function AdminNavigation() {
   // Close the menu when the route changes.
   useEffect(() => setMenuOpen(false), [location.pathname])
 
-  if (!currentOrganizer && !isSuperAdmin) return null
+  // What this account may do, which is two questions rather than one. An
+  // organiser who also runs a club had no way to reach it: /my-club existed but
+  // nothing in the bar pointed at it, so the only way in was typing the
+  // address. A club manager had no bar at all — not even a way to sign out.
+  const canOrganize = Boolean(currentOrganizer) || isSuperAdmin
+  const runsAClub = (user?.teamIds?.length ?? 0) > 0
+
+  if (!canOrganize && !runsAClub) return null
+
+  const navItems = [
+    ...(canOrganize ? ORGANIZER_NAV_ITEMS : []),
+    ...(runsAClub ? [CLUB_NAV_ITEM] : []),
+  ]
 
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + '/')
@@ -69,7 +83,7 @@ export default function AdminNavigation() {
         </Link>
 
         <nav className="flex items-center gap-1">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <Link
               key={item.to}
               to={item.to}

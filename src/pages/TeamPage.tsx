@@ -7,6 +7,7 @@ import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
 import { clubService, type ClubManager } from '../lib/data'
+import { useAuth } from '../contexts/AuthContext'
 import {
   IconArrowLeft,
   IconLink,
@@ -21,6 +22,11 @@ export default function TeamPage() {
   const { teamId } = useParams()
   const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto, superAdmin } = useAppStore()
 
+  // Whether this organiser also runs the club is asked of the session rather
+  // than of the club record: the answer decides both the button below and the
+  // My club tab, and refreshing the session is what updates the second.
+  const { user, refresh } = useAuth()
+
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
   const tournaments = getOrganizerTournaments()
@@ -34,6 +40,9 @@ export default function TeamPage() {
   // failed says so instead of looking like a link nobody asked to email.
   const [invitedEmail, setInvitedEmail] = useState('')
   const [isInviting, setIsInviting] = useState(false)
+  // Taking the club on, or handing it back. One flag: the two are the same
+  // request from the organiser's point of view and never overlap.
+  const [isChangingSelf, setIsChangingSelf] = useState(false)
   // Who runs the club. Kept out of the club record itself: it carries an email
   // address, and the club record is what the public pages and the manager's own
   // overview are built from.
@@ -49,6 +58,18 @@ export default function TeamPage() {
   // Hooks must run on every render (before any early return) to keep hook order stable.
   const logoFileRef = useRef<HTMLInputElement>(null)
   const photoFileRef = useRef<HTMLInputElement>(null)
+
+  const loadManagers = async (id: string) => {
+    try {
+      setManagers(await clubService.managers(id))
+      setManagersFailed(false)
+    } catch {
+      setManagers([])
+      setManagersFailed(true)
+    } finally {
+      setManagersLoaded(true)
+    }
+  }
 
   useEffect(() => {
     if (!teamId) return
@@ -80,6 +101,8 @@ export default function TeamPage() {
   
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)
+
+  const iRunThisClub = managers.some((manager) => manager.id === user?.id)
   
   // Redirect if no organizer is selected. The super admin has none and needs
   // none: the club in front of them names the organizer it belongs to.
@@ -254,9 +277,60 @@ export default function TeamPage() {
                       {!manager.isActive && (
                         <span className="text-xs text-amber-300">account disabled</span>
                       )}
+                      {manager.id === user?.id && (
+                        <button
+                          type="button"
+                          disabled={isChangingSelf}
+                          onClick={async () => {
+                            setIsChangingSelf(true)
+                            try {
+                              await clubService.removeManager(team.id, manager.id)
+                              await loadManagers(team.id)
+                              // The session carries the clubs this account
+                              // runs, and the My club tab is drawn from it.
+                              await refresh()
+                            } catch {
+                              alert('That could not be changed.')
+                            } finally {
+                              setIsChangingSelf(false)
+                            }
+                          }}
+                          className="text-xs opacity-70 hover:opacity-100 underline disabled:opacity-40"
+                        >
+                          Stop managing
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {managersLoaded && !managersFailed && !iRunThisClub && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    disabled={isChangingSelf}
+                    onClick={async () => {
+                      setIsChangingSelf(true)
+                      try {
+                        await clubService.manageSelf(team.id)
+                        await loadManagers(team.id)
+                        await refresh()
+                      } catch {
+                        alert('This club could not be added to your account.')
+                      } finally {
+                        setIsChangingSelf(false)
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md glass hover:bg-white/10 transition-all text-sm disabled:opacity-50"
+                  >
+                    <IconUser size={15} />
+                    {isChangingSelf ? 'Working...' : 'Manage this club myself'}
+                  </button>
+                  <p className="text-xs opacity-60 mt-1.5">
+                    Puts {team.name} on your My club tab, alongside running the competition.
+                  </p>
+                </div>
               )}
             </div>
 
