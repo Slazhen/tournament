@@ -10,8 +10,10 @@ import { findFormat, formatOptionFor } from '../utils/formats'
 import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
 import type { TournamentFormat } from '../utils/fixtures'
 import { clubService } from '../lib/data'
-import type { Entry } from '../lib/data'
+import type { ClubManager, Entry } from '../lib/data'
+import type { Team } from '../types'
 import Trophy from '../components/Trophy'
+import { IconLink, IconUser } from '../components/icons'
 import {
   adminSeasonUrl,
   championOf,
@@ -802,6 +804,13 @@ export default function TournamentSettingsPage() {
         )}
       </section>
 
+      {/* ---------- Who runs the clubs ---------- */}
+      <ClubManagers
+        tournamentId={tournament.id}
+        tournamentName={tournament.name}
+        teams={teams.filter((team) => tournament.teamIds.includes(team.id))}
+      />
+
       {/* ---------- Deleting ---------- */}
       <section className="rounded-xl p-6 w-full max-w-3xl border border-red-500/20 bg-red-500/[0.03] space-y-3">
         <h2 className="font-semibold text-red-300">Delete this tournament</h2>
@@ -822,5 +831,176 @@ export default function TournamentSettingsPage() {
         </button>
       </section>
     </div>
+  )
+}
+
+/**
+ * Who runs each club in this competition, and how to hand one over.
+ *
+ * The invitation is issued from here rather than only from the club's own card
+ * because of what it now does: a link created here carries this competition, so
+ * taking it up both hands over the club and enters it. An organiser inviting a
+ * coach in the middle of setting up a season has already decided the club is
+ * playing, and asking the new manager to apply back to them afterwards is a
+ * question with a known answer.
+ */
+function ClubManagers({
+  tournamentId,
+  tournamentName,
+  teams,
+}: {
+  tournamentId: string
+  tournamentName: string
+  teams: Team[]
+}) {
+  const [managers, setManagers] = useState<Record<string, ClubManager[]>>({})
+  const [loaded, setLoaded] = useState(false)
+  const [openFor, setOpenFor] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [issued, setIssued] = useState<{ teamId: string; link: string; emailed: boolean; email: string } | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoaded(false)
+
+    clubService
+      .managersForTournament(tournamentId)
+      .then((byTeam) => {
+        if (!cancelled) setManagers(byTeam)
+      })
+      .catch(() => {
+        if (!cancelled) setManagers({})
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [tournamentId])
+
+  const invite = async (teamId: string) => {
+    setBusy(true)
+    setFailed(null)
+    try {
+      const wanted = email.trim()
+      const result = await clubService.invite(teamId, wanted || undefined, tournamentId)
+      setIssued({ teamId, link: result.link, emailed: result.emailed, email: wanted })
+      setOpenFor(null)
+      setEmail('')
+      try {
+        await navigator.clipboard.writeText(result.link)
+      } catch {
+        // The link is on screen either way.
+      }
+    } catch {
+      setFailed('That invitation could not be created.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const sorted = [...teams].sort((a, b) => a.name.localeCompare(b.name))
+
+  return (
+    <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
+      <div>
+        <h2 className="font-semibold inline-flex items-center gap-2">
+          <IconUser size={16} /> Club managers
+        </h2>
+        <p className="text-sm opacity-70 mt-1">
+          A link issued here hands the club over and enters it in {tournamentName} as soon as it
+          is opened. The manager gets the squad and the crest; results stay with you.
+        </p>
+      </div>
+
+      {sorted.length === 0 ? (
+        <p className="text-sm opacity-70">No clubs in this competition yet.</p>
+      ) : (
+        <ul className="divide-y divide-white/10">
+          {sorted.map((team) => {
+            const running = managers[team.id] ?? []
+            return (
+              <li key={team.id} className="py-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{team.name}</div>
+                    {!loaded ? (
+                      <div className="text-xs opacity-50">Checking...</div>
+                    ) : running.length === 0 ? (
+                      <div className="text-xs opacity-60">Nobody runs this club yet</div>
+                    ) : (
+                      running.map((manager) => (
+                        <div key={manager.id} className="text-xs opacity-70">
+                          {manager.displayName ? `${manager.displayName} — ` : ''}
+                          {manager.email || 'account no longer exists'}
+                          {manager.linkedAt
+                            ? ` · since ${new Date(manager.linkedAt).toLocaleDateString()}`
+                            : ''}
+                          {manager.isActive ? '' : ' · account disabled'}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenFor(openFor === team.id ? null : team.id)
+                      setEmail('')
+                      setFailed(null)
+                    }}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+                  >
+                    <IconLink size={14} />
+                    {running.length === 0 ? 'Invite manager' : 'Invite another'}
+                  </button>
+                </div>
+
+                {openFor === team.id && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="Their email (optional)"
+                      className="flex-1 min-w-[14rem] px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => invite(team.id)}
+                      disabled={busy}
+                      className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm"
+                    >
+                      {busy ? 'Creating...' : 'Create link'}
+                    </button>
+                  </div>
+                )}
+
+                {issued?.teamId === team.id && (
+                  <div>
+                    <p className="text-sm text-gray-300 mb-1">
+                      {issued.emailed
+                        ? `Sent to ${issued.email}, and copied to your clipboard. It works once and lasts a fortnight.`
+                        : issued.email
+                          ? `The email could not be sent to ${issued.email}, so pass this on yourself. It works once and lasts a fortnight.`
+                          : 'Copied to your clipboard. It works once and lasts a fortnight.'}
+                    </p>
+                    <code className="block text-xs bg-black/40 border border-white/10 rounded-lg p-3 break-all text-blue-200">
+                      {issued.link}
+                    </code>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {failed && <p className="text-sm text-red-300">{failed}</p>}
+    </section>
   )
 }

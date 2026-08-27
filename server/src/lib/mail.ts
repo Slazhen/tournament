@@ -93,11 +93,20 @@ export async function sendTeamInvite(
   to: string,
   teamName: string,
   link: string,
+  tournamentName?: string,
 ): Promise<MailResult> {
   if (!ses || !MAIL_FROM) return { sent: false, reason: 'email is not configured' }
 
+  // An invitation issued from inside a competition also enters the club in it.
+  // Saying so in the email matters: the coach opening the link is agreeing to
+  // play, not only to keep a squad list up to date.
+  const entering = tournamentName
+    ? `${teamName} will be entered in ${tournamentName} as soon as you do.`
+    : ''
+
   const text = [
     `You have been invited to run ${teamName} on MFTournament.`,
+    ...(entering ? ['', entering] : []),
     '',
     'Open this link to take it over:',
     link,
@@ -111,6 +120,7 @@ export async function sendTeamInvite(
   const html = `
     <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.55;color:#0B1120">
       <p>You have been invited to run <strong>${escapeHtml(teamName)}</strong> on MFTournament.</p>
+      ${entering ? `<p>${escapeHtml(entering)}</p>` : ''}
       <p>
         <a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#4F46E5;color:#fff;text-decoration:none;font-weight:600">
           Take over the club

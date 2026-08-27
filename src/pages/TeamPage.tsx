@@ -1,12 +1,12 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
-import { clubService } from '../lib/data'
+import { clubService, type ClubManager } from '../lib/data'
 import {
   IconArrowLeft,
   IconLink,
@@ -34,6 +34,14 @@ export default function TeamPage() {
   // failed says so instead of looking like a link nobody asked to email.
   const [invitedEmail, setInvitedEmail] = useState('')
   const [isInviting, setIsInviting] = useState(false)
+  // Who runs the club. Kept out of the club record itself: it carries an email
+  // address, and the club record is what the public pages and the manager's own
+  // overview are built from.
+  const [managers, setManagers] = useState<ClubManager[]>([])
+  const [managersLoaded, setManagersLoaded] = useState(false)
+  // A request that failed and a club nobody runs look identical on screen
+  // otherwise, and the two call for opposite things from the organiser.
+  const [managersFailed, setManagersFailed] = useState(false)
   // The add-player form. Players used to be created the instant the button was
   // pressed, appearing as "New Player" with a number nobody chose.
   const [isAddingPlayer, setIsAddingPlayer] = useState(false)
@@ -41,6 +49,34 @@ export default function TeamPage() {
   // Hooks must run on every render (before any early return) to keep hook order stable.
   const logoFileRef = useRef<HTMLInputElement>(null)
   const photoFileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!teamId) return
+    let cancelled = false
+    setManagersLoaded(false)
+
+    clubService
+      .managers(teamId)
+      .then((list) => {
+        if (!cancelled) {
+          setManagers(list)
+          setManagersFailed(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setManagers([])
+          setManagersFailed(true)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setManagersLoaded(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [teamId])
   
   // Find the specific team by ID
   const team = teams.find(t => t.id === teamId)
@@ -179,8 +215,53 @@ export default function TeamPage() {
               </button>
             </div>
 
+            {/* Who has the club now. The organiser's first question about a
+                club they have invited somebody to is whether anybody took it
+                up, and until now the answer was nowhere in the interface. */}
+            <div className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl text-left">
+              <h3 className="text-sm font-medium mb-2 inline-flex items-center gap-2">
+                <IconUser size={15} /> Who runs this club
+              </h3>
+              {!managersLoaded ? (
+                <p className="text-sm opacity-60">Checking...</p>
+              ) : managersFailed ? (
+                <p className="text-sm text-amber-300/90">
+                  Could not read who runs this club. Reload the page.
+                </p>
+              ) : managers.length === 0 ? (
+                <p className="text-sm opacity-70">
+                  Nobody yet. Invite the coach or club secretary below — the club appears on
+                  their account the moment they open the link.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {managers.map((manager) => (
+                    <li
+                      key={manager.id}
+                      className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm"
+                    >
+                      <span className="font-medium">
+                        {manager.displayName || manager.email || 'Account no longer exists'}
+                      </span>
+                      {manager.displayName && manager.email && (
+                        <span className="opacity-70">{manager.email}</span>
+                      )}
+                      <span className="text-xs opacity-60">
+                        {manager.linkedAt
+                          ? `since ${new Date(manager.linkedAt).toLocaleDateString()}`
+                          : 'joined before this was recorded'}
+                      </span>
+                      {!manager.isActive && (
+                        <span className="text-xs text-amber-300">account disabled</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             {/* Handing the club to the person who actually runs it. */}
-            <div className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl">
+            <div className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl text-left">
               <p className="text-sm opacity-70 mb-2">
                 Invite the coach or club secretary to run {team.name}: the squad, the crest and
                 entering competitions. Results stay with you.

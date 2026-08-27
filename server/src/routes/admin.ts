@@ -91,6 +91,64 @@ async function accountsOfOrganizer(organizerId: string): Promise<AuthUser[]> {
   return all.filter((account) => account.organizerId === organizerId)
 }
 
+/** A club's manager as the organizer who owns the club may see them. */
+type ClubManager = {
+  id: string
+  email: string
+  displayName?: string
+  isActive: boolean
+  /** Absent for clubs claimed before the date was recorded. */
+  linkedAt?: string
+}
+
+/**
+ * Who runs each of these clubs.
+ *
+ * `managerUserIds` is the list permissions are decided from, so it is the list
+ * read here — the account's own `teamIds` is the same link written from the
+ * other side, and showing the organizer a manager the server would not actually
+ * let through would be worse than showing none.
+ *
+ * One scan of the accounts table for the whole set rather than a read per id: a
+ * competition has twenty-odd clubs, and the table holds a handful of rows.
+ */
+async function managersOfTeams(list: Team[]): Promise<Record<string, ClubManager[]>> {
+  const wanted = new Set<string>()
+  for (const team of list) for (const id of team.managerUserIds ?? []) wanted.add(id)
+
+  const byId = new Map<string, AuthUser>()
+  if (wanted.size > 0) {
+    for (const account of await scanAll<AuthUser>(TABLES.AUTH_USERS)) {
+      if (wanted.has(account.id)) byId.set(account.id, account)
+    }
+  }
+
+  const out: Record<string, ClubManager[]> = {}
+  for (const team of list) {
+    out[team.id] = (team.managerUserIds ?? [])
+      .map((id): ClubManager => {
+        const account = byId.get(id)
+        // A link to an account that no longer exists is worth saying out loud:
+        // it is the club nobody can edit and nobody can see why.
+        if (!account) {
+          return { id, email: '', isActive: false, linkedAt: team.managerLinkedAt?.[id] }
+        }
+        return {
+          id: account.id,
+          // Accounts old enough to predate email logins have a username and no
+          // address. They are still the people running the club, so they are
+          // listed; the organizer simply has nothing to write to.
+          email: account.email ?? '',
+          displayName: account.displayName,
+          isActive: account.isActive !== false,
+          linkedAt: team.managerLinkedAt?.[id],
+        }
+      })
+      .sort((a, b) => (a.linkedAt ?? '').localeCompare(b.linkedAt ?? ''))
+  }
+  return out
+}
+
 export function registerAdminRoutes(router: Router<RequestContext>): void {
   /* ---------------- listings (include private data) ---------------- */
 
@@ -335,6 +393,42 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
    * their whole account. This is the organizer's to do, not a manager's: the
    * managers of a club should not be able to remove each other.
    */
+  /**
+   * Who runs one club, for the organizer who owns it.
+   *
+   * Deliberately its own route rather than a field on the club: the club record
+   * goes to the public projection and to the manager's own overview, and an
+   * email address belongs in neither. Here the caller has already had to prove
+   * they run the competition the club plays in.
+   */
+  router.get('/admin/teams/:id/managers', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, team.organizerId)
+    const byTeam = await managersOfTeams([team as Team])
+    return byTeam[team.id] ?? []
+  })
+
+  /**
+   * The same, for every club in one competition.
+   *
+   * The organizer's question is "which of these clubs has somebody running it",
+   * and asking it a club at a time is twenty requests and twenty scans.
+   */
+  router.get('/admin/tournaments/:id/managers', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const list = await teams.getMany(tournament.teamIds ?? [])
+    // A club another organizer owns can be playing here; its manager's address
+    // is that organizer's to show, not this one's.
+    const own = (list as Team[]).filter(
+      (team) => isSuperAdmin(user) || team.organizerId === tournament.organizerId,
+    )
+    return managersOfTeams(own)
+  })
+
   router.delete('/admin/teams/:id/managers/:userId', async (ctx, params) => {
     const user = await ctx.user()
     const team = await teams.getOrThrow(params.id!)

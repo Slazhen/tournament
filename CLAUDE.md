@@ -108,6 +108,28 @@ row as `previousNote` and `previousDecidedAt` — but a pending application is
 returned rather than rewritten, so every repeat costs the organiser one
 deliberate answer.
 
+**An invitation can carry a competition.** A link issued from a tournament's
+settings screen holds its `tournamentId`, and claiming it both hands over the
+club and enters it — the organiser inviting a coach mid-setup has already
+decided the club is playing. The token is the authority for that write, so the
+new manager's own permissions are not consulted; what is re-checked at claim
+time is that the club and the competition still share an organiser, because a
+super admin can move a club and invitations are not torn up when they do. The
+entry never fails the claim: the club changing hands is what the person came
+for, and a competition deleted in the meantime must not cost them the
+invitation, the account and the session together.
+
+**A list is never written back whole.** `managerUserIds`, an account's
+`teamIds` and a tournament's `teamIds` all had a read, a filter or a concat, and
+a write of the result — and each lost data to an ordinary second writer. The
+worst of them restored a manager the organiser had just removed, which is a
+permission, not a display. Append with `list_append` under a `NOT contains`
+condition (`tournaments.addTeam`), remove by index with the index checked in the
+same request (`unlinkManagerFromTeam`, and `updatePlayer` before it). The same
+applies to spending an invitation: `consumeInvite` deletes conditionally and
+treats only a successful delete as having spent it, or "works once" holds only
+for people who are not in a hurry.
+
 Writes that reach the database are recorded by `lib/audit.ts`. A failed audit
 write never fails the request that caused it.
 

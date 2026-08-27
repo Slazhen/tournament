@@ -18,6 +18,7 @@ import {
   peekInvite,
   putEntry,
   type Entry,
+  type TeamInvite,
 } from '../repos-clubs.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import type { Router } from '../lib/router.js'
@@ -44,23 +45,44 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     // own address to an address of their choosing.
     assertCanAccessOrganizer(user, team.organizerId)
 
+    // An invitation may also enter the club in one competition. That is a write
+    // against the competition, so the same check is made against its organizer
+    // rather than assumed from the club's: the two are the same organizer in
+    // every case the interface offers, and the day they are not, this is the
+    // difference between a link and a way into somebody else's league.
+    const tournamentId =
+      typeof ctx.body.tournamentId === 'string' ? ctx.body.tournamentId.trim() : ''
+    const tournament = tournamentId ? await tournaments.getOrThrow(tournamentId) : null
+    if (tournament) assertCanAccessOrganizer(user, tournament.organizerId)
+
     const email = typeof ctx.body.email === 'string' ? ctx.body.email.trim().toLowerCase() : ''
-    const invite = await createInvite(team as Team, user.id, email || undefined)
+    const invite = await createInvite(team as Team, user.id, {
+      email: email || undefined,
+      tournament: tournament ? { id: tournament.id, name: tournament.name } : undefined,
+    })
     const link = `${SITE_URL}/join?token=${invite.token}`
 
-    const mail = email ? await sendTeamInvite(email, team.name, link) : { sent: false }
+    const mail = email
+      ? await sendTeamInvite(email, team.name, link, tournament?.name)
+      : { sent: false }
 
+    const where = tournament ? ` and enter it in ${tournament.name}` : ''
     await record(user, {
       action: 'team.invite',
       entity: 'team',
       entityId: team.id,
       summary: mail.sent
-        ? `Emailed an invitation to run ${team.name}`
-        : `Created an invitation link for ${team.name}`,
+        ? `Emailed an invitation to run ${team.name}${where}`
+        : `Created an invitation link to run ${team.name}${where}`,
       organizerId: team.organizerId,
     })
 
-    return { link, expiresAt: invite.expiresAt, emailed: mail.sent }
+    return {
+      link,
+      expiresAt: invite.expiresAt,
+      emailed: mail.sent,
+      tournamentName: tournament?.name,
+    }
   })
 
   /**
@@ -78,6 +100,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     return {
       teamName: invite.teamName,
       organizerName: organizer?.name ?? '',
+      // Only the name. The id would tell an unauthenticated holder of a stolen
+      // link which competition to go looking at, and buys the person who was
+      // actually invited nothing the name does not.
+      tournamentName: invite.tournamentName ?? '',
       expiresAt: invite.expiresAt,
     }
   })
@@ -116,6 +142,7 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
         summary: `Took over running ${team.name}`,
         organizerId: team.organizerId,
       })
+      await enterInvitedTournament(user, team as Team, invite)
       return { user: toPublicUser(user), teamId: team.id }
     }
 
@@ -169,6 +196,7 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
       summary: `Signed up and took over running ${team.name}`,
       organizerId: team.organizerId,
     })
+    await enterInvitedTournament(user, team as Team, invite)
 
     const session = await createSession(user.id, ctx.userAgent, ctx.sourceIp)
     return {
@@ -396,10 +424,11 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
 
     const team = await teams.get(params.teamId!)
 
-    if (status === 'accepted' && !(tournament.teamIds ?? []).includes(params.teamId!)) {
-      await tournaments.update(params.id!, {
-        teamIds: [...(tournament.teamIds ?? []), params.teamId!],
-      })
+    // Appended under a condition rather than written as a whole list read
+    // before the decision: an organizer accepting one club while another was
+    // being added elsewhere used to drop whichever write landed first.
+    if (status === 'accepted') {
+      await tournaments.addTeam(params.id!, params.teamId!)
     }
 
     await record(user, {
@@ -414,6 +443,82 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
 
     return { ok: true }
   })
+}
+
+/**
+ * Puts a newly claimed club into the competition its invitation named.
+ *
+ * The authority for this write is the invitation: it was issued by somebody who
+ * could already have added the club by hand, and the token proves the person
+ * following the link is the one they gave it to. That is why the new manager's
+ * own permissions are not consulted — a manager cannot enter a club anywhere
+ * without the organizer agreeing, and this is the organizer having agreed in
+ * advance.
+ *
+ * What that authority does not survive is the club changing hands. A super
+ * admin can move a club to another organizer, and invitations are not torn up
+ * when that happens, so the pairing is checked again here rather than taken
+ * from a fortnight-old token.
+ *
+ * Nothing here fails the claim, and that is enforced rather than hoped for: the
+ * club changing hands is the thing the person came to do, and a competition
+ * deleted or finished in the meantime must not cost them the invitation, the
+ * account and the session all at once.
+ */
+async function enterInvitedTournament(
+  user: AuthUser,
+  team: Team,
+  invite: TeamInvite,
+): Promise<void> {
+  if (!invite.tournamentId) return
+
+  try {
+    const tournament = await tournaments.get(invite.tournamentId)
+    if (!tournament) return
+
+    // The club has moved to another organizer since the invitation was written.
+    // Entering it in a competition its present owner does not run is not what
+    // anybody agreed to.
+    if (tournament.organizerId !== team.organizerId) return
+
+    // A season every match of which has a score is over, and adding a club to
+    // it changes a finished table. The application route refuses this for the
+    // same reason; an invitation lasts a fortnight, which is long enough for a
+    // season to end inside it.
+    if (seasonStatus(tournament) === 'finished') return
+
+    const added = await tournaments.addTeam(tournament.id, team.id)
+
+    // An application already on the row would otherwise leave the club both in
+    // the competition and, on its own page, refused by it. The organizer's
+    // earlier answer is being overruled by the organizer's own invitation, so
+    // it is overruled in the audit log too rather than quietly.
+    const existing = await getEntry(tournament.id, team.id)
+    const overruled = existing && existing.status !== 'accepted' ? existing.status : null
+    if (overruled) {
+      await decideEntry(tournament.id, team.id, 'accepted', invite.createdBy)
+    }
+
+    if (!added && !overruled) return
+
+    // Deliberately not touching the fixtures, for the same reason accepting an
+    // application does not: what a new club should do to a draw depends on
+    // whether a ball has been kicked, and the settings screen is where the
+    // organizer is shown that cost before paying it.
+    await record(user, {
+      action: 'entry.invited',
+      entity: 'tournament',
+      entityId: tournament.id,
+      summary: overruled
+        ? `${team.name} entered ${tournament.name} through the organiser's invitation, replacing an application marked ${overruled}`
+        : `${team.name} entered ${tournament.name} through the organiser's invitation`,
+      organizerId: tournament.organizerId,
+    })
+  } catch (error) {
+    // The club has changed hands either way. Losing that to a competition that
+    // was deleted mid-signup would burn the invitation with nothing to show.
+    console.error('Entering an invited club in its competition failed', error)
+  }
 }
 
 /** Local to this file: the auth routes own the shared version. */

@@ -345,7 +345,19 @@ export async function deleteImage(url: string): Promise<void> {
 export type TeamInvitePreview = {
   teamName: string
   organizerName: string
+  /** The competition the club joins on taking the invitation up, if any. */
+  tournamentName: string
   expiresAt: string
+}
+
+/** Somebody who runs a club, as the organizer who owns it may see them. */
+export type ClubManager = {
+  id: string
+  email: string
+  displayName?: string
+  isActive: boolean
+  /** Absent for clubs claimed before the date was recorded. */
+  linkedAt?: string
 }
 
 export type EntryStatus = 'pending' | 'accepted' | 'declined' | 'withdrawn'
@@ -365,9 +377,30 @@ export type Entry = {
 }
 
 export const clubService = {
-  /** Creates the one-time link that hands a club to whoever opens it. */
-  async invite(teamId: string, email?: string): Promise<{ link: string; expiresAt: string; emailed: boolean }> {
-    return api.post(`/admin/teams/${encodeURIComponent(teamId)}/invites`, { email })
+  /**
+   * Creates the one-time link that hands a club to whoever opens it.
+   *
+   * Naming a competition also enters the club in it the moment the link is
+   * taken up: an organizer inviting a coach from inside a competition has
+   * already decided the club is playing, and making the new manager apply back
+   * to them would be asking a question that has been answered.
+   */
+  async invite(
+    teamId: string,
+    email?: string,
+    tournamentId?: string,
+  ): Promise<{ link: string; expiresAt: string; emailed: boolean; tournamentName?: string }> {
+    return api.post(`/admin/teams/${encodeURIComponent(teamId)}/invites`, { email, tournamentId })
+  },
+
+  /** Who runs one club. The organizer who owns it only. */
+  async managers(teamId: string): Promise<ClubManager[]> {
+    return api.get(`/admin/teams/${encodeURIComponent(teamId)}/managers`)
+  },
+
+  /** Who runs each club in one competition, by club id. */
+  async managersForTournament(tournamentId: string): Promise<Record<string, ClubManager[]>> {
+    return api.get(`/admin/tournaments/${encodeURIComponent(tournamentId)}/managers`)
   },
 
   /** What an invitation is for, before anyone signs up for it. */

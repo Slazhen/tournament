@@ -334,6 +334,38 @@ export const tournaments = {
   },
 
   /**
+   * Puts one club into the competition, once.
+   *
+   * Deliberately not `update({ teamIds })` from a list read a moment earlier:
+   * the whole list gets written, and two writers — an organizer accepting an
+   * application while another club claims an invitation, or the settings screen
+   * saving a line-up — silently undo each other. Appending under a condition
+   * lets DynamoDB decide, and returning false rather than throwing keeps
+   * "already in" as an ordinary answer instead of an error to interpret.
+   */
+  async addTeam(tournamentId: string, teamId: string): Promise<boolean> {
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id: tournamentId },
+          UpdateExpression: 'SET #teamIds = list_append(if_not_exists(#teamIds, :empty), :one)',
+          ConditionExpression:
+            'attribute_exists(id) AND (attribute_not_exists(#teamIds) OR NOT contains(#teamIds, :teamId))',
+          ExpressionAttributeNames: { '#teamIds': 'teamIds' },
+          ExpressionAttributeValues: { ':empty': [], ':one': [teamId], ':teamId': teamId },
+        }),
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return false
+      throw error
+    }
+
+    invalidate('tournaments:')
+    return true
+  },
+
+  /**
    * Sets which of one club's players are registered for this competition.
    *
    * Deliberately not `update({ squads })`: every club in the competition shares

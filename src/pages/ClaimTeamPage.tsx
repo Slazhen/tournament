@@ -121,6 +121,14 @@ export default function ClaimTeamPage() {
             {invite.teamName} into competitions. Results stay with the organiser.
           </p>
 
+          {/* Taking this up also puts the club in a competition, and somebody
+              agreeing to run a club should not find that out afterwards. */}
+          {invite.tournamentName && (
+            <p className="text-sm text-blue-200/90 mb-5">
+              {invite.teamName} will be entered in {invite.tournamentName} as soon as you do.
+            </p>
+          )}
+
           <form onSubmit={submit} className="space-y-4">
             {!user && (
               <>

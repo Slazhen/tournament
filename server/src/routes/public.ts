@@ -21,10 +21,11 @@ import type { RequestContext } from '../context.js'
  * asked for went out to anyone who asked: `managerUserIds`, the account ids of
  * the people who run the club, and every player marked `isPublic: false` — a
  * flag the player route already honoured and then undid by attaching the club
- * beside it.
+ * beside it. `managerLinkedAt` is keyed by those same account ids and has to go
+ * with them; any further field about who runs the club belongs on this line.
  */
 function toPublicTeam(team: Team): Team {
-  const { managerUserIds: _managers, ...rest } = team
+  const { managerUserIds: _managers, managerLinkedAt: _linked, ...rest } = team
   if (!Array.isArray(team.players)) return rest as Team
 
   const players = (team.players as Array<{ isPublic?: boolean }>).filter(

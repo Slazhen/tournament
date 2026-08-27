@@ -51,6 +51,16 @@ export type Team = {
   organizerId: string
   /** Accounts allowed to run this club: squad, crest, entering competitions. */
   managerUserIds?: string[]
+  /**
+   * When each of those accounts took the club on, by account id.
+   *
+   * Written beside `managerUserIds` rather than derived from the audit log: the
+   * organizer's first question about a club is "who runs this and since when",
+   * and answering it should not mean reading a log keyed by something else.
+   * Clubs claimed before this existed have no entry, which is why every reader
+   * treats a missing date as unknown rather than as a date it invents.
+   */
+  managerLinkedAt?: Record<string, string>
   [key: string]: unknown
 }
 
