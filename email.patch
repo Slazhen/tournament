@@ -1,0 +1,367 @@
+diff --git a/server/package.json b/server/package.json
+index 4796181..eb3adbe 100644
+--- a/server/package.json
++++ b/server/package.json
+@@ -19,6 +19,7 @@
+     "@aws-sdk/client-sesv2": "^3.879.0"
+   },
+   "devDependencies": {
++    "@aws-sdk/client-route-53": "^3.879.0",
+     "@types/aws-lambda": "^8.10.145",
+     "@types/node": "^20.14.10",
+     "esbuild": "^0.23.0",
+diff --git a/server/samconfig.toml b/server/samconfig.toml
+index 32c37f4..bb452d6 100644
+--- a/server/samconfig.toml
++++ b/server/samconfig.toml
+@@ -6,7 +6,12 @@ resolve_s3 = true
+ s3_prefix = "mftournament-api"
+ region = "us-east-1"
+ capabilities = "CAPABILITY_IAM"
+-parameter_overrides = "AllowedOrigins=\"https://myfootballtournament.com,https://www.myfootballtournament.com\" ImagesBucket=\"football-tournaments-images\" TablePrefix=\"football-tournaments\" PublicCacheSeconds=\"60\" ServerCacheSeconds=\"60\""
++# MailFrom was never passed, so the deployed function had MAIL_FROM empty and
++# lib/mail.ts never built an SES client: every reset link and every club
++# invitation came back "sent: false" and the interface quietly showed the link
++# instead. The address has to be a verified SES identity; until it is, sending
++# fails softly and the link is still issued.
++parameter_overrides = "AllowedOrigins=\"https://myfootballtournament.com,https://www.myfootballtournament.com\" ImagesBucket=\"football-tournaments-images\" TablePrefix=\"football-tournaments\" PublicCacheSeconds=\"60\" ServerCacheSeconds=\"60\" MailFrom=\"noreply@myfootballtournament.com\""
+ image_repositories = []
+ 
+ [default.global.parameters]
+diff --git a/server/scripts/setup-email.mjs b/server/scripts/setup-email.mjs
+new file mode 100644
+index 0000000..65312f5
+--- /dev/null
++++ b/server/scripts/setup-email.mjs
+@@ -0,0 +1,160 @@
++#!/usr/bin/env node
++/**
++ * Sets up outgoing email: verifies the domain in SES and publishes the DKIM
++ * records to Route 53.
++ *
++ * Nothing has ever been sent from this application. `MailFrom` was never passed
++ * to the deployment, so `MAIL_FROM` was empty, `lib/mail.ts` never built an SES
++ * client, and every reset link and club invitation came back `sent: false` —
++ * which the interface showed as "here is the link" rather than as a failure.
++ * Passing the address is one line of samconfig; this script is the other half,
++ * the part AWS needs.
++ *
++ * Run it from your own machine with your own AWS credentials:
++ *
++ *   node scripts/setup-email.mjs
++ *   node scripts/setup-email.mjs --request-production
++ *
++ * It is safe to run again: the identity is created only if missing and the DNS
++ * records are upserted, so a second run just re-reports the state.
++ *
++ * `--request-production` asks AWS to take the account out of the SES sandbox.
++ * That matters: in the sandbox SES will only deliver to addresses you have
++ * verified one by one, so a club secretary you have never met gets nothing. The
++ * request is reviewed by a person and usually answered within a day.
++ */
++
++import {
++  SESv2Client,
++  CreateEmailIdentityCommand,
++  GetAccountCommand,
++  GetEmailIdentityCommand,
++  PutAccountDetailsCommand,
++} from '@aws-sdk/client-sesv2'
++import {
++  Route53Client,
++  ChangeResourceRecordSetsCommand,
++  ListHostedZonesByNameCommand,
++} from '@aws-sdk/client-route-53'
++
++const REGION = process.env.AWS_REGION ?? 'us-east-1'
++const DOMAIN = process.env.MAIL_DOMAIN ?? 'myfootballtournament.com'
++const SITE_URL = process.env.SITE_URL ?? `https://${DOMAIN}`
++const requestProduction = process.argv.includes('--request-production')
++
++const ses = new SESv2Client({ region: REGION })
++// Route 53 is global; its endpoint lives in us-east-1 whatever the SES region.
++const route53 = new Route53Client({ region: 'us-east-1' })
++
++console.log(`Region: ${REGION}`)
++console.log(`Domain: ${DOMAIN}\n`)
++
++/* 1. The identity, and the DKIM tokens that prove the domain is yours. */
++
++let identity
++try {
++  identity = await ses.send(new GetEmailIdentityCommand({ EmailIdentity: DOMAIN }))
++  console.log('SES identity already exists.')
++} catch (error) {
++  if (error.name !== 'NotFoundException') throw error
++  console.log('Creating the SES identity…')
++  await ses.send(new CreateEmailIdentityCommand({ EmailIdentity: DOMAIN }))
++  identity = await ses.send(new GetEmailIdentityCommand({ EmailIdentity: DOMAIN }))
++}
++
++const tokens = identity.DkimAttributes?.Tokens ?? []
++if (tokens.length === 0) {
++  console.error('SES returned no DKIM tokens. Nothing to publish; check the identity by hand.')
++  process.exit(1)
++}
++
++const records = tokens.map((token) => ({
++  name: `${token}._domainkey.${DOMAIN}`,
++  value: `${token}.dkim.amazonses.com`,
++}))
++
++/* 2. The hosted zone, and the three records in it. */
++
++const zones = await route53.send(new ListHostedZonesByNameCommand({ DNSName: DOMAIN }))
++// ListHostedZonesByName returns everything from the name onwards alphabetically,
++// so the domain has to be matched rather than assumed to be first. A private
++// zone of the same name is not the one the internet reads.
++const zone = (zones.HostedZones ?? []).find(
++  (candidate) => candidate.Name === `${DOMAIN}.` && !candidate.Config?.PrivateZone,
++)
++
++if (!zone) {
++  console.log(`\nNo public Route 53 zone for ${DOMAIN}. Add these three CNAMEs wherever the DNS lives:\n`)
++  for (const record of records) console.log(`  ${record.name}  CNAME  ${record.value}`)
++} else {
++  console.log(`\nHosted zone: ${zone.Id}`)
++  await route53.send(
++    new ChangeResourceRecordSetsCommand({
++      HostedZoneId: zone.Id,
++      ChangeBatch: {
++        Comment: 'SES Easy DKIM for MFTournament',
++        Changes: records.map((record) => ({
++          // Upsert rather than create: running this twice must not fail, and a
++          // re-created identity issues new tokens that have to replace the old.
++          Action: 'UPSERT',
++          ResourceRecordSet: {
++            Name: record.name,
++            Type: 'CNAME',
++            TTL: 1800,
++            ResourceRecords: [{ Value: record.value }],
++          },
++        })),
++      },
++    }),
++  )
++  console.log('DKIM records published:')
++  for (const record of records) console.log(`  ${record.name} -> ${record.value}`)
++}
++
++/* 3. Where it stands now. */
++
++const status = identity.DkimAttributes?.Status
++const verified = identity.VerifiedForSendingStatus
++console.log(`\nDKIM: ${status ?? 'unknown'}`)
++console.log(`Verified for sending: ${verified ? 'yes' : 'not yet'}`)
++if (!verified) {
++  console.log('DNS takes a few minutes to an hour to propagate. Run this again to check.')
++}
++
++const account = await ses.send(new GetAccountCommand({}))
++const production = account.ProductionAccessEnabled === true
++console.log(`Sending enabled: ${account.SendingEnabled ? 'yes' : 'no'}`)
++console.log(`Out of the sandbox: ${production ? 'yes' : 'no'}`)
++
++if (!production && !requestProduction) {
++  console.log(
++    '\nIn the sandbox SES delivers only to addresses verified one by one, so an invitation\n' +
++      'to a club secretary will not arrive. Ask AWS for production access with:\n' +
++      '  node scripts/setup-email.mjs --request-production',
++  )
++}
++
++if (!production && requestProduction) {
++  console.log('\nRequesting production access…')
++  try {
++    await ses.send(
++      new PutAccountDetailsCommand({
++        MailType: 'TRANSACTIONAL',
++        WebsiteURL: SITE_URL,
++        UseCaseDescription:
++          'MFTournament is a football league and tournament manager. It sends two ' +
++          'transactional messages, both to people who asked for them: a password reset ' +
++          'link requested by the account holder, and an invitation to run a club, sent ' +
++          'by the league organiser to the coach or club secretary at an address the ' +
++          'organiser typed in. There is no marketing, no list and no bulk sending. ' +
++          'Bounces and complaints will be monitored in SES and the address removed.',
++        ContactLanguage: 'EN',
++        ProductionAccessEnabled: true,
++      }),
++    )
++    console.log('Requested. AWS usually answers within a day, by email.')
++  } catch (error) {
++    console.error(`Could not request production access: ${error.message}`)
++    console.error('If the account details are already set, ask through the SES console instead.')
++  }
++}
+diff --git a/server/src/lib/passwords.ts b/server/src/lib/passwords.ts
+index 6afc74b..bfd8004 100644
+--- a/server/src/lib/passwords.ts
++++ b/server/src/lib/passwords.ts
+@@ -45,16 +45,24 @@ export async function verifyPassword(
+   return timingSafeEqual(actual, expected)
+ }
+ 
++/** Seven, so the message and the check can never disagree. */
++export const MIN_PASSWORD_LENGTH = 7
++
+ /**
+  * The minimum a password must clear to be accepted.
+  *
+  * The old code created both the super admin and every new organizer with the
+  * password "123", hard-coded, on a site anyone can reach. Any password set
+  * through this API has to be a real one.
++ *
++ * Twelve characters was the first answer and it was too long for the people
++ * this is for — a club secretary typing it on a phone at a pitch. Seven with a
++ * digit in it is the floor now; brute force is not the threat model here, and a
++ * rule nobody can satisfy gets written on a whiteboard instead.
+  */
+ export function assertPasswordStrength(password: unknown): asserts password is string {
+-  if (typeof password !== 'string' || password.length < 12) {
+-    throw new Error('Password must be at least 12 characters long')
++  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
++    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`)
+   }
+   if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+     throw new Error('Password must contain both letters and digits')
+diff --git a/server/tests/passwords.test.ts b/server/tests/passwords.test.ts
+index 099c320..6e684a9 100644
+--- a/server/tests/passwords.test.ts
++++ b/server/tests/passwords.test.ts
+@@ -53,6 +53,13 @@ describe('password strength', () => {
+     expect(() => assertPasswordStrength('sh0rt1')).toThrow()
+   })
+ 
++  // Seven, not twelve. The boundary earns a test of its own because the number
++  // lives in two places at once — the check, and the message people read.
++  it('draws the line at seven characters', () => {
++    expect(() => assertPasswordStrength('futsal1')).not.toThrow()
++    expect(() => assertPasswordStrength('futsa1')).toThrow(/7 characters/)
++  })
++
+   it('accepts a reasonable password', () => {
+     expect(() => assertPasswordStrength('tournament2026Season')).not.toThrow()
+   })
+diff --git a/src/pages/OrganizersPage.tsx b/src/pages/OrganizersPage.tsx
+index 57b3f14..5ee76bd 100644
+--- a/src/pages/OrganizersPage.tsx
++++ b/src/pages/OrganizersPage.tsx
+@@ -43,6 +43,8 @@ export default function OrganizersPage() {
+   const [passwordError, setPasswordError] = useState('')
+   /** A one-time link, per organizer email, ready to be passed on by hand. */
+   const [resetLinks, setResetLinks] = useState<Record<string, string>>({})
++  /** Whether that link also went out by email, which depends on SES being set up. */
++  const [emailedLinks, setEmailedLinks] = useState<Record<string, boolean>>({})
+   const [newAdmin, setNewAdmin] = useState({ email: '', displayName: '', password: '' })
+   const [adminMessage, setAdminMessage] = useState<string | null>(null)
+   /** The organizer whose deletion is being confirmed, and what it would cost. */
+@@ -85,8 +87,8 @@ export default function OrganizersPage() {
+       }
+       
+       // Validate password
+-      if (!newOrganizer.password || newOrganizer.password.length < 6) {
+-        setCreateError('Password must be at least 6 characters long.')
++      if (!newOrganizer.password || newOrganizer.password.length < 7) {
++        setCreateError('Password must be at least 7 characters long, with a digit in it.')
+         return
+       }
+       
+@@ -179,11 +181,17 @@ export default function OrganizersPage() {
+    *
+    * Typing a password for somebody and reading it out means two people know it,
+    * and the one who chose it is not the one who has to remember it.
++   *
++   * The link is emailed as well as shown. It used to be shown only — the button
++   * asked the API not to send it — which left the super admin passing it on by
++   * hand even once email worked, and made "the reset email never arrives" look
++   * like a broken mail server rather than a request that was never made.
+    */
+   const handleResetLink = async (organizerEmail: string) => {
+     try {
+-      const result = await issueResetLink(organizerEmail)
++      const result = await issueResetLink(organizerEmail, true)
+       setResetLinks((current) => ({ ...current, [organizerEmail]: result.link }))
++      setEmailedLinks((current) => ({ ...current, [organizerEmail]: result.emailed }))
+       try {
+         await navigator.clipboard.writeText(result.link)
+       } catch {
+@@ -196,8 +204,8 @@ export default function OrganizersPage() {
+   }
+ 
+   const handlePasswordReset = async (organizerEmail: string) => {
+-    if (!newPassword || newPassword.length < 6) {
+-      setPasswordError('Password must be at least 6 characters long.')
++    if (!newPassword || newPassword.length < 7) {
++      setPasswordError('Password must be at least 7 characters long, with a digit in it.')
+       return
+     }
+ 
+@@ -394,7 +402,7 @@ export default function OrganizersPage() {
+                   value={newOrganizer.password}
+                   onChange={(e) => setNewOrganizer({ ...newOrganizer, password: e.target.value })}
+                   className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-white placeholder-gray-400"
+-                  placeholder="Enter initial password (min 6 characters)"
++                  placeholder="Enter initial password (min 7 characters)"
+                   required
+                 />
+                 <p className="text-xs text-gray-500 mt-1">This will be the organizer's login password</p>
+@@ -590,8 +598,9 @@ export default function OrganizersPage() {
+                   {resetLinks[organizer.email] && (
+                     <div className="mt-4 pt-4 border-t border-white/10">
+                       <p className="text-sm text-gray-300 mb-2">
+-                        One-time link, copied to your clipboard. It works once and expires in an
+-                        hour.
++                        {emailedLinks[organizer.email]
++                          ? `Sent to ${organizer.email}, and copied to your clipboard. It works once and expires in an hour.`
++                          : 'One-time link, copied to your clipboard. Email is not sending, so pass it on yourself. It works once and expires in an hour.'}
+                       </p>
+                       <code className="block text-xs bg-black/40 border border-white/10 rounded-lg p-3 break-all text-blue-200">
+                         {resetLinks[organizer.email]}
+@@ -607,7 +616,7 @@ export default function OrganizersPage() {
+                           type="password"
+                           value={newPassword}
+                           onChange={(e) => setNewPassword(e.target.value)}
+-                          placeholder="Enter new password (min 6 characters)"
++                          placeholder="Enter new password (min 7 characters)"
+                           className="flex-1 px-4 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-yellow-400/50 focus:outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all text-white placeholder-gray-400"
+                         />
+                         <button
+diff --git a/src/pages/TeamPage.tsx b/src/pages/TeamPage.tsx
+index f7146cf..3a9a59c 100644
+--- a/src/pages/TeamPage.tsx
++++ b/src/pages/TeamPage.tsx
+@@ -30,6 +30,9 @@ export default function TeamPage() {
+   const [inviteEmail, setInviteEmail] = useState('')
+   const [inviteLink, setInviteLink] = useState<string | null>(null)
+   const [inviteEmailed, setInviteEmailed] = useState(false)
++  // The address the invitation was asked to go to, kept so that a send which
++  // failed says so instead of looking like a link nobody asked to email.
++  const [invitedEmail, setInvitedEmail] = useState('')
+   const [isInviting, setIsInviting] = useState(false)
+   // The add-player form. Players used to be created the instant the button was
+   // pressed, appearing as "New Player" with a number nobody chose.
+@@ -195,9 +198,11 @@ export default function TeamPage() {
+                   onClick={async () => {
+                     setIsInviting(true)
+                     try {
+-                      const result = await clubService.invite(team.id, inviteEmail.trim() || undefined)
++                      const wanted = inviteEmail.trim()
++                      const result = await clubService.invite(team.id, wanted || undefined)
+                       setInviteLink(result.link)
+                       setInviteEmailed(result.emailed)
++                      setInvitedEmail(wanted)
+                       try {
+                         await navigator.clipboard.writeText(result.link)
+                       } catch {
+@@ -221,7 +226,9 @@ export default function TeamPage() {
+                   <p className="text-sm text-gray-300 mb-1">
+                     {inviteEmailed
+                       ? 'Sent, and copied to your clipboard. It works once and lasts a fortnight.'
+-                      : 'Copied to your clipboard. It works once and lasts a fortnight.'}
++                      : invitedEmail
++                        ? `The email could not be sent to ${invitedEmail}, so pass this on yourself. It works once and lasts a fortnight.`
++                        : 'Copied to your clipboard. It works once and lasts a fortnight.'}
+                   </p>
+                   <code className="block text-xs bg-black/40 border border-white/10 rounded-lg p-3 break-all text-blue-200">
+                     {inviteLink}

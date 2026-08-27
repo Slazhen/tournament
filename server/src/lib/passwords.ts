@@ -45,16 +45,24 @@ export async function verifyPassword(
   return timingSafeEqual(actual, expected)
 }
 
+/** Seven, so the message and the check can never disagree. */
+export const MIN_PASSWORD_LENGTH = 7
+
 /**
  * The minimum a password must clear to be accepted.
  *
  * The old code created both the super admin and every new organizer with the
  * password "123", hard-coded, on a site anyone can reach. Any password set
  * through this API has to be a real one.
+ *
+ * Twelve characters was the first answer and it was too long for the people
+ * this is for — a club secretary typing it on a phone at a pitch. Seven with a
+ * digit in it is the floor now; brute force is not the threat model here, and a
+ * rule nobody can satisfy gets written on a whiteboard instead.
  */
 export function assertPasswordStrength(password: unknown): asserts password is string {
-  if (typeof password !== 'string' || password.length < 12) {
-    throw new Error('Password must be at least 12 characters long')
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`)
   }
   if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
     throw new Error('Password must contain both letters and digits')

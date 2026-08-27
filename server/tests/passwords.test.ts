@@ -53,6 +53,13 @@ describe('password strength', () => {
     expect(() => assertPasswordStrength('sh0rt1')).toThrow()
   })
 
+  // Seven, not twelve. The boundary earns a test of its own because the number
+  // lives in two places at once — the check, and the message people read.
+  it('draws the line at seven characters', () => {
+    expect(() => assertPasswordStrength('futsal1')).not.toThrow()
+    expect(() => assertPasswordStrength('futsa1')).toThrow(/7 characters/)
+  })
+
   it('accepts a reasonable password', () => {
     expect(() => assertPasswordStrength('tournament2026Season')).not.toThrow()
   })

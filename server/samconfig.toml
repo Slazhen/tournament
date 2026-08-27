@@ -6,7 +6,12 @@ resolve_s3 = true
 s3_prefix = "mftournament-api"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "AllowedOrigins=\"https://myfootballtournament.com,https://www.myfootballtournament.com\" ImagesBucket=\"football-tournaments-images\" TablePrefix=\"football-tournaments\" PublicCacheSeconds=\"60\" ServerCacheSeconds=\"60\""
+# MailFrom was never passed, so the deployed function had MAIL_FROM empty and
+# lib/mail.ts never built an SES client: every reset link and every club
+# invitation came back "sent: false" and the interface quietly showed the link
+# instead. The address has to be a verified SES identity; until it is, sending
+# fails softly and the link is still issued.
+parameter_overrides = "AllowedOrigins=\"https://myfootballtournament.com,https://www.myfootballtournament.com\" ImagesBucket=\"football-tournaments-images\" TablePrefix=\"football-tournaments\" PublicCacheSeconds=\"60\" ServerCacheSeconds=\"60\" MailFrom=\"noreply@myfootballtournament.com\""
 image_repositories = []
 
 [default.global.parameters]

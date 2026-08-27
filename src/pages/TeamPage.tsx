@@ -30,6 +30,9 @@ export default function TeamPage() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLink, setInviteLink] = useState<string | null>(null)
   const [inviteEmailed, setInviteEmailed] = useState(false)
+  // The address the invitation was asked to go to, kept so that a send which
+  // failed says so instead of looking like a link nobody asked to email.
+  const [invitedEmail, setInvitedEmail] = useState('')
   const [isInviting, setIsInviting] = useState(false)
   // The add-player form. Players used to be created the instant the button was
   // pressed, appearing as "New Player" with a number nobody chose.
@@ -195,9 +198,11 @@ export default function TeamPage() {
                   onClick={async () => {
                     setIsInviting(true)
                     try {
-                      const result = await clubService.invite(team.id, inviteEmail.trim() || undefined)
+                      const wanted = inviteEmail.trim()
+                      const result = await clubService.invite(team.id, wanted || undefined)
                       setInviteLink(result.link)
                       setInviteEmailed(result.emailed)
+                      setInvitedEmail(wanted)
                       try {
                         await navigator.clipboard.writeText(result.link)
                       } catch {
@@ -221,7 +226,9 @@ export default function TeamPage() {
                   <p className="text-sm text-gray-300 mb-1">
                     {inviteEmailed
                       ? 'Sent, and copied to your clipboard. It works once and lasts a fortnight.'
-                      : 'Copied to your clipboard. It works once and lasts a fortnight.'}
+                      : invitedEmail
+                        ? `The email could not be sent to ${invitedEmail}, so pass this on yourself. It works once and lasts a fortnight.`
+                        : 'Copied to your clipboard. It works once and lasts a fortnight.'}
                   </p>
                   <code className="block text-xs bg-black/40 border border-white/10 rounded-lg p-3 break-all text-blue-200">
                     {inviteLink}

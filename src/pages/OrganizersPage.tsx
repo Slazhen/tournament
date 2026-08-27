@@ -43,6 +43,8 @@ export default function OrganizersPage() {
   const [passwordError, setPasswordError] = useState('')
   /** A one-time link, per organizer email, ready to be passed on by hand. */
   const [resetLinks, setResetLinks] = useState<Record<string, string>>({})
+  /** Whether that link also went out by email, which depends on SES being set up. */
+  const [emailedLinks, setEmailedLinks] = useState<Record<string, boolean>>({})
   const [newAdmin, setNewAdmin] = useState({ email: '', displayName: '', password: '' })
   const [adminMessage, setAdminMessage] = useState<string | null>(null)
   /** The organizer whose deletion is being confirmed, and what it would cost. */
@@ -85,8 +87,8 @@ export default function OrganizersPage() {
       }
       
       // Validate password
-      if (!newOrganizer.password || newOrganizer.password.length < 6) {
-        setCreateError('Password must be at least 6 characters long.')
+      if (!newOrganizer.password || newOrganizer.password.length < 7) {
+        setCreateError('Password must be at least 7 characters long, with a digit in it.')
         return
       }
       
@@ -179,11 +181,17 @@ export default function OrganizersPage() {
    *
    * Typing a password for somebody and reading it out means two people know it,
    * and the one who chose it is not the one who has to remember it.
+   *
+   * The link is emailed as well as shown. It used to be shown only — the button
+   * asked the API not to send it — which left the super admin passing it on by
+   * hand even once email worked, and made "the reset email never arrives" look
+   * like a broken mail server rather than a request that was never made.
    */
   const handleResetLink = async (organizerEmail: string) => {
     try {
-      const result = await issueResetLink(organizerEmail)
+      const result = await issueResetLink(organizerEmail, true)
       setResetLinks((current) => ({ ...current, [organizerEmail]: result.link }))
+      setEmailedLinks((current) => ({ ...current, [organizerEmail]: result.emailed }))
       try {
         await navigator.clipboard.writeText(result.link)
       } catch {
@@ -196,8 +204,8 @@ export default function OrganizersPage() {
   }
 
   const handlePasswordReset = async (organizerEmail: string) => {
-    if (!newPassword || newPassword.length < 6) {
-      setPasswordError('Password must be at least 6 characters long.')
+    if (!newPassword || newPassword.length < 7) {
+      setPasswordError('Password must be at least 7 characters long, with a digit in it.')
       return
     }
 
@@ -394,7 +402,7 @@ export default function OrganizersPage() {
                   value={newOrganizer.password}
                   onChange={(e) => setNewOrganizer({ ...newOrganizer, password: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-white placeholder-gray-400"
-                  placeholder="Enter initial password (min 6 characters)"
+                  placeholder="Enter initial password (min 7 characters)"
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">This will be the organizer's login password</p>
@@ -590,8 +598,9 @@ export default function OrganizersPage() {
                   {resetLinks[organizer.email] && (
                     <div className="mt-4 pt-4 border-t border-white/10">
                       <p className="text-sm text-gray-300 mb-2">
-                        One-time link, copied to your clipboard. It works once and expires in an
-                        hour.
+                        {emailedLinks[organizer.email]
+                          ? `Sent to ${organizer.email}, and copied to your clipboard. It works once and expires in an hour.`
+                          : 'One-time link, copied to your clipboard. Email is not sending, so pass it on yourself. It works once and expires in an hour.'}
                       </p>
                       <code className="block text-xs bg-black/40 border border-white/10 rounded-lg p-3 break-all text-blue-200">
                         {resetLinks[organizer.email]}
@@ -607,7 +616,7 @@ export default function OrganizersPage() {
                           type="password"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          placeholder="Enter new password (min 6 characters)"
+                          placeholder="Enter new password (min 7 characters)"
                           className="flex-1 px-4 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-yellow-400/50 focus:outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all text-white placeholder-gray-400"
                         />
                         <button
