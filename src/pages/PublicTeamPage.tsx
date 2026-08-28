@@ -13,6 +13,7 @@ import {
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
+import LastAndNextMatch from '../components/LastAndNextMatch'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
 import { headerColor, inkOn, shade } from '../utils/crest'
 
@@ -274,15 +275,26 @@ export default function PublicTeamPage() {
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <h2 className="text-xl font-semibold mb-4 text-center">In the table</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {teamTournaments.map((tournament) => (
-              <MiniTable
-                key={tournament.id}
-                tournament={tournament}
-                teamId={team.id}
-                teamNames={teamNames}
-                to={`/public/tournaments/${tournament.id}`}
-              />
-            ))}
+            {/* The tables stack in their own column so that the pair of matches
+                beside them keeps its place when a club is in more than one
+                competition — a flat grid would deal the two cards out among the
+                tables and put the next match wherever it happened to land. */}
+            <div className="grid gap-3 content-start">
+              {teamTournaments.map((tournament) => (
+                <MiniTable
+                  key={tournament.id}
+                  tournament={tournament}
+                  teamId={team.id}
+                  teamNames={teamNames}
+                  to={`/public/tournaments/${tournament.id}`}
+                />
+              ))}
+            </div>
+            <LastAndNextMatch
+              tournaments={teamTournaments}
+              teamId={team.id}
+              teamNames={teamNames}
+            />
           </div>
         </section>
       )}

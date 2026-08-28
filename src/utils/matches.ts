@@ -171,3 +171,53 @@ export const NO_STAT = '-'
 
 export const statValue = (value: number | undefined): number | string =>
   typeof value === 'number' ? value : NO_STAT
+
+export type TeamFixture = { match: Match; tournament: Tournament }
+
+/**
+ * A club's most recent result and its next fixture, across every competition it
+ * plays in.
+ *
+ * A match counts as still to come while it has no score, whatever its date: a
+ * result nobody has typed in yet is the club's next match until somebody does,
+ * and calling it "played" because the day has passed would leave a club with
+ * nothing to show all week.
+ *
+ * Both are chosen by kick-off time where there is one. A season is dated a
+ * round at a time, so it can hold fixtures with no date at all: those go to the
+ * back of the queue rather than to the front of it, and when nothing is dated
+ * the order the season stores its matches in is the only ordering there is.
+ */
+export function lastAndNextFor(
+  tournaments: Tournament[],
+  teamId: string,
+): { last: TeamFixture | null; next: TeamFixture | null } {
+  const played: Array<TeamFixture & { time: number | null }> = []
+  const upcoming: Array<TeamFixture & { time: number }> = []
+
+  for (const tournament of tournaments) {
+    for (const match of allMatches(tournament)) {
+      if (match.homeTeamId !== teamId && match.awayTeamId !== teamId) continue
+
+      const at = match.dateISO ? new Date(match.dateISO).getTime() : Number.NaN
+      const time = Number.isNaN(at) ? null : at
+
+      if (isPlayed(match)) played.push({ match, tournament, time })
+      else upcoming.push({ match, tournament, time: time ?? Number.POSITIVE_INFINITY })
+    }
+  }
+
+  upcoming.sort((a, b) => a.time - b.time)
+
+  const dated = played.filter((one) => one.time !== null)
+  const last = dated.length
+    ? dated.reduce((latest, one) => ((one.time as number) > (latest.time as number) ? one : latest))
+    : played[played.length - 1]
+
+  return {
+    last: last ? { match: last.match, tournament: last.tournament } : null,
+    next: upcoming.length
+      ? { match: upcoming[0].match, tournament: upcoming[0].tournament }
+      : null,
+  }
+}
