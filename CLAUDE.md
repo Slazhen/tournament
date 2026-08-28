@@ -191,6 +191,16 @@ applies to spending an invitation: `consumeInvite` deletes conditionally and
 treats only a successful delete as having spent it, or "works once" holds only
 for people who are not in a hurry.
 
+**A match is written as a match.** `PATCH /admin/tournaments/:t/matches/:m`
+exists so that editing one fixture does not send the competition's whole
+`matches` array back from whatever copy the browser is holding. The organiser's
+match screen did exactly that until it was changed: every save there — a venue,
+a statistic, a video link — rewrote every fixture in the season, so a score
+typed on another screen and a teamsheet a club's manager had just named were
+both undone by somebody correcting a spelling. `undefined` cannot travel through
+JSON, so a field emptied on that screen is sent as `null`, which is why a score
+is read with `typeof === 'number'` and never with `!== undefined`.
+
 **A manager link is granted by ownership and honoured by identity.** An
 organizer may take their own club under management — `POST
 /admin/teams/:id/managers/me`, which is the invitation they used to have to

@@ -74,6 +74,23 @@ type AppStore = {
   setScore: (matchId: string, homeGoals: number, awayGoals: number) => Promise<void>
   setDate: (matchId: string, dateISO: string) => Promise<void>
   /**
+   * One match's own fields, written as that match.
+   *
+   * Not as a whole `matches` array: the match page used to save by sending
+   * every fixture in the competition back from the copy this browser loaded,
+   * so an edit made there undid anything saved in between — a score typed on
+   * another screen, and a teamsheet a club's manager had just named.
+   *
+   * `undefined` becomes `null` on the way out. JSON drops an undefined value,
+   * so a field emptied on screen would arrive as nothing at all and keep what
+   * it had; null is how this API is told to clear one.
+   */
+  updateMatchFields: (
+    tournamentId: string,
+    matchId: string,
+    updates: Partial<Match>,
+  ) => Promise<void>
+  /**
    * One club's teamsheet for one match. Throws rather than swallowing, so a
    * ticked box that did not reach the server can say so.
    */
@@ -608,6 +625,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
         break
       }
     }
+  },
+
+  updateMatchFields: async (
+    tournamentId: string,
+    matchId: string,
+    updates: Partial<Match>,
+  ) => {
+    const body = Object.fromEntries(
+      Object.entries(updates).map(([field, value]) => [field, value === undefined ? null : value]),
+    ) as Partial<Match>
+
+    await matchService.updateMatchInTournament(tournamentId, matchId, body)
+
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? {
+              ...tournament,
+              matches: tournament.matches.map(match =>
+                match.id === matchId ? { ...match, ...updates } : match,
+              ),
+            }
+          : tournament,
+      ),
+    }))
   },
 
   /**

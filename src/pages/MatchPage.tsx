@@ -8,16 +8,18 @@ import { organizerService } from '../lib/data'
 import type { Organizer, Player } from '../types'
 import MatchDateTime from '../components/MatchDateTime'
 import InlineInput from '../components/InlineInput'
+import InlineTextarea from '../components/InlineTextarea'
 import {
   IconBall,
   IconArrowLeft,
   IconClipboard,
 } from '../components/icons'
 import { playersForPicking, registeredPlayers } from '../utils/squads'
+import { youtubeEmbedUrl } from '../utils/video'
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTournament, setLineup, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateMatchFields, setLineup, superAdmin } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -79,12 +81,15 @@ export default function MatchPage() {
     )
   }
 
+  // One match, through the route that writes one match. This used to send the
+  // competition's whole `matches` array back from the copy this page loaded,
+  // which undid every edit made elsewhere since — including the teamsheets the
+  // clubs' own managers now write.
   const updateMatch = (updates: Partial<typeof match>) => {
-    if (!tournament) return
-    const updatedMatches = tournament.matches.map(m => 
-      m.id === matchId ? { ...m, ...updates } : m
-    )
-    updateTournament(tournament.id, { matches: updatedMatches })
+    if (!tournament || !matchId) return
+    updateMatchFields(tournament.id, matchId, updates).catch((error) => {
+      console.error('Error updating match:', error)
+    })
   }
 
   const updateGoal = (goalId: string, updates: Partial<{ minute: number; playerId: string; assistPlayerId?: string; type: 'goal' | 'penalty' | 'own_goal' }>) => {
@@ -138,7 +143,8 @@ export default function MatchPage() {
     const now = new Date()
     const matchDate = new Date(match.dateISO)
     if (now < matchDate) return 'scheduled'
-    if (match.homeGoals !== undefined && match.awayGoals !== undefined) return 'finished'
+    // A cleared score is stored as null, which `!== undefined` read as finished.
+    if (typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number') return 'finished'
     return 'live'
   }
 
@@ -211,7 +217,7 @@ export default function MatchPage() {
               </div>
               <div className="text-lg font-semibold">{homeTeam.name}</div>
               <div className="text-4xl font-bold text-blue-400">
-                {match.homeGoals !== undefined ? match.homeGoals : '-'}
+                {typeof match.homeGoals === 'number' ? match.homeGoals : '-'}
               </div>
             </div>
             
@@ -234,7 +240,7 @@ export default function MatchPage() {
               </div>
               <div className="text-lg font-semibold">{awayTeam.name}</div>
               <div className="text-4xl font-bold text-red-400">
-                {match.awayGoals !== undefined ? match.awayGoals : '-'}
+                {typeof match.awayGoals === 'number' ? match.awayGoals : '-'}
               </div>
             </div>
           </div>
@@ -664,10 +670,33 @@ export default function MatchPage() {
             
             <div className="space-y-4">
               <div>
+                <label className="block text-sm font-medium mb-2">Match video</label>
+                <InlineInput
+                  type="url"
+                  value={match.videoUrl || ''}
+                  onCommit={(value) => updateMatch({ videoUrl: value || undefined })}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                />
+                <p className="text-sm opacity-70 mt-2">
+                  A YouTube link plays on the public match page. Any other address is shown
+                  there as a link instead, because a page that refuses to be framed would
+                  leave a blank box.
+                </p>
+                {/* Said here rather than on the public page, where nobody who can
+                    fix it is looking. */}
+                {match.videoUrl && !youtubeEmbedUrl(match.videoUrl) && (
+                  <p className="text-sm text-yellow-300 mt-1">
+                    This is not a YouTube address, so visitors get a link rather than a player.
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium mb-2">Match Preview</label>
-                <textarea
-                  value={match.preview || ''}
-                  onChange={(e) => updateMatch({ preview: e.target.value || undefined })}
+                <InlineTextarea
+                  value={match.preview}
+                  onCommit={(value) => updateMatch({ preview: value || undefined })}
                   placeholder="Enter match preview..."
                   rows={4}
                   className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
@@ -676,25 +705,15 @@ export default function MatchPage() {
               
               <div>
                 <label className="block text-sm font-medium mb-2">Match Report</label>
-                <textarea
-                  value={match.report || ''}
-                  onChange={(e) => updateMatch({ report: e.target.value || undefined })}
+                <InlineTextarea
+                  value={match.report}
+                  onCommit={(value) => updateMatch({ report: value || undefined })}
                   placeholder="Enter match report..."
                   rows={6}
                   className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                 />
           </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Video URL</label>
-                <InlineInput
-                  type="url"
-                  value={match.videoUrl || ''}
-                  onCommit={(value) => updateMatch({ videoUrl: value || undefined })}
-                  placeholder="Enter video URL..."
-                  className="w-full px-3 py-2 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                />
-              </div>
             </div>
           </div>
         )}

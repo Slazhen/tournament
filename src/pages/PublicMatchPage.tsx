@@ -11,6 +11,7 @@ import {
   IconVideo,
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
+import { youtubeEmbedUrl } from '../utils/video'
 
 export default function PublicMatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug, seriesSlug, seasonSlug } = useParams()
@@ -195,7 +196,9 @@ export default function PublicMatchPage() {
     const now = new Date()
     const matchDate = new Date(match.dateISO)
     if (now < matchDate) return 'scheduled'
-    if (match.homeGoals !== undefined && match.awayGoals !== undefined) return 'finished'
+    // A score counts as played only when it is a number: a cleared one is
+    // stored as null, and `!== undefined` called that finished.
+    if (typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number') return 'finished'
     return 'live'
   }
 
@@ -210,6 +213,8 @@ export default function PublicMatchPage() {
       (match.lineups?.[side]?.starting?.length ?? 0) > 0 ||
       (match.lineups?.[side]?.substitutes?.length ?? 0) > 0,
   )
+
+  const videoEmbedUrl = youtubeEmbedUrl(match.videoUrl)
 
   return (
     <div className="grid gap-6 place-items-center">
@@ -270,7 +275,7 @@ export default function PublicMatchPage() {
                 {homeTeam.name}
               </Link>
               <div className="text-4xl font-bold text-blue-400">
-                {match.homeGoals !== undefined ? match.homeGoals : '-'}
+                {typeof match.homeGoals === 'number' ? match.homeGoals : '-'}
               </div>
             </div>
             
@@ -298,7 +303,7 @@ export default function PublicMatchPage() {
                 {awayTeam.name}
               </Link>
               <div className="text-4xl font-bold text-red-400">
-                {match.awayGoals !== undefined ? match.awayGoals : '-'}
+                {typeof match.awayGoals === 'number' ? match.awayGoals : '-'}
               </div>
             </div>
           </div>
@@ -587,16 +592,34 @@ export default function PublicMatchPage() {
           {match.videoUrl && (
             <div>
               <h3 className="font-semibold mb-2">Match Video</h3>
-              <div className="glass rounded-lg p-4 text-center">
-                <a
-                  href={match.videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded glass hover:bg-white/10 transition-all"
-                >
-                  <IconVideo size={15} /> Watch Match Video
-                </a>
-              </div>
+              {/* Played here when the link is one this page can frame, and
+                  offered as a link when it is not: an iframe pointed at a site
+                  that refuses framing is a blank box with nothing to click. */}
+              {videoEmbedUrl ? (
+                <div className="glass rounded-lg p-2">
+                  <div className="relative w-full aspect-video">
+                    <iframe
+                      src={videoEmbedUrl}
+                      title="Match video"
+                      className="absolute inset-0 w-full h-full rounded-md"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="glass rounded-lg p-4 text-center">
+                  <a
+                    href={match.videoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded glass hover:bg-white/10 transition-all"
+                  >
+                    <IconVideo size={15} /> Watch Match Video
+                  </a>
+                </div>
+              )}
             </div>
           )}
         </section>
