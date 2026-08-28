@@ -14,7 +14,12 @@ import {
   IconStadium,
   IconLock,
 } from '../components/icons'
-import { getSeasonUrl } from '../utils/seasons'
+import {
+  currentSeason,
+  getSeasonUrl,
+  groupIntoSeries,
+  seasonLabel,
+} from '../utils/seasons'
 import { useAuth, useSignedIn } from '../contexts/AuthContext'
 
 /**
@@ -86,21 +91,39 @@ export default function HomePage() {
     }
   }, [])
 
-  /** Organisers with their public tournaments underneath. */
+  /**
+   * Organisers with their public competitions underneath.
+   *
+   * One row per competition, not one per season. Seasons of a league share its
+   * name, so a listing of seasons printed the same league twice with nothing on
+   * screen to tell the two entries apart. The row opens the current season, and
+   * the earlier ones are reached from the season switcher on that page.
+   */
   const grouped = useMemo(
     () =>
       organizers
         .map((organizer) => ({
           organizer,
-          tournaments: tournaments
-            .filter((tournament) => tournament.organizerId === organizer.id)
-            .filter((tournament) => tournament.visibility !== 'private')
+          competitions: groupIntoSeries(
+            tournaments
+              .filter((tournament) => tournament.organizerId === organizer.id)
+              .filter((tournament) => tournament.visibility !== 'private'),
+          )
+            .map((series) => ({
+              key: series.key,
+              name: series.name,
+              seasonCount: series.seasons.length,
+              // groupIntoSeries never produces an empty group, so the fallback
+              // is only here to keep the type honest.
+              current: currentSeason(series.seasons) ?? series.seasons[0],
+            }))
             .sort(
               (a, b) =>
-                new Date(b.createdAtISO || 0).getTime() - new Date(a.createdAtISO || 0).getTime(),
+                new Date(b.current.createdAtISO || 0).getTime() -
+                new Date(a.current.createdAtISO || 0).getTime(),
             ),
         }))
-        .filter((entry) => entry.tournaments.length > 0),
+        .filter((entry) => entry.competitions.length > 0),
     [organizers, tournaments],
   )
 
@@ -112,7 +135,7 @@ export default function HomePage() {
     return grouped.filter(
       (entry) =>
         Boolean(entry.organizer.name?.toLowerCase().includes(needle)) ||
-        entry.tournaments.some((tournament) => tournament.name?.toLowerCase().includes(needle)),
+        entry.competitions.some((competition) => competition.name.toLowerCase().includes(needle)),
     )
   }, [grouped, query])
 
@@ -122,7 +145,10 @@ export default function HomePage() {
   // tournament whose organiser is missing from the list — because the viewer's
   // role hid it, or because the organiser record was deleted and the tournament
   // was not — is not shown, and must not be counted either.
-  const publicTournamentCount = grouped.reduce((total, entry) => total + entry.tournaments.length, 0)
+  const publicTournamentCount = grouped.reduce(
+    (total, entry) => total + entry.competitions.length,
+    0,
+  )
 
   return (
     <div className="min-h-screen bg-[#0B1120] text-white relative overflow-hidden">
@@ -266,7 +292,7 @@ export default function HomePage() {
           </p>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2">
-            {directory.map(({ organizer, tournaments: theirs }) => (
+            {directory.map(({ organizer, competitions }) => (
               <article
                 key={organizer.id}
                 className="rounded-2xl bg-white/[0.03] border border-white/10 hover:border-white/20 transition-colors p-5"
@@ -288,24 +314,25 @@ export default function HomePage() {
                   <div className="min-w-0">
                     <h3 className="font-semibold truncate">{organizer.name}</h3>
                     <p className="text-xs text-gray-400">
-                      {theirs.length} {theirs.length === 1 ? 'tournament' : 'tournaments'}
+                      {competitions.length}{' '}
+                      {competitions.length === 1 ? 'tournament' : 'tournaments'}
                     </p>
                   </div>
                 </div>
 
                 <ul className="space-y-1">
-                  {theirs.map((tournament) => (
-                    <li key={tournament.id}>
+                  {competitions.map((competition) => (
+                    <li key={competition.key}>
                       <Link
-                        to={getSeasonUrl(tournament, organizer)}
+                        to={getSeasonUrl(competition.current, organizer)}
                         className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors group"
                       >
                         <span className="flex items-center gap-2.5 min-w-0">
-                          {tournament.logo ? (
+                          {competition.current.logo ? (
                             <img
                               loading="lazy"
                               decoding="async"
-                              src={tournament.logo}
+                              src={competition.current.logo}
                               alt=""
                               className="w-6 h-6 rounded object-contain"
                             />
@@ -315,12 +342,19 @@ export default function HomePage() {
                             </span>
                           )}
                           <span className="truncate group-hover:text-blue-300 transition-colors">
-                            {tournament.name}
+                            {competition.name}
                           </span>
+                          {/* Which season the link opens, said only where there
+                              is more than one and the answer is not obvious. */}
+                          {competition.seasonCount > 1 && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded bg-white/5 text-[11px] text-gray-400">
+                              {seasonLabel(competition.current)}
+                            </span>
+                          )}
                         </span>
-                        {Boolean(tournament.teamCount) && (
+                        {Boolean(competition.current.teamCount) && (
                           <span className="shrink-0 text-xs text-gray-400">
-                            {tournament.teamCount} teams
+                            {competition.current.teamCount} teams
                           </span>
                         )}
                       </Link>
