@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, Navigate } from 'react-router-dom'
 import {
   IconBall,
 } from '../components/icons'
 import { landingPathFor } from '../lib/auth'
 
-export default function AdminLoginPage() {
+export default function LoginPage() {
   const [loginCredential, setLoginCredential] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, user, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,6 +33,13 @@ export default function AdminLoginPage() {
     }
   }
 
+  // Somebody already signed in is not shown a sign-in form. The link that gets
+  // sent around is this one, and following it while signed in used to leave a
+  // club manager looking at a door they had already come through.
+  if (!authLoading && user) {
+    return <Navigate to={landingPathFor(user)} replace />
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center p-4">
       {/* Animated Background */}
@@ -49,9 +56,9 @@ export default function AdminLoginPage() {
             <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/20">
               <IconBall size={24} />
             </div>
-            {/* One door for everyone. A separate super-admin URL protected
-                nothing — the route is in the bundle for anyone to read — and it
-                meant maintaining two login screens. */}
+            {/* One door for everyone, at /login. A separate super-admin URL
+                protected nothing — the route is in the bundle for anyone to
+                read — and it meant maintaining two login screens. */}
             <h1 className="text-3xl font-bold text-white mb-2">Sign in</h1>
             <p className="text-gray-400">Tournament management</p>
           </div>

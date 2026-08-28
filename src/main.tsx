@@ -1,7 +1,7 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import type { ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider, useLocation, useParams } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './contexts/AuthContext'
@@ -55,7 +55,7 @@ function lazyPage<T extends ComponentType<any>>(load: () => Promise<{ default: T
 }
 const HomePage = lazyPage(() => import('./pages/HomePage.tsx'))
 const AdminPage = lazyPage(() => import('./pages/AdminPage.tsx'))
-const AdminLoginPage = lazyPage(() => import('./pages/AdminLoginPage.tsx'))
+const LoginPage = lazyPage(() => import('./pages/LoginPage.tsx'))
 const ForgotPasswordPage = lazyPage(() => import('./pages/ForgotPasswordPage.tsx'))
 const ResetPasswordPage = lazyPage(() => import('./pages/ResetPasswordPage.tsx'))
 const AuditLogPage = lazyPage(() => import('./pages/AuditLogPage.tsx'))
@@ -82,6 +82,39 @@ const PublicTeamPage = lazyPage(() => import('./pages/PublicTeamPage.tsx'))
 const PublicPlayerPage = lazyPage(() => import('./pages/PublicPlayerPage.tsx'))
 const PublicMatchPage = lazyPage(() => import('./pages/PublicMatchPage.tsx'))
 
+/**
+ * Where an /admin address goes now.
+ *
+ * The word is gone from the site's URLs: the panel is /dashboard, the rest kept
+ * their own names one level up, and the slug form /admin/:orgSlug/:tournamentSlug
+ * became /tournaments/:orgSlug/:tournamentSlug because the two-segment address
+ * belongs to the public page. Anything under /admin that is not one of the
+ * sections below is therefore that slug pair.
+ */
+const MOVED_SECTIONS = new Set([
+  'login',
+  'tournaments',
+  'teams',
+  'players',
+  'calendar',
+  'organizers',
+  'changes',
+])
+
+function LegacyAdminRoute() {
+  const rest = (useParams()['*'] ?? '').replace(/^\/+/, '')
+  const { search, hash } = useLocation()
+  const section = rest.split('/')[0]
+
+  const path = !rest
+    ? '/dashboard'
+    : MOVED_SECTIONS.has(section)
+      ? `/${rest}`
+      : `/tournaments/${rest}`
+
+  return <Navigate to={`${path}${search}${hash}`} replace />
+}
+
 const router = createBrowserRouter([
   {
     path: '/',
@@ -89,10 +122,18 @@ const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <HomePage /> },
-      { path: 'admin/login', element: <AdminLoginPage /> },
+
+      /* ---------- Open to anyone ---------- */
+      // One door for everybody, organiser, super admin and club manager alike.
+      // The old /admin/login is answered below, because it is in bookmarks and
+      // in messages people were sent.
+      { path: 'login', element: <LoginPage /> },
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
+      { path: 'reset-password', element: <ResetPasswordPage /> },
       // An invitation to run a club: opened from a link somebody was sent.
       { path: 'join', element: <ClaimTeamPage /> },
+
+      /* ---------- The club manager's own screens ---------- */
       { path: 'my-club', element: <MyClubPage /> },
       // A player of a club this account runs. Separate from /players/:id, which
       // is the organiser's screen and reads the organiser's store; this one
@@ -105,139 +146,89 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
-      { path: 'reset-password', element: <ResetPasswordPage /> },
+
+      /* ---------- The organiser's screens ----------
+         Behind requireOrganizer, not merely behind a session. Being signed in
+         was the whole gate, so a club manager arriving on one of these - a
+         bookmark, a link, the address bar - got the organiser's panel counting
+         zero competitions and zero clubs, a screen they should not know exists.
+         The server refuses their data either way; this is about what the site
+         admits to having. */
       {
-        path: 'admin/changes',
+        path: 'dashboard',
+        element: (
+          <ProtectedRoute requireOrganizer>
+            <AdminPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'organizers',
+        element: (
+          <ProtectedRoute requireSuperAdmin>
+            <OrganizersPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'changes',
         element: (
           <ProtectedRoute requireSuperAdmin>
             <AuditLogPage />
           </ProtectedRoute>
         ),
       },
-      { path: 'adminslazhen', element: <AdminLoginPage /> }, // Special route for super admin
-      { 
-        path: 'admin', 
-        element: (
-          <ProtectedRoute>
-            <AdminPage />
-          </ProtectedRoute>
-        ) 
+      {
+        path: 'tournaments',
+        element: <ProtectedRoute requireOrganizer><TournamentsPage /></ProtectedRoute>,
       },
-      { 
-        path: 'admin/organizers', 
-        element: (
-          <ProtectedRoute requireSuperAdmin>
-            <OrganizersPage />
-          </ProtectedRoute>
-        ) 
+      {
+        path: 'tournaments/new',
+        element: <ProtectedRoute requireOrganizer><CreateTournamentPage /></ProtectedRoute>,
       },
-      { 
-        path: 'admin/tournaments', 
-        element: (
-          <ProtectedRoute>
-            <TournamentsPage />
-          </ProtectedRoute>
-        ) 
+      {
+        path: 'tournaments/:id',
+        element: <ProtectedRoute requireOrganizer><TournamentPage /></ProtectedRoute>,
       },
-      { 
-        path: 'admin/tournaments/:id', 
-        element: (
-          <ProtectedRoute>
-            <TournamentPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/:orgSlug/:tournamentSlug', 
-        element: (
-          <ProtectedRoute>
-            <TournamentPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/tournaments/:tournamentId/matches/:matchId', 
-        element: (
-          <ProtectedRoute>
-            <MatchPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/:orgSlug/:tournamentSlug/matches/:matchId', 
-        element: (
-          <ProtectedRoute>
-            <MatchPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/teams', 
-        element: (
-          <ProtectedRoute>
-            <TeamsPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/teams/:teamId', 
-        element: (
-          <ProtectedRoute>
-            <TeamPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/players/:playerId', 
-        element: (
-          <ProtectedRoute>
-            <PlayerPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/calendar', 
-        element: (
-          <ProtectedRoute>
-            <CalendarPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/tournaments/new', 
-        element: (
-          <ProtectedRoute>
-            <CreateTournamentPage />
-          </ProtectedRoute>
-        ) 
-      },
-      { 
-        path: 'admin/tournaments/:id/settings', 
-        element: (
-          <ProtectedRoute>
-            <TournamentSettingsPage />
-          </ProtectedRoute>
-        ) 
-      },
-      // The addresses the admin bar links to. Protected like their /admin
-      // equivalents: what stood in for a gate here was the "No organizer
-      // selected" screen inside each page, and that screen now also means
-      // "signed in as the super admin", so it stopped being a gate at all.
-      { path: 'tournaments', element: <ProtectedRoute><TournamentsPage /></ProtectedRoute> },
-      { path: 'tournaments/new', element: <ProtectedRoute><CreateTournamentPage /></ProtectedRoute> },
-      { path: 'tournaments/:id', element: <ProtectedRoute><TournamentPage /></ProtectedRoute> },
       {
         path: 'tournaments/:id/settings',
-        element: <ProtectedRoute><TournamentSettingsPage /></ProtectedRoute>,
+        element: <ProtectedRoute requireOrganizer><TournamentSettingsPage /></ProtectedRoute>,
       },
       {
         path: 'tournaments/:tournamentId/matches/:matchId',
-        element: <ProtectedRoute><MatchPage /></ProtectedRoute>,
+        element: <ProtectedRoute requireOrganizer><MatchPage /></ProtectedRoute>,
       },
-      { path: 'teams', element: <ProtectedRoute><TeamsPage /></ProtectedRoute> },
-      { path: 'teams/:teamId', element: <ProtectedRoute><TeamPage /></ProtectedRoute> },
-      { path: 'players/:playerId', element: <ProtectedRoute><PlayerPage /></ProtectedRoute> },
-      { path: 'calendar', element: <ProtectedRoute><CalendarPage /></ProtectedRoute> },
+      // The readable address of a competition for the people running it:
+      // /tournaments/homebush_futsal/homebush_futsal_premier_league_2025. It
+      // used to be /admin/:orgSlug/:tournamentSlug and cannot simply lose the
+      // prefix, because /:orgSlug/:tournamentSlug is the public page.
+      {
+        path: 'tournaments/:orgSlug/:tournamentSlug',
+        element: <ProtectedRoute requireOrganizer><TournamentPage /></ProtectedRoute>,
+      },
+      {
+        path: 'tournaments/:orgSlug/:tournamentSlug/matches/:matchId',
+        element: <ProtectedRoute requireOrganizer><MatchPage /></ProtectedRoute>,
+      },
+      { path: 'teams', element: <ProtectedRoute requireOrganizer><TeamsPage /></ProtectedRoute> },
+      {
+        path: 'teams/:teamId',
+        element: <ProtectedRoute requireOrganizer><TeamPage /></ProtectedRoute>,
+      },
+      {
+        path: 'players/:playerId',
+        element: <ProtectedRoute requireOrganizer><PlayerPage /></ProtectedRoute>,
+      },
+      { path: 'calendar', element: <ProtectedRoute requireOrganizer><CalendarPage /></ProtectedRoute> },
+
+      /* ---------- The addresses these screens used to have ----------
+         Every one of them is in somebody's bookmarks and in every organiser's
+         browser history, so they answer with a redirect rather than a 404. */
+      { path: 'admin', element: <Navigate to="/dashboard" replace /> },
+      { path: 'admin/*', element: <LegacyAdminRoute /> },
+      // A second sign-in address for the super admin, which protected nothing:
+      // the route was in the bundle for anyone to read.
+      { path: 'adminslazhen', element: <Navigate to="/login" replace /> },
     ],
   },
   {

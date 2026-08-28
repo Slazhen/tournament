@@ -3,8 +3,21 @@
 # Tournament pages stay crawlable for SEO; high-volume, low-value URLs do not.
 
 User-agent: *
+# Everything behind a login. /admin is gone from the site's URLs and only
+# redirects now, but it stays here while it is still in indexes and bookmarks.
 Disallow: /admin
 Disallow: /adminslazhen
+Disallow: /login
+Disallow: /dashboard
+Disallow: /my-club
+Disallow: /organizers
+Disallow: /changes
+Disallow: /tournaments
+Disallow: /teams
+Disallow: /calendar
+Disallow: /join
+Disallow: /reset-password
+Disallow: /forgot-password
 # Legacy duplicate URLs of the /:orgSlug/:tournamentSlug pages
 Disallow: /public/
 # Large URL surface, no search value, and player pages are the most expensive read

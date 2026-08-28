@@ -76,10 +76,10 @@ export default function TournamentPage() {
   // Support both old ID-based route and new slug-based route
   const tournament = useMemo(() => {
     if (id) {
-      // Old route: /admin/tournaments/:id
+      // Id route: /tournaments/:id
       return tournaments.find(t => t.id === id)
     } else if (orgSlug && tournamentSlug) {
-      // New route: /admin/:orgSlug/:tournamentSlug
+      // Slug route: /tournaments/:orgSlug/:tournamentSlug
       // An organizer looking at their own tournament does not need the full
       // organizer list, so their own record is used when the fetch gave nothing.
       const known = allOrganizers.length > 0

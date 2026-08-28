@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
                 — they can hand you a link directly.
               </p>
               <Link
-                to="/admin/login"
+                to="/login"
                 className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl glass hover:bg-white/10 transition-all"
               >
                 <IconArrowLeft size={15} /> Back to sign in
@@ -84,7 +84,7 @@ export default function ForgotPasswordPage() {
               </button>
 
               <p className="text-center text-sm">
-                <Link to="/admin/login" className="text-gray-400 hover:text-white transition-colors">
+                <Link to="/login" className="text-gray-400 hover:text-white transition-colors">
                   Back to sign in
                 </Link>
               </p>

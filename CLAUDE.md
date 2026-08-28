@@ -246,6 +246,31 @@ that is a hand-made request rather than a mistake anyone can make on screen.
 Writes that reach the database are recorded by `lib/audit.ts`. A failed audit
 write never fails the request that caused it.
 
+**The site's URLs carry no `/admin`.** There is one sign-in address, `/login`,
+for organisers, club managers and the super admin alike. The organiser's screens
+are `/dashboard`, `/tournaments`, `/teams`, `/players/:id`, `/calendar`,
+`/organizers` and `/changes`; a club manager's are `/my-club`. The one address
+that keeps a prefix is the readable form of a competition,
+`/tournaments/:orgSlug/:tournamentSlug`, because `/:orgSlug/:tournamentSlug` is
+the public page. Everything that used to sit under `/admin` redirects
+(`LegacyAdminRoute` in `src/main.tsx`), and the API's own routes are untouched —
+`/admin/*` there is the server's namespace, not a URL anybody types.
+
+**Being signed in is not a role.** Every organiser route is wrapped in
+`<ProtectedRoute requireOrganizer>`, which admits an `organizer` or the super
+admin and sends anybody else to `landingPathFor(user)`. Without it a club
+manager who followed a link or a bookmark was shown the organiser's panel
+counting zero competitions and zero clubs — the server refused the data, so the
+screens were empty rather than leaky, but a manager should not learn they exist.
+A failed check redirects; it never renders an explanation, and never renders a
+page with a `<Navigate>` inside it, which is what the old "Access Denied" screen
+did.
+
+**Whether somebody runs a club is a question about the role**, `isTeamManager`,
+not about `user.teamIds`: the account's list and the clubs' `managerUserIds` are
+written one after the other and can disagree, and a manager whose list came back
+empty was offered the organiser's screens instead of their own.
+
 ## Statistics, and the data behind them
 
 Everything a visitor reads about a player is derived, never stored: there is no

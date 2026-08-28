@@ -66,7 +66,7 @@ export default function AuditLogPage() {
           </p>
         </div>
         <Link
-          to="/admin"
+          to="/dashboard"
           className="inline-flex items-center gap-1.5 text-sm opacity-70 hover:opacity-100 transition-opacity"
         >
           <IconArrowLeft size={15} /> Back

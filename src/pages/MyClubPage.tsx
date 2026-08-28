@@ -108,7 +108,7 @@ export default function MyClubPage() {
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
           <h1 className="text-xl font-semibold mb-4">Sign in first</h1>
-          <Link to="/admin/login" className="px-6 py-3 rounded-lg glass hover:bg-white/10">
+          <Link to="/login" className="px-6 py-3 rounded-lg glass hover:bg-white/10">
             Sign in
           </Link>
         </div>

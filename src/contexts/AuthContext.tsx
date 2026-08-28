@@ -21,6 +21,13 @@ interface AuthContextType {
   refresh: () => Promise<AuthUser | null>
   isSuperAdmin: boolean
   isOrganizer: boolean
+  /**
+   * Whether this account is a club manager, which is a question about the role
+   * and not about `teamIds`: the account's list and the `managerUserIds` on the
+   * clubs are written one after the other and can disagree, and a manager whose
+   * list came back empty was being offered the organiser's screens instead.
+   */
+  isTeamManager: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -138,6 +145,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     refresh,
     isSuperAdmin: user?.role === 'super_admin',
     isOrganizer: user?.role === 'organizer',
+    isTeamManager: user?.role === 'team_manager',
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

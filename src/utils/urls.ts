@@ -57,13 +57,16 @@ export function generateOrganizerSlug(organizer: Organizer | { name: string }): 
 }
 
 /**
- * Generate admin tournament URL
- * Format: /admin/:orgSlug/:tournamentSlug
+ * The organiser's readable address for one competition.
+ * Format: /tournaments/:orgSlug/:tournamentSlug
+ *
+ * Under /tournaments rather than at the root, because /:orgSlug/:tournamentSlug
+ * is the public page.
  */
 export function getAdminTournamentUrl(tournament: SluggableTournament, organizer: Organizer | { name: string }): string {
   const orgSlug = generateOrganizerSlug(organizer)
   const tournamentSlug = generateTournamentSlug(tournament)
-  return `/admin/${orgSlug}/${tournamentSlug}`
+  return `/tournaments/${orgSlug}/${tournamentSlug}`
 }
 
 /**

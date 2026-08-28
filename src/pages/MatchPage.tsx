@@ -32,10 +32,10 @@ export default function MatchPage() {
   // Support both old ID-based route and new slug-based route
   const tournament = useMemo(() => {
     if (tournamentId) {
-      // Old route: /admin/tournaments/:tournamentId/matches/:matchId
+      // Id route: /tournaments/:tournamentId/matches/:matchId
       return tournaments.find(t => t.id === tournamentId)
     } else if (orgSlug && tournamentSlug) {
-      // New route: /admin/:orgSlug/:tournamentSlug/matches/:matchId
+      // Slug route: /tournaments/:orgSlug/:tournamentSlug/matches/:matchId
       return findTournamentBySlug(tournaments, orgSlug, tournamentSlug, allOrganizers)
     }
     return undefined

@@ -227,7 +227,7 @@ export default function OrganizersPage() {
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center">
           <h1 className="text-xl font-semibold mb-4 text-white">Access Denied</h1>
           <p className="text-gray-400 mb-6">You need super admin privileges to access this page</p>
-          <Link to="/admin" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-white">
+          <Link to="/dashboard" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-white">
             Back to Admin
           </Link>
         </div>
@@ -267,7 +267,7 @@ export default function OrganizersPage() {
               + Create Organizer
             </button>
             <Link
-              to="/admin"
+              to="/dashboard"
               className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all border border-white/20 text-white"
             >
               Back to Admin

@@ -205,10 +205,10 @@ export async function claimTeam(input: {
 /**
  * Where an account belongs the moment it signs in.
  *
- * Everybody used to land on /admin, including a club manager, who has no
- * organizer and saw an admin panel counting zero competitions and zero clubs.
+ * Everybody used to land on the organiser's panel, including a club manager,
+ * who has no organizer and saw it counting zero competitions and zero clubs.
  */
 export function landingPathFor(user: AuthUser | null): string {
-  if (!user) return '/admin/login'
-  return user.role === 'team_manager' ? '/my-club' : '/admin'
+  if (!user) return '/login'
+  return user.role === 'team_manager' ? '/my-club' : '/dashboard'
 }

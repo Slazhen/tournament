@@ -23,7 +23,7 @@ const CLUB_NAV_ITEM = { to: '/my-club', label: 'My clubs' }
  */
 export default function AdminNavigation() {
   const { getCurrentOrganizer, setCurrentOrganizer } = useAppStore()
-  const { isSuperAdmin, user, logout } = useAuth()
+  const { isSuperAdmin, isTeamManager, user, logout } = useAuth()
   const currentOrganizer = getCurrentOrganizer()
   const location = useLocation()
   const navigate = useNavigate()
@@ -58,7 +58,10 @@ export default function AdminNavigation() {
   // nothing in the bar pointed at it, so the only way in was typing the
   // address. A club manager had no bar at all — not even a way to sign out.
   const canOrganize = Boolean(currentOrganizer) || isSuperAdmin
-  const runsAClub = (user?.teamIds?.length ?? 0) > 0
+  // The role, not only the list: an account's teamIds and the managerUserIds on
+  // the clubs are written one after the other and can disagree, and a manager
+  // whose list came back empty was left with a bar that offered them nothing.
+  const runsAClub = isTeamManager || (user?.teamIds?.length ?? 0) > 0
 
   // Anybody signed in gets the bar, even with no tabs in it: it carries the
   // account menu, and the way out. Without this an organiser between organisers
@@ -138,10 +141,10 @@ export default function AdminNavigation() {
                   <MenuItem onClick={() => setCurrentOrganizer('')}>Switch organizer</MenuItem>
                 )}
                 {isSuperAdmin && (
-                  <MenuItem onClick={() => navigate('/admin/organizers')}>Organizers</MenuItem>
+                  <MenuItem onClick={() => navigate('/organizers')}>Organizers</MenuItem>
                 )}
                 {isSuperAdmin && (
-                  <MenuItem onClick={() => navigate('/admin/changes')}>Changes</MenuItem>
+                  <MenuItem onClick={() => navigate('/changes')}>Changes</MenuItem>
                 )}
                 <MenuItem onClick={() => navigate('/')}>Public site</MenuItem>
               </div>
@@ -150,7 +153,7 @@ export default function AdminNavigation() {
                 <MenuItem
                   onClick={async () => {
                     await logout()
-                    navigate('/admin/login')
+                    navigate('/login')
                   }}
                   tone="danger"
                 >

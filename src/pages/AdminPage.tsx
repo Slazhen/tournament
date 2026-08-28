@@ -41,7 +41,7 @@ export default function AdminPage() {
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center">
           <h1 className="text-xl font-semibold mb-4 text-white">Access Denied</h1>
           <p className="text-gray-400 mb-6">Please log in to access the admin panel</p>
-          <Link to="/admin/login" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-white">
+          <Link to="/login" className="px-6 py-3 rounded-lg glass hover:bg-white/10 transition-all text-white">
             Go to Login
           </Link>
         </div>
@@ -95,7 +95,7 @@ export default function AdminPage() {
                 <h3 className="text-xl font-semibold text-white mb-4">All Organizers</h3>
                 <p className="text-gray-400 mb-4">Manage all tournament organizers</p>
                 <Link
-                  to="/admin/organizers"
+                  to="/organizers"
                   className="inline-flex items-center px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg transition-all text-blue-400"
                 >
                   Manage Organizers
@@ -107,7 +107,7 @@ export default function AdminPage() {
                 <h3 className="text-xl font-semibold text-white mb-4">All Tournaments</h3>
                 <p className="text-gray-400 mb-4">View and manage all tournaments</p>
                 <Link
-                  to="/admin/tournaments"
+                  to="/tournaments"
                   className="inline-flex items-center px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 rounded-lg transition-all text-purple-400"
                 >
                   Manage Tournaments
@@ -177,7 +177,7 @@ export default function AdminPage() {
                 <h3 className="text-xl font-semibold text-white mb-4">Create Tournament</h3>
                 <p className="text-gray-400 mb-4">Start a new tournament</p>
                 <Link
-                  to="/admin/tournaments/new"
+                  to="/tournaments/new"
                   className="inline-flex items-center px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-400/30 rounded-lg transition-all text-green-400"
                 >
                   Create Tournament

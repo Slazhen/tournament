@@ -40,24 +40,24 @@ export default function HomePage() {
   const { getCurrentOrganizer } = useAppStore()
   const currentOrganizer = getCurrentOrganizer()
   const signedIn = useSignedIn()
-  const { user, isSuperAdmin } = useAuth()
+  const { user, isSuperAdmin, isTeamManager } = useAuth()
 
   // The page sells the product to a visitor, and every call to action sent them
   // to the sign-in screen. Signed in, that screen just bounces them back, so
   // the same buttons point at the thing they were being sold instead.
-  const runsAClub = (user?.teamIds?.length ?? 0) > 0
+  const runsAClub = isTeamManager || (user?.teamIds?.length ?? 0) > 0
   const canOrganize = Boolean(currentOrganizer) || isSuperAdmin
   const callToAction = !signedIn
-    ? { to: '/admin/login', label: 'Start a tournament' }
+    ? { to: '/login', label: 'Start a tournament' }
     : canOrganize
       ? { to: '/tournaments/new', label: 'Create a tournament' }
       : runsAClub
         ? { to: '/my-club', label: 'Go to my club' }
-        : { to: '/admin', label: 'Go to your account' }
+        : { to: '/dashboard', label: 'Go to your account' }
 
   // A signed-in organiser wants their own tournaments, not the shop window.
   useEffect(() => {
-    if (currentOrganizer) navigate('/admin')
+    if (currentOrganizer) navigate('/dashboard')
   }, [currentOrganizer, navigate])
 
   useEffect(() => {
@@ -137,7 +137,7 @@ export default function HomePage() {
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
             <Logo size={30} />
             <Link
-              to="/admin/login"
+              to="/login"
               className="px-4 py-2 rounded-lg text-sm font-medium bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/30 transition-colors"
             >
               Sign in
