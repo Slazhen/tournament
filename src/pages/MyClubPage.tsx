@@ -14,7 +14,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
 import { hasSquadEntry, registeredPlayers } from '../utils/squads'
+import { getPublicTournamentUrl } from '../utils/urls'
 import Trophy from '../components/Trophy'
+import FacebookIcon from '../components/FacebookIcon'
+import InstagramIcon from '../components/InstagramIcon'
+import YoutubeIcon from '../components/YoutubeIcon'
 import LogoUploader from '../components/LogoUploader'
 import MiniTable from '../components/MiniTable'
 import PhotoUploader from '../components/PhotoUploader'
@@ -140,6 +144,7 @@ export default function MyClubPage() {
         <ClubCard
           key={team.id}
           team={team}
+          viewerOrganizerId={user.organizerId}
           tournaments={tournaments}
           entries={entries.filter((entry) => entry.teamId === team.id)}
           teamNames={teamNames}
@@ -161,6 +166,7 @@ export default function MyClubPage() {
 
 function ClubCard({
   team,
+  viewerOrganizerId,
   tournaments,
   entries,
   teamNames,
@@ -170,6 +176,8 @@ function ClubCard({
   onReload,
 }: {
   team: Team
+  /** Whose competitions this account runs, if any. A coach has none. */
+  viewerOrganizerId?: string
   tournaments: Tournament[]
   entries: Entry[]
   teamNames: Record<string, string>
@@ -190,6 +198,30 @@ function ClubCard({
   ) as Array<{ tournament: Tournament; position: number; of: number; points: number }>
 
   const next = useMemo(() => nextFixture(playing, team.id, teamNames), [playing, team.id, teamNames])
+
+  /**
+   * Where the name of a competition takes you.
+   *
+   * A published season goes to its public table, which is what a manager wants
+   * — it is the page they would send to a player. A season the organiser has
+   * not published has no public address at all, so linking to one answers "not
+   * found"; whoever runs it can still open their own admin page, and everybody
+   * else is told why there is nothing to click.
+   */
+  const linkFor = (tournament: Tournament): string | null => {
+    if (tournament.visibility !== 'private') {
+      const organizer = organizerNames[tournament.organizerId]
+      // The readable address needs the organiser's name, and that list is
+      // fetched separately and swallowed on failure. The address by id always
+      // resolves, so a missing name costs a nice URL rather than the link.
+      return organizer
+        ? getPublicTournamentUrl(tournament, { name: organizer })
+        : `/public/tournaments/${tournament.id}`
+    }
+    return viewerOrganizerId && viewerOrganizerId === tournament.organizerId
+      ? `/tournaments/${tournament.id}`
+      : null
+  }
 
   const pending = entries.filter((entry) => entry.status === 'pending')
   const declined = entries.filter((entry) => entry.status === 'declined')
@@ -226,7 +258,8 @@ function ClubCard({
                   tournament={tournament}
                   teamId={team.id}
                   teamNames={{ ...teamNames, [team.id]: team.name }}
-                  organizerName={organizerNames[tournament.organizerId]}
+                  to={linkFor(tournament)}
+                  hint="Not published yet — no public table."
                 />
               ))}
             </div>
@@ -564,6 +597,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
   const [colors, setColors] = useState<string[]>(team.colors?.length ? team.colors : ['#3B82F6'])
   const [facebook, setFacebook] = useState(team.socialMedia?.facebook ?? '')
   const [instagram, setInstagram] = useState(team.socialMedia?.instagram ?? '')
+  const [youtube, setYoutube] = useState(team.socialMedia?.youtube ?? '')
   const [established, setEstablished] = useState(team.establishedDate ?? '')
   const [hideAges, setHideAges] = useState(team.hidePlayerAges === true)
   const [saving, setSaving] = useState(false)
@@ -576,6 +610,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
     setColors(team.colors?.length ? team.colors : ['#3B82F6'])
     setFacebook(team.socialMedia?.facebook ?? '')
     setInstagram(team.socialMedia?.instagram ?? '')
+    setYoutube(team.socialMedia?.youtube ?? '')
     setEstablished(team.establishedDate ?? '')
     setHideAges(team.hidePlayerAges === true)
   }, [team])
@@ -594,7 +629,11 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
         // An empty string rather than undefined: the update builder skips
         // undefined, so clearing a date would silently keep the old one.
         establishedDate: established,
-        socialMedia: { facebook: facebook.trim(), instagram: instagram.trim() },
+        socialMedia: {
+          facebook: facebook.trim(),
+          instagram: instagram.trim(),
+          youtube: youtube.trim(),
+        },
         hidePlayerAges: hideAges,
       })
       await onReload()
@@ -705,12 +744,21 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
                     className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
                   />
                 </label>
-                <label className="block sm:col-span-2">
+                <label className="block">
                   <span className="text-sm text-gray-300">Facebook</span>
                   <input
                     value={facebook}
                     onChange={(event) => setFacebook(event.target.value)}
                     placeholder="https://facebook.com/…"
+                    className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-300">YouTube</span>
+                  <input
+                    value={youtube}
+                    onChange={(event) => setYoutube(event.target.value)}
+                    placeholder="https://youtube.com/@…"
                     className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
                   />
                 </label>
@@ -776,29 +824,69 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
                 </div>
               </div>
 
-              <div className="text-sm text-gray-400">
-                {team.socialMedia?.instagram || team.socialMedia?.facebook
-                  ? [team.socialMedia?.instagram, team.socialMedia?.facebook]
-                      .filter(Boolean)
-                      .join(' · ')
-                  : 'No social links yet.'}
-              </div>
+              <SocialLinks socialMedia={team.socialMedia} empty="No social links yet." />
             </>
           )}
 
-          <div>
-            <span className="text-sm text-gray-300">Team photo</span>
-            <div className="mt-1">
-              <PhotoUploader
-                photo={team.photo}
-                alt={team.name}
-                label="team photo"
-                onUpload={(file) => upload(file, 'photo')}
-              />
-            </div>
-          </div>
         </div>
       </div>
+
+      {/* The team photograph, under everything and the width of the card. It
+          used to be a stamp beside the form fields, which is the size of a
+          thumbnail and not the size of a photograph of eleven people. */}
+      <div className="mt-5">
+        <span className="text-sm text-gray-300">Team photo</span>
+        <div className="mt-1">
+          <PhotoUploader
+            photo={team.photo}
+            alt={team.name}
+            label="team photo"
+            width="100%"
+            height={240}
+            onUpload={(file) => upload(file, 'photo')}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A club's links, as links.
+ *
+ * They used to be printed as raw addresses joined by a dot, which is neither
+ * clickable nor readable — a full Instagram URL is longer than the card.
+ */
+function SocialLinks({
+  socialMedia,
+  empty,
+}: {
+  socialMedia?: { facebook?: string; instagram?: string; youtube?: string }
+  empty?: string
+}) {
+  const links = [
+    { url: socialMedia?.instagram, label: 'Instagram', icon: <InstagramIcon size={16} /> },
+    { url: socialMedia?.facebook, label: 'Facebook', icon: <FacebookIcon size={16} /> },
+    { url: socialMedia?.youtube, label: 'YouTube', icon: <YoutubeIcon size={16} /> },
+  ].filter((link) => Boolean(link.url))
+
+  if (links.length === 0) {
+    return empty ? <div className="text-sm text-gray-400">{empty}</div> : null
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {links.map((link) => (
+        <a
+          key={link.label}
+          href={link.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/10 transition-colors text-sm"
+        >
+          {link.icon} {link.label}
+        </a>
+      ))}
     </div>
   )
 }

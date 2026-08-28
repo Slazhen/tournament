@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom'
 import type { Match, Tournament } from '../types'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
-import { getPublicTournamentUrl } from '../utils/urls'
 
 /**
  * One competition's table, cut down to the part a club cares about.
@@ -64,18 +63,23 @@ export default function MiniTable({
   tournament,
   teamId,
   teamNames,
-  organizerName,
   to,
+  hint,
   matches,
 }: {
   tournament: Tournament
   /** The club to highlight — the one whose page this is. */
   teamId: string
   teamNames: Record<string, string>
-  /** Needed to build the readable public address; without it the heading is not a link. */
-  organizerName?: string
-  /** Where the heading goes, when the caller knows a better address than the slug one. */
-  to?: string
+  /**
+   * Where the heading goes. The caller decides, because only the caller knows
+   * whether this competition has a page the person reading can open: a private
+   * season has no public address at all, and linking to one answers "not
+   * found" to the person who runs it.
+   */
+  to?: string | null
+  /** Said instead, when there is nowhere to go. */
+  hint?: string
   /**
    * The season's matches, when the caller already has them. A club manager is
    * given other clubs' fixtures as scores only, which is enough for a table.
@@ -86,13 +90,6 @@ export default function MiniTable({
   const shown = windowAround(rows, teamId)
   const mine = rows.find((row) => row.teamId === teamId)
 
-  // A private competition has no public page to open, and a club manager can
-  // be in one. Linking to an address that answers "not found" is worse than
-  // not linking at all.
-  const publicUrl =
-    tournament.visibility === 'private'
-      ? null
-      : (to ?? (organizerName ? getPublicTournamentUrl(tournament, { name: organizerName }) : null))
 
   const heading = (
     <>
@@ -104,13 +101,16 @@ export default function MiniTable({
   return (
     <div className="rounded-xl bg-white/[0.03] border border-white/10 overflow-hidden">
       <div className="px-3 py-2 flex items-center justify-between gap-3 border-b border-white/10">
-        {publicUrl ? (
-          <Link to={publicUrl} className="truncate hover:underline">
-            {heading}
-          </Link>
-        ) : (
-          <span className="truncate">{heading}</span>
-        )}
+        <span className="truncate">
+          {to ? (
+            <Link to={to} className="hover:underline">
+              {heading}
+            </Link>
+          ) : (
+            heading
+          )}
+          {!to && hint && <span className="block text-xs text-gray-500">{hint}</span>}
+        </span>
         {mine && (
           <span className="text-xs text-gray-300 shrink-0">
             {mine.position} of {rows.length}

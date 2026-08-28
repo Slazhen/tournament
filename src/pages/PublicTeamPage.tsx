@@ -3,6 +3,7 @@ import { publicPages } from '../lib/data'
 import type { TeamContext } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
+import YoutubeIcon from '../components/YoutubeIcon'
 import { useState, useEffect } from 'react'
 import {
   IconTrophy,
@@ -192,7 +193,7 @@ export default function PublicTeamPage() {
       </section>
 
       {/* Social Media Links - Only show if not empty */}
-      {(team.socialMedia?.facebook || team.socialMedia?.instagram) && (
+      {(team.socialMedia?.facebook || team.socialMedia?.instagram || team.socialMedia?.youtube) && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <div className="flex items-center justify-center gap-6 text-sm">
             {team.socialMedia?.facebook && (
@@ -215,6 +216,17 @@ export default function PublicTeamPage() {
               >
                 <InstagramIcon size={16} />
                 <span>Instagram</span>
+              </a>
+            )}
+            {team.socialMedia?.youtube && (
+              <a
+                href={team.socialMedia.youtube}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity px-4 py-2 glass rounded-lg"
+              >
+                <YoutubeIcon size={16} />
+                <span>YouTube</span>
               </a>
             )}
           </div>

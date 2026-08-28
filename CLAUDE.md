@@ -95,6 +95,15 @@ stored record beside it: returning the stored one is exactly how `isPublic` was
 undone once before, and it would put the date of birth back on the wire the
 projection had just taken off.
 
+**A private season has no public address.** The public routes refuse it, so a
+link built for it answers "not found" — including for the organiser who runs it.
+Anything that offers to open a competition decides the destination itself: the
+public table when it is published, the admin page when the person reading runs
+it, and a plain line saying why there is nothing to click otherwise
+(`linkFor` in `MyClubPage.tsx`). The address by id, `/public/tournaments/:id`,
+always resolves, so a missing organiser name costs a readable URL and not the
+link.
+
 **A squad list can contain a hole.** `null` sits in `players` in records from
 the browser-side era, and `POST /admin/tournaments` still passes its body
 through, so one can be written today. Every public projection filters them out

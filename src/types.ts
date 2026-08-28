@@ -59,6 +59,8 @@ export type Team = {
   socialMedia?: {
     facebook?: string
     instagram?: string
+    /** A channel or a single video — whatever the club wants shown. */
+    youtube?: string
   }
   players: Player[]
   createdAtISO: string

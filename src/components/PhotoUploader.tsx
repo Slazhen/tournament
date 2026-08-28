@@ -26,13 +26,16 @@ export default function PhotoUploader({
   alt,
   width = 176,
   height = 100,
+  // A club's photograph is the picture of the team, not a thumbnail beside a
+  // form, so it is given the width of the card it sits in.
+
   compressionType = 'team',
   label = 'photo',
 }: {
   photo?: string
   onUpload: (file: File) => Promise<void>
   alt: string
-  width?: number
+  width?: number | string
   height?: number
   compressionType?: 'logo' | 'profile' | 'tournament' | 'team' | 'general'
   /** What this picture is called in the messages: "photo", "team photo". */

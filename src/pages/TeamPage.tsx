@@ -3,6 +3,7 @@ import { useAppStore } from '../store'
 import { useEffect, useRef, useState } from 'react'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
+import YoutubeIcon from '../components/YoutubeIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
@@ -558,45 +559,53 @@ export default function TeamPage() {
           </div>
         </div>
         
-        {/* Social Media Links */}
-        {(team.socialMedia?.facebook || team.socialMedia?.instagram) && (
-          <div className="flex items-center justify-center gap-6 text-sm">
-            {team.socialMedia?.facebook && (
-              <div className="flex items-center gap-2">
-                <FacebookIcon size={16} />
-                <InlineInput
-                  type="url"
-                  placeholder="Facebook page..."
-                  value={team.socialMedia.facebook}
-                                    onCommit={(value) => updateTeam(team.id, { 
-                    socialMedia: { 
-                      ...team.socialMedia, 
-                      facebook: value || undefined 
-                    }
-                  })}
-                  className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
-                />
-              </div>
-            )}
-            {team.socialMedia?.instagram && (
-              <div className="flex items-center gap-2">
-                <InstagramIcon size={16} />
-                <InlineInput
-                  type="url"
-                  placeholder="Instagram profile..."
-                  value={team.socialMedia.instagram}
-                                    onCommit={(value) => updateTeam(team.id, { 
-                    socialMedia: { 
-                      ...team.socialMedia, 
-                      instagram: value || undefined 
-                    }
-                  })}
-                  className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
-                />
-              </div>
-            )}
+        {/* The club's links. All three fields are always here: they only
+            appeared once a link existed, so there was no way to add the first
+            one from this screen. */}
+        <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
+          <div className="flex items-center gap-2">
+            <InstagramIcon size={16} />
+            <InlineInput
+              type="url"
+              placeholder="Instagram profile..."
+              value={team.socialMedia?.instagram || ''}
+              onCommit={(value) =>
+                updateTeam(team.id, {
+                  socialMedia: { ...team.socialMedia, instagram: value || undefined },
+                })
+              }
+              className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
+            />
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <FacebookIcon size={16} />
+            <InlineInput
+              type="url"
+              placeholder="Facebook page..."
+              value={team.socialMedia?.facebook || ''}
+              onCommit={(value) =>
+                updateTeam(team.id, {
+                  socialMedia: { ...team.socialMedia, facebook: value || undefined },
+                })
+              }
+              className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <YoutubeIcon size={16} />
+            <InlineInput
+              type="url"
+              placeholder="YouTube channel..."
+              value={team.socialMedia?.youtube || ''}
+              onCommit={(value) =>
+                updateTeam(team.id, {
+                  socialMedia: { ...team.socialMedia, youtube: value || undefined },
+                })
+              }
+              className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
+            />
+          </div>
+        </div>
       </section>
 
       {/* Upload Status */}
