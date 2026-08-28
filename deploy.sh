@@ -11,6 +11,14 @@
 # Skip parts when you know what you are doing:
 #   SKIP_API=1 ./deploy.sh "frontend only"
 #   SKIP_PUSH=1 ./deploy.sh "api only"
+#
+# The commit takes the whole working tree, so it takes whatever else is in it —
+# an unfinished change from another session included. That has shipped work
+# nobody meant to ship twice. So the tree is printed and confirmed before any of
+# the slow steps run, and confirmed again against the same list at the commit:
+#
+#   DEPLOY_ALL=1 ./deploy.sh "..."      say yes in advance (for a non-interactive shell)
+#   ONLY="src server" ./deploy.sh "..." commit only these paths
 
 set -euo pipefail
 
@@ -23,6 +31,63 @@ if [[ -z "$message" && "${SKIP_PUSH:-0}" != "1" ]]; then
 fi
 
 step() { printf '\n\033[1;34m==> %s\033[0m\n' "$1"; }
+
+# Which paths the commit will take. Empty means the whole tree.
+paths=()
+if [[ -n "${ONLY:-}" ]]; then
+  read -r -a paths <<< "$ONLY"
+fi
+[[ ${#paths[@]} -gt 0 ]] || paths=(.)
+
+# An agent working in this folder over the remote-device bridge cannot delete
+# files, so a git command interrupted there leaves an index.lock behind that
+# nothing clears — and every later commit dies on it. Safe to remove only when
+# no git process is actually holding it.
+if [[ -e .git/index.lock ]]; then
+  if pgrep -x git >/dev/null 2>&1; then
+    echo "A git process is running and holds .git/index.lock. Stopping." >&2
+    exit 1
+  fi
+  echo "Clearing a stale .git/index.lock — no git process is running."
+  rm -f .git/index.lock
+fi
+
+# Read with the optional locks off throughout: a plain 'git status' writes the
+# index, which is how the stale lock above gets left in the first place.
+tree_state() { git --no-optional-locks status --short -- "${paths[@]}"; }
+
+planned=""
+if [[ "${SKIP_PUSH:-0}" != "1" ]]; then
+  step "What this will commit"
+  planned="$(tree_state)"
+
+  if [[ -z "$planned" ]]; then
+    echo "Nothing to commit."
+  else
+    echo "$planned"
+    echo
+    if [[ -t 0 ]]; then
+      read -r -p "Commit all of this as \"$message\"? [y/N] " answer
+      if [[ ! "$answer" =~ ^[Yy] ]]; then
+        echo "Stopped. Nothing was built, deployed or committed."
+        exit 1
+      fi
+    elif [[ "${DEPLOY_ALL:-0}" != "1" ]]; then
+      cat >&2 <<'EOF'
+
+This shell has no terminal to ask at, and the list above is everything the
+commit would take. Read it. If all of it belongs in this deploy:
+
+  DEPLOY_ALL=1 ./deploy.sh "your message"
+
+If only part of it does, name the paths instead:
+
+  ONLY="src/pages server/src" ./deploy.sh "your message"
+EOF
+      exit 2
+    fi
+  fi
+fi
 
 step "Type-checking the site"
 npx tsc -p tsconfig.app.json --noEmit
@@ -55,8 +120,22 @@ fi
 
 if [[ "${SKIP_PUSH:-0}" != "1" ]]; then
   step "Committing and pushing"
-  git add -A
-  if git diff --cached --quiet; then
+
+  # The checks and the API deploy take minutes, and another session can write
+  # into this folder while they run — which is exactly how unfinished work has
+  # ridden along in somebody else's commit. What is committed has to be what was
+  # agreed to at the top, or nothing is.
+  if [[ "$(tree_state)" != "$planned" ]]; then
+    echo "The working tree changed while this ran. Nothing has been committed." >&2
+    echo "It now holds:" >&2
+    tree_state >&2
+    echo >&2
+    echo "Look at that list, then run the deploy again — SKIP_API=1 if the API is already out." >&2
+    exit 1
+  fi
+
+  git add -A -- "${paths[@]}"
+  if git --no-optional-locks diff --cached --quiet; then
     echo "Nothing to commit."
   else
     git commit -m "$message"

@@ -232,6 +232,21 @@ to prove it starts**, deploys it, then commits and pushes so Amplify builds.
 
 `SKIP_API=1` and `SKIP_PUSH=1` skip parts of it when you know why.
 
+The commit takes the whole working tree, so it takes whatever else is in it. An
+unfinished change from a second session has ridden along in somebody else's
+commit twice, both times reaching production. So the script now prints the tree
+and asks before it runs anything, and checks the same list again at the commit —
+the checks and the API deploy take minutes, and the tree can change underneath
+them. A shell with no terminal to ask at (an agent's, a background run) is
+refused until it says so deliberately: `DEPLOY_ALL=1`, or `ONLY="src server"` to
+commit a named part of the tree.
+
+An agent working in this folder over the remote-device bridge cannot delete
+files, so a `git status` or `git diff` from there leaves a `.git/index.lock` it
+cannot clear, and the next commit dies on it. Read with
+`GIT_OPTIONAL_LOCKS=0 git --no-optional-locks …` from that side; the script
+clears a lock nobody is holding.
+
 The smoke step exists because of an outage: a CommonJS dependency called
 `require` inside an ES-module bundle, the function threw the instant Lambda
 loaded it, and every route — public pages and login alike — answered with API
