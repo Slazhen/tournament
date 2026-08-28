@@ -15,6 +15,11 @@ import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
 
+/** "1 player", "14 players" — English, not "14 player(s)". */
+function countOf(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
 export default function PublicTeamPage() {
   const { teamId } = useParams()
   const [showPhotoModal, setShowPhotoModal] = useState(false)
@@ -120,58 +125,45 @@ export default function PublicTeamPage() {
         {/* Overlay for better text readability */}
         <div className="absolute inset-0 bg-black/20" />
         
-        {/* Content */}
-        <div className="relative p-8">
-          <div className="flex items-center gap-8 mb-6">
-            {/* Team Logo - Larger and more prominent */}
-            <div className="w-32 h-32 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl">
-              {team.logo ? (
-                <img
-              loading="lazy"
-              decoding="async"
-                  src={team.logo}
-                  alt={`${team.name} logo`}
-                  className="w-full h-full object-cover rounded-xl"
-                />
-              ) : (
-                <div className="opacity-80"><IconTrophy size={38} /></div>
-              )}
-            </div>
-            
-            {/* Team Details */}
-            <div className="flex-1">
-              <h1 className="text-4xl font-bold mb-3 text-white drop-shadow-lg">{team.name}</h1>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-white">
-                <div>
-                  <span className="opacity-80 text-sm">Players</span>
-                  <div className="font-bold text-xl">{team.players?.length || 0}</div>
-                </div>
-                <div>
-                  <span className="opacity-80 text-sm">Founded</span>
-                  <div className="font-bold text-xl">{new Date(team.createdAtISO).getFullYear()}</div>
-                </div>
-                <div>
-                  <span className="opacity-80 text-sm">Colors</span>
-                  <div className="flex items-center gap-2 mt-1">
-                    {team.colors && team.colors.length > 0 && team.colors.map((color, index) => (
-                      <div 
-                        key={index}
-                        className="w-6 h-6 rounded-full border-2 border-white/30 shadow-lg"
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                </div>
-                {team.establishedDate && (
-                  <div>
-                    <span className="opacity-80 text-sm">Established</span>
-                    <div className="font-bold text-xl">{new Date(team.establishedDate).getFullYear()}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-            
+        {/* Content.
+            What stood here was a row of four labelled tiles: Players, Founded,
+            Colors, Established. Two of them were the same question answered
+            twice — the year the record was made and the year the club says it
+            was founded — and the colours are already the background of this
+            header, so printing them again as captioned dots said nothing. The
+            name carries the header now; the colours run along the bottom edge
+            the way a kit stripe does. */}
+        <div className="relative p-8 flex items-center gap-6 sm:gap-8">
+          <div className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl">
+            {team.logo ? (
+              <img
+                decoding="async"
+                src={team.logo}
+                alt={`${team.name} logo`}
+                className="w-full h-full object-cover rounded-2xl"
+              />
+            ) : (
+              <div className="opacity-80"><IconTrophy size={38} /></div>
+            )}
           </div>
+
+          <div className="flex-1 min-w-0">
+            <h1 className="text-3xl sm:text-5xl font-bold text-white drop-shadow-lg leading-tight">
+              {team.name}
+            </h1>
+            <p className="mt-2 text-sm text-white/80">
+              {countOf(team.players?.length ?? 0, 'player')}
+              {teamTournaments.length > 0 &&
+                ` · ${countOf(teamTournaments.length, 'competition')}`}
+            </p>
+          </div>
+        </div>
+
+        {/* The club's colours, as a stripe rather than a caption. */}
+        <div className="relative flex h-2">
+          {(team.colors?.length ? team.colors : ['#3B82F6']).map((color, index) => (
+            <span key={index} className="flex-1" style={{ backgroundColor: color }} />
+          ))}
         </div>
       </section>
 
