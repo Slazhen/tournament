@@ -2,8 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { useAppStore } from './store'
 import { useEffect } from 'react'
 import AdminNavigation from './components/AdminNavigation'
-import { useAuth } from './contexts/AuthContext'
-import { isSignedIn } from './lib/api'
+import { useSignedIn } from './contexts/AuthContext'
 
 /**
  * The shell around every page.
@@ -15,8 +14,6 @@ import { isSignedIn } from './lib/api'
  * owns its full width.
  */
 function App() {
-  const getCurrentOrganizer = useAppStore((s) => s.getCurrentOrganizer)
-  const currentOrganizer = getCurrentOrganizer()
   const loadOrganizers = useAppStore((s) => s.loadOrganizers)
   const location = useLocation()
 
@@ -24,12 +21,7 @@ function App() {
     loadOrganizers()
   }, [loadOrganizers])
 
-  const { user, isLoading } = useAuth()
-
-  // While the session is being verified we already know a token is stored, so
-  // show the admin bar straight away. Deciding purely on loaded data made the
-  // header flip from the public version to the admin one on every page load.
-  const signedIn = Boolean(user) || Boolean(currentOrganizer) || (isLoading && isSignedIn())
+  const signedIn = useSignedIn()
 
   // The landing page brings its own header and footer, edge to edge.
   if (location.pathname === '/' && !signedIn) {

@@ -37,6 +37,22 @@ interface AuthProviderProps {
   children: ReactNode
 }
 
+/**
+ * Whether somebody is signed in, for the chrome around a page.
+ *
+ * A token in storage counts while the session is still being verified: deciding
+ * purely on loaded data made the header flip from the public version to the
+ * admin one on every page load. Kept here rather than written out twice, because
+ * the shell and the landing page each draw a header and the two disagreeing is
+ * how a signed-in organiser ended up with a Sign in button.
+ */
+export function useSignedIn(): boolean {
+  const { user, isLoading } = useAuth()
+  const currentOrganizer = useAppStore((state) => state.getCurrentOrganizer())
+
+  return Boolean(user) || Boolean(currentOrganizer) || (isLoading && isSignedIn())
+}
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)

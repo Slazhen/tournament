@@ -11,7 +11,7 @@ const ORGANIZER_NAV_ITEMS = [
   { to: '/calendar', label: 'Calendar' },
 ]
 
-const CLUB_NAV_ITEM = { to: '/my-club', label: 'My club' }
+const CLUB_NAV_ITEM = { to: '/my-club', label: 'My clubs' }
 
 /**
  * The admin bar.
@@ -60,7 +60,11 @@ export default function AdminNavigation() {
   const canOrganize = Boolean(currentOrganizer) || isSuperAdmin
   const runsAClub = (user?.teamIds?.length ?? 0) > 0
 
-  if (!canOrganize && !runsAClub) return null
+  // Anybody signed in gets the bar, even with no tabs in it: it carries the
+  // account menu, and the way out. Without this an organiser between organisers
+  // — or a manager whose club has just gone — was left on a page with no
+  // navigation at all, and the landing page answered by offering them Sign in.
+  if (!user && !currentOrganizer) return null
 
   const navItems = [
     ...(canOrganize ? ORGANIZER_NAV_ITEMS : []),

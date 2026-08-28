@@ -15,6 +15,7 @@ import {
   IconLock,
 } from '../components/icons'
 import { getSeasonUrl } from '../utils/seasons'
+import { useAuth, useSignedIn } from '../contexts/AuthContext'
 
 /**
  * The front page.
@@ -38,6 +39,21 @@ export default function HomePage() {
 
   const { getCurrentOrganizer } = useAppStore()
   const currentOrganizer = getCurrentOrganizer()
+  const signedIn = useSignedIn()
+  const { user, isSuperAdmin } = useAuth()
+
+  // The page sells the product to a visitor, and every call to action sent them
+  // to the sign-in screen. Signed in, that screen just bounces them back, so
+  // the same buttons point at the thing they were being sold instead.
+  const runsAClub = (user?.teamIds?.length ?? 0) > 0
+  const canOrganize = Boolean(currentOrganizer) || isSuperAdmin
+  const callToAction = !signedIn
+    ? { to: '/admin/login', label: 'Start a tournament' }
+    : canOrganize
+      ? { to: '/tournaments/new', label: 'Create a tournament' }
+      : runsAClub
+        ? { to: '/my-club', label: 'Go to my club' }
+        : { to: '/admin', label: 'Go to your account' }
 
   // A signed-in organiser wants their own tournaments, not the shop window.
   useEffect(() => {
@@ -112,18 +128,23 @@ export default function HomePage() {
     <div className="min-h-screen bg-[#0B1120] text-white relative overflow-hidden">
       <Pitch />
 
-      {/* ---------- Top bar ---------- */}
-      <header className="relative z-10">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Logo size={30} />
-          <Link
-            to="/admin/login"
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/30 transition-colors"
-          >
-            Sign in
-          </Link>
-        </div>
-      </header>
+      {/* ---------- Top bar ----------
+          Only for a visitor. Signed in, the admin bar is already above this
+          page with the same logo in it, and a Sign in button next to it was
+          offering somebody a door they had already come through. */}
+      {!signedIn && (
+        <header className="relative z-10">
+          <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+            <Logo size={30} />
+            <Link
+              to="/admin/login"
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/30 transition-colors"
+            >
+              Sign in
+            </Link>
+          </div>
+        </header>
+      )}
 
       {/* ---------- Hero ---------- */}
       <section className="relative z-10 container mx-auto px-4 pt-12 pb-16 sm:pt-20 sm:pb-24">
@@ -144,10 +165,10 @@ export default function HomePage() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                to="/admin/login"
+                to={callToAction.to}
                 className="px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition-colors"
               >
-                Start a tournament
+                {callToAction.label}
               </Link>
               <a
                 href="#leagues"
@@ -321,10 +342,10 @@ export default function HomePage() {
             the other side.
           </p>
           <Link
-            to="/admin/login"
+            to={callToAction.to}
             className="mt-6 inline-block px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition-colors"
           >
-            Start a tournament
+            {callToAction.label}
           </Link>
         </div>
       </section>

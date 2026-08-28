@@ -18,6 +18,8 @@ export default function AdminPage() {
   }, [isSuperAdmin, currentOrganizerId, loadTeams, loadTournaments])
 
 
+  const runsAClub = (user?.teamIds?.length ?? 0) > 0
+
   // Show all data for super admin, organizer-specific data for organizers
   const teams = isSuperAdmin ? getAllTeams() : getOrganizerTeams()
   const tournaments = isSuperAdmin ? getAllTournaments() : getOrganizerTournaments()
@@ -121,29 +123,54 @@ export default function AdminPage() {
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-white mb-6">Organizer Dashboard</h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* My Tournaments */}
+              {/* The same four places as the bar above, under the same names.
+                  Two sets of names for one set of screens — "My Teams" here,
+                  "Teams" up there — reads as two different things. */}
               <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
-                <h3 className="text-xl font-semibold text-white mb-4">My Tournaments</h3>
-                <p className="text-gray-400 mb-4">Manage your tournaments</p>
+                <h3 className="text-xl font-semibold text-white mb-4">Tournaments</h3>
+                <p className="text-gray-400 mb-4">The competitions you run</p>
                 <Link
-                  to="/admin/tournaments"
+                  to="/tournaments"
                   className="inline-flex items-center px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg transition-all text-blue-400"
                 >
-                  Manage Tournaments
+                  Open Tournaments
                 </Link>
               </div>
 
-              {/* My Teams */}
               <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
-                <h3 className="text-xl font-semibold text-white mb-4">My Teams</h3>
-                <p className="text-gray-400 mb-4">Manage your teams</p>
+                <h3 className="text-xl font-semibold text-white mb-4">Teams</h3>
+                <p className="text-gray-400 mb-4">The clubs in your competitions</p>
                 <Link
-                  to="/admin/teams"
+                  to="/teams"
                   className="inline-flex items-center px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 rounded-lg transition-all text-purple-400"
                 >
-                  Manage Teams
+                  Open Teams
                 </Link>
               </div>
+
+              <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
+                <h3 className="text-xl font-semibold text-white mb-4">Calendar</h3>
+                <p className="text-gray-400 mb-4">Every fixture, by date</p>
+                <Link
+                  to="/calendar"
+                  className="inline-flex items-center px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 rounded-lg transition-all text-cyan-400"
+                >
+                  Open Calendar
+                </Link>
+              </div>
+
+              {runsAClub && (
+                <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
+                  <h3 className="text-xl font-semibold text-white mb-4">My clubs</h3>
+                  <p className="text-gray-400 mb-4">The clubs you run yourself</p>
+                  <Link
+                    to="/my-club"
+                    className="inline-flex items-center px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 rounded-lg transition-all text-emerald-400"
+                  >
+                    Open My clubs
+                  </Link>
+                </div>
+              )}
 
               {/* Create New Tournament */}
               <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
