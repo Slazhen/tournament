@@ -182,6 +182,53 @@ export default function PublicTeamPage() {
             >
               {team.name}
             </h1>
+
+            {/* The club's accounts, as marks under its name. They used to be a
+                captioned bar of their own between the photograph and the
+                tables — a full-width panel to carry at most three links, each
+                repeating in words what its logo already said. Every mark here
+                is drawn in its own brand colour, so it reads on the header
+                whatever the club's colour turns out to be. */}
+            {(team.socialMedia?.facebook || team.socialMedia?.instagram || team.socialMedia?.youtube) && (
+              <div className="mt-3 sm:mt-4 flex items-center gap-3">
+                {team.socialMedia?.facebook && (
+                  <a
+                    href={team.socialMedia.facebook}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Facebook"
+                    aria-label={`${team.name} on Facebook`}
+                    className="opacity-90 hover:opacity-100 hover:scale-110 transition-all drop-shadow"
+                  >
+                    <FacebookIcon size={24} />
+                  </a>
+                )}
+                {team.socialMedia?.instagram && (
+                  <a
+                    href={team.socialMedia.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Instagram"
+                    aria-label={`${team.name} on Instagram`}
+                    className="opacity-90 hover:opacity-100 hover:scale-110 transition-all drop-shadow"
+                  >
+                    <InstagramIcon size={24} />
+                  </a>
+                )}
+                {team.socialMedia?.youtube && (
+                  <a
+                    href={team.socialMedia.youtube}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="YouTube"
+                    aria-label={`${team.name} on YouTube`}
+                    className="opacity-90 hover:opacity-100 hover:scale-110 transition-all drop-shadow"
+                  >
+                    <YoutubeIcon size={24} />
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -218,47 +265,6 @@ export default function PublicTeamPage() {
               className="mx-auto w-auto h-auto max-w-full max-h-[70vh]"
             />
           </button>
-        </section>
-      )}
-
-      {/* Social Media Links - Only show if not empty */}
-      {(team.socialMedia?.facebook || team.socialMedia?.instagram || team.socialMedia?.youtube) && (
-        <section className="glass rounded-xl p-6 w-full max-w-6xl">
-          <div className="flex items-center justify-center gap-6 text-sm">
-            {team.socialMedia?.facebook && (
-              <a 
-                href={team.socialMedia.facebook} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity px-4 py-2 glass rounded-lg"
-              >
-                <FacebookIcon size={16} />
-                <span>Facebook</span>
-              </a>
-            )}
-            {team.socialMedia?.instagram && (
-              <a 
-                href={team.socialMedia.instagram} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity px-4 py-2 glass rounded-lg"
-              >
-                <InstagramIcon size={16} />
-                <span>Instagram</span>
-              </a>
-            )}
-            {team.socialMedia?.youtube && (
-              <a
-                href={team.socialMedia.youtube}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity px-4 py-2 glass rounded-lg"
-              >
-                <YoutubeIcon size={16} />
-                <span>YouTube</span>
-              </a>
-            )}
-          </div>
         </section>
       )}
 
