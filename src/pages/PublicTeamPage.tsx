@@ -15,11 +15,6 @@ import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
 
-/** "1 player", "14 players" — English, not "14 player(s)". */
-function countOf(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`
-}
-
 export default function PublicTeamPage() {
   const { teamId } = useParams()
   const [showPhotoModal, setShowPhotoModal] = useState(false)
@@ -132,7 +127,10 @@ export default function PublicTeamPage() {
             was founded — and the colours are already the background of this
             header, so printing them again as captioned dots said nothing. The
             name carries the header now; the colours run along the bottom edge
-            the way a kit stripe does. */}
+            the way a kit stripe does. The squad size and the number of
+            competitions went the same way: both are lists further down this
+            page, and counting them in the header only said in words what the
+            page was about to show. */}
         <div className="relative p-8 flex items-center gap-6 sm:gap-8">
           <div className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl">
             {team.logo ? (
@@ -151,11 +149,6 @@ export default function PublicTeamPage() {
             <h1 className="text-3xl sm:text-5xl font-bold text-white drop-shadow-lg leading-tight">
               {team.name}
             </h1>
-            <p className="mt-2 text-sm text-white/80">
-              {countOf(team.players?.length ?? 0, 'player')}
-              {teamTournaments.length > 0 &&
-                ` · ${countOf(teamTournaments.length, 'competition')}`}
-            </p>
           </div>
         </div>
 
