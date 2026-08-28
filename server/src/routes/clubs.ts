@@ -20,6 +20,7 @@ import {
   type Entry,
   type TeamInvite,
 } from '../repos-clubs.js'
+import { pickLineup, registeredPlayerIds, sideOfTeam } from '../lib/lineups.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
@@ -579,6 +580,56 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     })
 
     return { playerIds, all: everyone }
+  })
+
+
+  /**
+   * Who is playing for this club in one match.
+   *
+   * The teamsheet is one field of one fixture, and the fixture belongs to the
+   * organiser's competition — so the write is narrowed twice over. The club is
+   * checked with `assertManagesTeam`, and then the side of the match is read
+   * out of the record rather than taken from the request: a manager who could
+   * name the side could name their opponent's eleven, and the club id is the
+   * only thing their permission was ever established against.
+   *
+   * There is deliberately no deadline. A teamsheet is a record of who played
+   * as much as a declaration of who will, and it is routinely filled in after
+   * the final whistle; the organiser can overwrite it either way, and the
+   * audit log says who wrote it last.
+   */
+  router.put('/manager/tournaments/:tournamentId/matches/:matchId/lineup', async (ctx, params) => {
+    const user = await ctx.user()
+    const teamId = typeof ctx.body.teamId === 'string' ? ctx.body.teamId : ''
+    if (!teamId) throw badRequest('teamId is required')
+
+    const team = await teams.getOrThrow(teamId)
+    assertManagesTeam(user, team as Team)
+
+    const tournament = await tournaments.getOrThrow(params.tournamentId!)
+    // Only the fixtures in `matches`. A hand-built playoff keeps its rounds
+    // inside the format, and nothing — not even the organiser's own match
+    // screen — edits those, so a teamsheet for one has nowhere to go yet.
+    const match = (Array.isArray(tournament.matches) ? tournament.matches : []).find(
+      (candidate) => (candidate as { id?: string } | null)?.id === params.matchId,
+    )
+    if (!match) throw notFound('Match not found in this tournament')
+
+    const side = sideOfTeam(match, teamId)
+    if (!side) throw forbidden('This club is not playing in that match')
+
+    const playerIds = pickLineup(ctx.body.playerIds, registeredPlayerIds(tournament, team as Team))
+    await tournaments.setLineup(params.tournamentId!, params.matchId!, teamId, side, playerIds)
+
+    await record(user, {
+      action: 'lineup.update',
+      entity: 'match',
+      entityId: `${params.tournamentId}/${params.matchId}`,
+      summary: `Named ${playerIds.length} players for ${team.name} in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return { playerIds }
   })
 
   /* ---------------- the organizer's side ---------------- */

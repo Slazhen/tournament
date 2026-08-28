@@ -156,6 +156,22 @@ the same reason `managerUserIds` is. The three player routes each touch one
 player under a condition (`addPlayer`, `updatePlayer`, `removePlayer` in
 `repos.ts`), and they are the only way in.
 
+**A teamsheet has two authors.** Who played for a club in one match is written
+by the organiser, for either side, and by that club's own manager, for their own
+side only — `PUT /admin/tournaments/:t/matches/:m/lineup` and the matching
+`/manager/...` route, both landing in `tournaments.setLineup`. Which side a
+caller may write is derived from the fixture by `sideOfTeam`, never taken from
+the request: the club id is the only thing the permission was checked against,
+so letting the caller name the side would let them name their opponent's eleven.
+The write covers one side of one match and is conditional on the match id *and*
+on that club still being on that side — saving a result in the previous round of
+a knockout rewrites `homeTeamId` of an existing fixture, so the id alone would
+let a teamsheet land on a match the club is no longer in. There is deliberately
+no deadline: a teamsheet is filled in after the whistle as often as before it,
+and appearances exist nowhere else. `lineups` is therefore absent from the
+fields the match `PATCH` accepts, because that route writes the match from the
+browser's copy and would undo whichever manager saved last.
+
 Writes that reach the database are recorded by `lib/audit.ts`. A failed audit
 write never fails the request that caused it.
 
@@ -239,6 +255,10 @@ Useful scripts, run with your own AWS credentials:
   as well as `template.yaml`. `lib/env.ts` reads its configuration at import time
   and throws when something is missing, so a forgotten one fails every test — and,
   if it reaches production, every request.
+- **Both halves of `lineups` are optional**, and `src/types.ts` says so. The two
+  sides are written separately, so a reader that dereferences `lineups.away`
+  because `lineups` exists will throw on a match only one manager has named.
+  `setLineup` creates both sides empty for that reason; the type is the backstop.
 - **Content-hashed chunks 404 after a deploy** for anyone holding the old
   `index.html`. `lazyPage()` reloads once, guarded by `sessionStorage`.
 - **CORS is answered in application code**, not in the template, so a new HTTP

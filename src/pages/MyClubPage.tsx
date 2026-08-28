@@ -13,6 +13,7 @@ import type { Organizer, Player, Team, Tournament, Match } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
+import { registeredPlayers } from '../utils/squads'
 import Trophy from '../components/Trophy'
 import LogoUploader from '../components/LogoUploader'
 import {
@@ -314,6 +315,13 @@ function ClubCard({
           <JoinCompetitions competitions={canApplyTo} organizerNames={organizerNames} onApply={onApply} />
         )}
       </div>
+
+      <Teamsheets
+        team={team}
+        tournaments={playing}
+        teamNames={teamNames}
+        onReload={onReload}
+      />
 
       <Squad team={team} onReload={onReload} />
 
@@ -932,6 +940,243 @@ function CompetitionRow({
                   </button>
                 </div>
               )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ================================================================== *
+ * Teamsheets
+ * ================================================================== */
+
+/**
+ * Who played, match by match.
+ *
+ * The organiser used to be the only person who could say this, which meant in
+ * practice that nobody did: appearances come from the teamsheet and nowhere
+ * else, so a competition whose organiser never filled one in showed every
+ * player as having played nothing. The manager knows who turned up.
+ *
+ * Only the fixtures in `matches`. A hand-built playoff keeps its rounds inside
+ * the format and no screen edits their teamsheets yet, the organiser's own
+ * included, so listing them here would offer something that cannot be saved.
+ */
+function Teamsheets({
+  team,
+  tournaments,
+  teamNames,
+  onReload,
+}: {
+  team: Team
+  tournaments: Tournament[]
+  teamNames: Record<string, string>
+  onReload: () => Promise<void>
+}) {
+  const fixtures = useMemo(() => {
+    const rows: Array<{ tournament: Tournament; match: Match }> = []
+    for (const tournament of tournaments) {
+      for (const match of tournament.matches ?? []) {
+        if (match.homeTeamId !== team.id && match.awayTeamId !== team.id) continue
+        rows.push({ tournament, match })
+      }
+    }
+
+    const isPlayed = (match: Match) =>
+      typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'
+    // A fixture with no date sorts last among fixtures and last among results,
+    // which is where "we have not agreed a date yet" belongs either way. Not
+    // Infinity: subtracting one from another is NaN, and a comparator that
+    // returns NaN leaves the list in whatever order it happened to be in.
+    const at = (match: Match) =>
+      match.dateISO ? new Date(match.dateISO).getTime() : Number.MAX_SAFE_INTEGER
+
+    // The next match is the one a manager opened this to name, so fixtures come
+    // first and soonest first; results follow, most recent first.
+    return rows.sort((a, b) => {
+      const playedA = isPlayed(a.match)
+      const playedB = isPlayed(b.match)
+      if (playedA !== playedB) return playedA ? 1 : -1
+      return playedA ? at(b.match) - at(a.match) : at(a.match) - at(b.match)
+    })
+  }, [tournaments, team.id])
+
+  if (fixtures.length === 0) return null
+
+  return (
+    <div className="glass rounded-2xl p-5 border border-white/15">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-1 inline-flex items-center gap-2">
+        <IconCalendar size={15} /> Teamsheets
+      </h2>
+      <p className="text-xs text-gray-400 mb-3">
+        Who played in each match. Until somebody names a side, its players have no appearances to
+        show. The organiser can correct any of it.
+      </p>
+
+      <div className="space-y-2">
+        {fixtures.map(({ tournament, match }) => (
+          <TeamsheetRow
+            key={`${tournament.id}:${match.id}`}
+            tournament={tournament}
+            match={match}
+            team={team}
+            teamNames={teamNames}
+            onReload={onReload}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TeamsheetRow({
+  tournament,
+  match,
+  team,
+  teamNames,
+  onReload,
+}: {
+  tournament: Tournament
+  match: Match
+  team: Team
+  teamNames: Record<string, string>
+  onReload: () => Promise<void>
+}) {
+  // Only the players registered for this competition, which is the same list
+  // the organiser is offered — a club may have signed somebody since the squad
+  // for this competition was agreed, and they are not eligible here.
+  const players = registeredPlayers(tournament, team)
+  const side = match.homeTeamId === team.id ? 'home' : 'away'
+  const stored = match.lineups?.[side]?.starting ?? []
+
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<string[]>(stored)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setSelected(stored)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match.id, stored.join(',')])
+
+  const opponentId = side === 'home' ? match.awayTeamId : match.homeTeamId
+  const opponent = teamNames[opponentId] || 'Opponent to be confirmed'
+  const when = match.dateISO
+    ? new Date(match.dateISO).toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    : 'Date to be confirmed'
+  const score =
+    typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'
+      ? `${match.homeGoals} - ${match.awayGoals}`
+      : null
+
+  const save = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await clubService.saveLineup(tournament.id, match.id, team.id, selected)
+      await onReload()
+      setOpen(false)
+    } catch (caught) {
+      setError(messageOf(caught, 'That teamsheet could not be saved.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg bg-white/[0.03]">
+      <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="min-w-0">
+          <div className="truncate">
+            vs {opponent} <span className="opacity-60">{side === 'home' ? 'home' : 'away'}</span>
+            {score && <span className="ml-2 font-semibold">{score}</span>}
+          </div>
+          <div className="text-xs text-gray-400 truncate">
+            {when} - {seriesName(tournament)} {seasonLabel(tournament)}
+          </div>
+        </div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="text-xs px-2 py-1 rounded-lg glass hover:bg-white/10 transition-colors inline-flex items-center gap-1.5 shrink-0"
+        >
+          <IconUsers size={13} />
+          {stored.length === 0 ? 'name the team' : `${stored.length} playing`}
+        </button>
+      </div>
+
+      {open && (
+        <div className="px-3 pb-3 pt-1 border-t border-white/10">
+          {players.length === 0 ? (
+            <p className="text-sm opacity-60 py-2">
+              Nobody is registered for this competition yet. Choose the squad above first.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-gray-400 mb-3">
+                Tick everyone who played. There is no deadline: a teamsheet filled in after the
+                final whistle is still the record of who was on the pitch.
+              </p>
+
+              <ul className="grid gap-1 sm:grid-cols-2">
+                {players.map((player) => {
+                  const on = selected.includes(player.id)
+                  return (
+                    <li key={player.id}>
+                      <label
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-white/10 ${
+                          on ? 'bg-white/[0.06]' : 'bg-transparent opacity-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() =>
+                            setSelected(
+                              on
+                                ? selected.filter((id) => id !== player.id)
+                                : [...selected, player.id],
+                            )
+                          }
+                        />
+                        <span className="text-sm truncate">
+                          {player.number ? (
+                            <span className="opacity-60 mr-2">{player.number}</span>
+                          ) : null}
+                          {player.firstName} {player.lastName}
+                        </span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              {error && <p className="text-sm text-red-300 mt-2">{error}</p>}
+
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  onClick={save}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm"
+                >
+                  {saving ? 'Saving...' : 'Save teamsheet'}
+                </button>
+                <button
+                  onClick={() => setSelected([])}
+                  className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm text-gray-300"
+                >
+                  Clear
+                </button>
+                <span className="text-xs text-gray-400">{selected.length} selected</span>
+              </div>
             </>
           )}
         </div>

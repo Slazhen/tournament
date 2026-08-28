@@ -288,6 +288,26 @@ export const matchService = {
     )
     return true
   },
+
+  /**
+   * The organiser's teamsheet for one club in one match.
+   *
+   * Deliberately not part of `updateMatchInTournament`: that sends both halves
+   * of the fixture from the copy this browser is holding, and the other half
+   * now has an author of its own — the club's manager. Naming the club sends
+   * one side, and the two stop overwriting each other.
+   */
+  async saveLineup(
+    tournamentId: string,
+    matchId: string,
+    teamId: string,
+    playerIds: string[],
+  ): Promise<{ playerIds: string[] }> {
+    return api.put(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/lineup`,
+      { teamId, playerIds },
+    )
+  },
 }
 
 /* ------------------------------------------------------------------ *
@@ -460,6 +480,24 @@ export const clubService = {
       teamId,
       playerIds,
     })
+  },
+
+  /**
+   * Who is playing for this club in one match.
+   *
+   * The club is named rather than the side: the server works out which half of
+   * the fixture that is, so a manager can only ever write their own.
+   */
+  async saveLineup(
+    tournamentId: string,
+    matchId: string,
+    teamId: string,
+    playerIds: string[],
+  ): Promise<{ playerIds: string[] }> {
+    return api.put(
+      `/manager/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/lineup`,
+      { teamId, playerIds },
+    )
   },
 
   async entriesFor(tournamentId: string): Promise<Entry[]> {

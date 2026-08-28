@@ -5,7 +5,7 @@ import { uid } from '../utils/uid'
 import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
 import { adminSeasonUrl } from '../utils/seasons'
 import { organizerService } from '../lib/data'
-import type { Organizer } from '../types'
+import type { Organizer, Player } from '../types'
 import MatchDateTime from '../components/MatchDateTime'
 import InlineInput from '../components/InlineInput'
 import {
@@ -17,7 +17,7 @@ import { playersForPicking, registeredPlayers } from '../utils/squads'
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTournament, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTournament, setLineup, superAdmin } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -473,137 +473,34 @@ export default function MatchPage() {
           </div>
         )}
 
-                {activeTab === 'lineups' && (
-          <div className="space-y-6">
-            <h3 className="font-semibold mb-4">Team Lineups</h3>
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Home Team Lineup */}
-              <div className="glass rounded-lg p-4">
-                <h4 className="font-semibold mb-4 text-blue-400">{homeTeam.name}</h4>
-                <div className="space-y-4">
-                  <div>
-                    <h5 className="text-sm font-medium mb-2 opacity-70">All Players</h5>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {registeredPlayers(tournament, homeTeam).map((player) => {
-                        const isSelected = match.lineups?.home.starting.includes(player.id) || false
-                        return (
-                          <div key={player.id} className="flex items-center justify-between p-2 glass rounded">
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  const currentStarting = match.lineups?.home.starting || []
-                                  let newStarting
-                                  if (e.target.checked) {
-                                    newStarting = [...currentStarting, player.id]
-                                  } else {
-                                    newStarting = currentStarting.filter(id => id !== player.id)
-                                  }
-                                  updateMatch({
-                                    lineups: {
-                                      home: { 
-                                        starting: newStarting,
-                                        substitutes: match.lineups?.home?.substitutes || []
-                                      },
-                                      away: {
-                                        starting: match.lineups?.away?.starting || [],
-                                        substitutes: match.lineups?.away?.substitutes || []
-                                      }
-                                    }
-                                  })
-                                }}
-                                className="w-4 h-4 rounded border border-white/20"
-                              />
-                              <span className="text-sm">
-                                {player.firstName} {player.lastName}
-                              </span>
-                              {player.number && (
-                                <span className="text-xs opacity-70">#{player.number}</span>
-                              )}
-                              {player.position && (
-                                <span className="text-xs opacity-70">({player.position})</span>
-                              )}
-                            </div>
-                            {isSelected && (
-                              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">
-                                Selected
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="mt-3 text-sm opacity-70">
-                      Selected: {match.lineups?.home.starting.length || 0} players
-                    </div>
-                  </div>
+        {activeTab === 'lineups' && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold">Team Lineups</h3>
+              <p className="text-sm opacity-70 mt-1">
+                Who played. Each club's manager can name their own side from their club page, and
+                either teamsheet can be corrected here afterwards.
+              </p>
             </div>
-          </div>
-
-              {/* Away Team Lineup */}
-              <div className="glass rounded-lg p-4">
-                <h4 className="font-semibold mb-4 text-red-400">{awayTeam.name}</h4>
-                <div className="space-y-4">
-                  <div>
-                    <h5 className="text-sm font-medium mb-2 opacity-70">All Players</h5>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {registeredPlayers(tournament, awayTeam).map((player) => {
-                        const isSelected = match.lineups?.away.starting.includes(player.id) || false
-                        return (
-                          <div key={player.id} className="flex items-center justify-between p-2 glass rounded">
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  const currentStarting = match.lineups?.away.starting || []
-                                  let newStarting
-                                  if (e.target.checked) {
-                                    newStarting = [...currentStarting, player.id]
-                                  } else {
-                                    newStarting = currentStarting.filter(id => id !== player.id)
-                                  }
-                                  updateMatch({
-                                    lineups: {
-                                      home: {
-                                        starting: match.lineups?.home?.starting || [],
-                                        substitutes: match.lineups?.home?.substitutes || []
-                                      },
-                                      away: { 
-                                        starting: newStarting,
-                                        substitutes: match.lineups?.away?.substitutes || []
-                                      }
-                                    }
-                                  })
-                                }}
-                                className="w-4 h-4 rounded border border-white/20"
-                              />
-                              <span className="text-sm">
-                                {player.firstName} {player.lastName}
-                              </span>
-                              {player.number && (
-                                <span className="text-xs opacity-70">#{player.number}</span>
-                              )}
-                              {player.position && (
-                                <span className="text-xs opacity-70">({player.position})</span>
-                              )}
-                            </div>
-                            {isSelected && (
-                              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">
-                                Selected
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="mt-3 text-sm opacity-70">
-                      Selected: {match.lineups?.away.starting.length || 0} players
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              <LineupPicker
+                name={homeTeam.name}
+                accent="text-blue-400"
+                players={registeredPlayers(tournament, homeTeam)}
+                saved={match.lineups?.home?.starting ?? []}
+                onSave={(playerIds) =>
+                  setLineup(tournament.id, match.id, homeTeam.id, playerIds)
+                }
+              />
+              <LineupPicker
+                name={awayTeam.name}
+                accent="text-red-400"
+                players={registeredPlayers(tournament, awayTeam)}
+                saved={match.lineups?.away?.starting ?? []}
+                onSave={(playerIds) =>
+                  setLineup(tournament.id, match.id, awayTeam.id, playerIds)
+                }
+              />
             </div>
           </div>
         )}
@@ -802,6 +699,101 @@ export default function MatchPage() {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+
+/**
+ * One club's teamsheet.
+ *
+ * Saved a tick at a time, and only ever this club's side of the fixture: the
+ * opposing manager may be naming theirs on a phone at the same moment, and a
+ * write that carried both would undo them.
+ */
+function LineupPicker({
+  name,
+  accent,
+  players,
+  saved,
+  onSave,
+}: {
+  name: string
+  accent: string
+  players: Player[]
+  saved: string[]
+  onSave: (playerIds: string[]) => Promise<void>
+}) {
+  const [chosen, setChosen] = useState<string[]>(saved)
+  const [error, setError] = useState<string | null>(null)
+
+  // The stored list is the truth. Re-syncing on its contents rather than its
+  // identity keeps a save made elsewhere from being reverted by a re-render,
+  // without fighting the tick the person just made here.
+  useEffect(() => {
+    setChosen(saved)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved.join(',')])
+
+  const toggle = async (playerId: string) => {
+    const before = chosen
+    const next = before.includes(playerId)
+      ? before.filter((id) => id !== playerId)
+      : [...before, playerId]
+
+    setChosen(next)
+    setError(null)
+    try {
+      await onSave(next)
+    } catch (caught) {
+      setChosen(before)
+      setError(caught instanceof Error && caught.message ? caught.message : 'That could not be saved.')
+    }
+  }
+
+  return (
+    <div className="glass rounded-lg p-4">
+      <h4 className={`font-semibold mb-4 ${accent}`}>{name}</h4>
+      {players.length === 0 ? (
+        <p className="text-sm opacity-60">No players registered for this competition.</p>
+      ) : (
+        <>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {players.map((player) => {
+              const on = chosen.includes(player.id)
+              return (
+                <label
+                  key={player.id}
+                  className="flex items-center justify-between p-2 glass rounded cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => toggle(player.id)}
+                      className="w-4 h-4 rounded border border-white/20"
+                    />
+                    <span className="text-sm">
+                      {player.firstName} {player.lastName}
+                    </span>
+                    {player.number && <span className="text-xs opacity-70">#{player.number}</span>}
+                    {player.position && (
+                      <span className="text-xs opacity-70">({player.position})</span>
+                    )}
+                  </div>
+                  {on && (
+                    <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">
+                      Playing
+                    </span>
+                  )}
+                </label>
+              )
+            })}
+          </div>
+          <div className="mt-3 text-sm opacity-70">Selected: {chosen.length} players</div>
+          {error && <p className="text-sm text-red-300 mt-2">{error}</p>}
+        </>
+      )}
     </div>
   )
 }

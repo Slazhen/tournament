@@ -205,6 +205,12 @@ export default function PublicMatchPage() {
     Object.values(match.statistics?.[side] ?? {}).some((value) => typeof value === 'number'),
   )
 
+  const anyoneNamed = (['home', 'away'] as const).some(
+    (side) =>
+      (match.lineups?.[side]?.starting?.length ?? 0) > 0 ||
+      (match.lineups?.[side]?.substitutes?.length ?? 0) > 0,
+  )
+
   return (
     <div className="grid gap-6 place-items-center">
       <div className="w-full">
@@ -428,7 +434,9 @@ export default function PublicMatchPage() {
       )}
 
       {/* Team Lineups */}
-      {match.lineups && (
+      {/* Named rather than merely present: a teamsheet cleared back to nobody
+          leaves the record in place, and an empty panel says less than none. */}
+      {anyoneNamed && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <h2 className="text-lg font-semibold mb-4 text-center">Team Lineups</h2>
           <div className="grid md:grid-cols-2 gap-6">
@@ -439,7 +447,7 @@ export default function PublicMatchPage() {
                 <div>
                   <h4 className="text-sm font-medium mb-2 opacity-70">Starting XI</h4>
                   <div className="space-y-2">
-                    {match.lineups.home.starting.map((playerId) => {
+                    {(match.lineups?.home?.starting ?? []).map((playerId) => {
                       const player = homeTeam.players.find(p => p.id === playerId)
                       return (
                         <div key={playerId} className="flex items-center justify-between p-2 glass rounded">
@@ -461,11 +469,11 @@ export default function PublicMatchPage() {
                     })}
                   </div>
                 </div>
-                {match.lineups.home.substitutes.length > 0 && (
+                {(match.lineups?.home?.substitutes?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium mb-2 opacity-70">Substitutes</h4>
                     <div className="space-y-2">
-                      {match.lineups.home.substitutes.map((playerId) => {
+                      {(match.lineups?.home?.substitutes ?? []).map((playerId) => {
                         const player = homeTeam.players.find(p => p.id === playerId)
                         return (
                           <div key={playerId} className="flex items-center justify-between p-2 glass rounded">
@@ -498,7 +506,7 @@ export default function PublicMatchPage() {
                 <div>
                   <h4 className="text-sm font-medium mb-2 opacity-70">Starting XI</h4>
                   <div className="space-y-2">
-                    {match.lineups.away.starting.map((playerId) => {
+                    {(match.lineups?.away?.starting ?? []).map((playerId) => {
                       const player = awayTeam.players.find(p => p.id === playerId)
                       return (
                         <div key={playerId} className="flex items-center justify-between p-2 glass rounded">
@@ -520,11 +528,11 @@ export default function PublicMatchPage() {
                     })}
                   </div>
                 </div>
-                {match.lineups.away.substitutes.length > 0 && (
+                {(match.lineups?.away?.substitutes?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="text-sm font-medium mb-2 opacity-70">Substitutes</h4>
                     <div className="space-y-2">
-                      {match.lineups.away.substitutes.map((playerId) => {
+                      {(match.lineups?.away?.substitutes ?? []).map((playerId) => {
                         const player = awayTeam.players.find(p => p.id === playerId)
                         return (
                           <div key={playerId} className="flex items-center justify-between p-2 glass rounded">

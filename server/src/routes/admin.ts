@@ -23,6 +23,7 @@ import {
   unlinkManagerFromTeam,
   unlinkOwnerManagers,
 } from '../repos-clubs.js'
+import { pickLineup, registeredPlayerIds, sideOfTeam } from '../lib/lineups.js'
 import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
@@ -77,6 +78,42 @@ const TEAM_FIELDS = [
 // failure that cost `managerUserIds` a removal and `teamIds` an entry. The
 // three routes below write one player at a time, under a condition, and they
 // are the only way in.
+
+/**
+ * What the organiser may change about one fixture.
+ *
+ * Named for the same reason `TEAM_FIELDS` is: the records are schemaless, so a
+ * key nobody has invented yet would be persisted onto the match by whoever
+ * asked for it.
+ *
+ * `lineups` is deliberately absent. Both halves of a teamsheet now have their
+ * own author — the organiser and the club's own manager — and this route
+ * writes the whole match from the copy the browser is holding, so a `lineups`
+ * sent here would carry a stale opposing eleven over one saved a moment ago.
+ * The lineup route below writes one side at a time, and it is the only way in.
+ */
+const MATCH_FIELDS = [
+  'homeTeamId',
+  'awayTeamId',
+  'dateISO',
+  'homeGoals',
+  'awayGoals',
+  'round',
+  'isPlayoff',
+  'playoffRound',
+  'playoffMatch',
+  'isElimination',
+  'division',
+  'groupIndex',
+  'venue',
+  'referee',
+  'status',
+  'statistics',
+  'goals',
+  'preview',
+  'report',
+  'videoUrl',
+] as const
 
 function pick(body: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {}
@@ -653,15 +690,57 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const user = await ctx.user()
     const tournament = await tournaments.getOrThrow(params.tournamentId!)
     assertCanAccessOrganizer(user, tournament.organizerId)
-    await tournaments.updateMatch(params.tournamentId!, params.matchId!, ctx.body)
+
+    const updates = pick(ctx.body, MATCH_FIELDS)
+    if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
+
+    await tournaments.updateMatch(params.tournamentId!, params.matchId!, updates)
     await record(user, {
       action: 'match.update',
       entity: 'match',
       entityId: `${params.tournamentId}/${params.matchId}`,
-      summary: describeMatchEdit(ctx.body, tournament.name),
+      summary: describeMatchEdit(updates, tournament.name),
       organizerId: tournament.organizerId,
     })
     return { ok: true }
+  })
+
+  /**
+   * The organiser's teamsheet, for either club in one of their matches.
+   *
+   * Its own route rather than a `lineups` field on the match PATCH, because
+   * that PATCH writes both halves of the fixture from whatever the browser is
+   * holding — and since a club's manager now writes their own half, a stale
+   * copy of the other one would silently undo them. One side at a time is what
+   * makes the two authors safe to have at once.
+   */
+  router.put('/admin/tournaments/:tournamentId/matches/:matchId/lineup', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.tournamentId!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const teamId = requireString(ctx.body.teamId, 'teamId')
+    const match = (Array.isArray(tournament.matches) ? tournament.matches : []).find(
+      (candidate) => (candidate as { id?: string } | null)?.id === params.matchId,
+    )
+    if (!match) throw notFound('Match not found in this tournament')
+
+    const side = sideOfTeam(match, teamId)
+    if (!side) throw badRequest('That club is not playing in this match')
+
+    const team = await teams.getOrThrow(teamId)
+    const playerIds = pickLineup(ctx.body.playerIds, registeredPlayerIds(tournament, team as Team))
+    await tournaments.setLineup(params.tournamentId!, params.matchId!, teamId, side, playerIds)
+
+    await record(user, {
+      action: 'lineup.update',
+      entity: 'match',
+      entityId: `${params.tournamentId}/${params.matchId}`,
+      summary: `Named ${playerIds.length} players for ${team.name} in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return { playerIds }
   })
 
   /* ---------------- accounts (super admin only) ---------------- */

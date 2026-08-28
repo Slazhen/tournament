@@ -410,7 +410,21 @@ export const tournaments = {
     invalidate('tournaments:')
   },
 
-  /** Applies a partial update to one match inside a tournament's matches array. */
+  /**
+   * Applies a partial update to one match inside a tournament's matches array.
+   *
+   * One element, not the whole array. Writing `matches` back whole meant every
+   * other fixture in the competition was rewritten from a copy read at the top
+   * of this request, so a teamsheet or a score saved by somebody else in that
+   * window was lost — on a match nobody was editing. The index is checked
+   * against the match id in the same request, because a regenerated fixture
+   * list reorders the array.
+   *
+   * The element is still replaced whole, so a concurrent write to this one
+   * match can still be lost. That window is one request rather than one open
+   * browser tab, and the fields with two authors — the teamsheets — are kept
+   * out of this route entirely and written by `setLineup`.
+   */
   async updateMatch(
     tournamentId: string,
     matchId: string,
@@ -423,19 +437,123 @@ export const tournaments = {
     )
     if (index === -1) throw notFound('Match not found in this tournament')
 
-    matches[index] = { ...(matches[index] as object), ...updates, id: matchId }
+    const updated = { ...(matches[index] as object), ...updates, id: matchId }
 
     await ddb.send(
       new UpdateCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id: tournamentId },
         // `matches` is a DynamoDB reserved word, hence the alias.
-        UpdateExpression: 'SET #matches = :matches',
-        ExpressionAttributeNames: { '#matches': 'matches' },
-        ExpressionAttributeValues: { ':matches': matches },
-        ConditionExpression: 'attribute_exists(id)',
+        UpdateExpression: `SET #matches[${index}] = :match`,
+        ConditionExpression: `#matches[${index}].#id = :matchId`,
+        ExpressionAttributeNames: { '#matches': 'matches', '#id': 'id' },
+        ExpressionAttributeValues: { ':match': updated, ':matchId': matchId },
       }),
     )
+    invalidate('tournaments:')
+  },
+
+  /**
+   * Who one club is naming for one match.
+   *
+   * Deliberately not `updateMatch({ lineups })`. That writes both halves of the
+   * fixture from a copy read a moment earlier, and both halves now have their
+   * own author: a manager saving their teamsheet while the organiser has the
+   * match open would be undone by the organiser's next click, and the reverse.
+   * Writing one side of one match lets DynamoDB merge the two, exactly as
+   * `setSquad` does for the registrations that share one map.
+   *
+   * The condition is the whole point of the method. The route decided which
+   * side the caller may write by reading the fixture; between that read and
+   * this write the fixture can move underneath both. So the write asserts what
+   * the permission was granted on — this match id, and this club still on this
+   * side of it. A knockout fixture is the case that makes it necessary: saving
+   * a result in the previous round rewrites `homeTeamId` of an existing match,
+   * so the id alone would have let a club's eleven land on the home teamsheet
+   * of a match they are no longer in. The index is checked the same way,
+   * because a regenerated fixture list reorders the array.
+   */
+  async setLineup(
+    tournamentId: string,
+    matchId: string,
+    teamId: string,
+    side: 'home' | 'away',
+    starting: string[],
+  ): Promise<void> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const matches = Array.isArray(tournament.matches) ? tournament.matches : []
+    const index = matches.findIndex((match) => (match as { id?: string } | null)?.id === matchId)
+    if (index === -1) throw notFound('Match not found in this tournament')
+
+    const existing = (matches[index] as { lineups?: Record<string, unknown> } | null)?.lineups
+    const current = (existing?.[side] ?? {}) as { substitutes?: unknown }
+
+    const names = {
+      '#matches': 'matches',
+      '#lineups': 'lineups',
+      '#id': 'id',
+      '#sideTeam': side === 'home' ? 'homeTeamId' : 'awayTeamId',
+    }
+    const guard = `#matches[${index}].#id = :matchId AND #matches[${index}].#sideTeam = :teamId`
+
+    try {
+      // Two writes for the reason `setSquad` needs two: a nested path cannot be
+      // created and written in the same expression, and DynamoDB rejects an
+      // update that names overlapping paths.
+      //
+      // Both sides are created here, not just the one being written. Readers of
+      // a teamsheet treat `lineups` as either absent or complete — the site's
+      // own match page dereferences `lineups.home` and `lineups.away` the
+      // moment `lineups` exists — so a record with one half would be a crash
+      // rather than an empty list, and a failure between the two writes leaves
+      // a shape everything can still read.
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id: tournamentId },
+          UpdateExpression: `SET #matches[${index}].#lineups = if_not_exists(#matches[${index}].#lineups, :both)`,
+          ConditionExpression: guard,
+          ExpressionAttributeNames: names,
+          ExpressionAttributeValues: {
+            ':both': {
+              home: { starting: [], substitutes: [] },
+              away: { starting: [], substitutes: [] },
+            },
+            ':matchId': matchId,
+            ':teamId': teamId,
+          },
+        }),
+      )
+
+      // The side is written whole rather than field by field, and `substitutes`
+      // is carried across: nothing edits it today, and a teamsheet saved here
+      // must not quietly delete a list somebody may fill in later.
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id: tournamentId },
+          UpdateExpression: `SET #matches[${index}].#lineups.#side = :lineup`,
+          ConditionExpression: guard,
+          ExpressionAttributeNames: { ...names, '#side': side },
+          ExpressionAttributeValues: {
+            ':lineup': {
+              starting,
+              substitutes: Array.isArray(current.substitutes) ? current.substitutes : [],
+            },
+            ':matchId': matchId,
+            ':teamId': teamId,
+          },
+        }),
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      // The fixture moved between the read and the write. Saying so is the
+      // honest answer: the teamsheet was for a match that is no longer the one
+      // being written to, and silently retrying against the new one would be
+      // guessing at what the person meant.
+      throw notFound('This fixture has changed since the page was loaded. Reload and try again.')
+    }
+
     invalidate('tournaments:')
   },
 }

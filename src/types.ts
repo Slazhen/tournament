@@ -88,13 +88,21 @@ export type Match = {
     assistPlayerId?: string
     goalNumber?: number // Goal number for this team (1st, 2nd, 3rd goal, etc.)
   }>
-  // Lineups
+  /**
+   * Who played, one side at a time.
+   *
+   * Each side is optional because each has its own author now — the organiser
+   * writes either, a club's manager writes their own — and they are written
+   * separately so that neither can undo the other. A reader that assumes both
+   * halves are there the moment `lineups` exists is reading a shape the API
+   * does not promise.
+   */
   lineups?: {
-    home: {
+    home?: {
       starting: string[]
       substitutes: string[]
     }
-    away: {
+    away?: {
       starting: string[]
       substitutes: string[]
     }

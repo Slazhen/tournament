@@ -73,6 +73,16 @@ type AppStore = {
   
   setScore: (matchId: string, homeGoals: number, awayGoals: number) => Promise<void>
   setDate: (matchId: string, dateISO: string) => Promise<void>
+  /**
+   * One club's teamsheet for one match. Throws rather than swallowing, so a
+   * ticked box that did not reach the server can say so.
+   */
+  setLineup: (
+    tournamentId: string,
+    matchId: string,
+    teamId: string,
+    playerIds: string[],
+  ) => Promise<void>
   
   updateSettings: (updates: Partial<AppStore['settings']>) => void
   
@@ -590,6 +600,56 @@ export const useAppStore = create<AppStore>((set, get) => ({
         break
       }
     }
+  },
+
+  /**
+   * One club's teamsheet for one match.
+   *
+   * Sent as one side of one fixture rather than as a whole `matches` array,
+   * because the other side belongs to the opposing club's manager now: writing
+   * the list back whole is how a teamsheet saved on a phone disappears the next
+   * time the organiser ticks a box.
+   */
+  setLineup: async (
+    tournamentId: string,
+    matchId: string,
+    teamId: string,
+    playerIds: string[],
+  ) => {
+    const { playerIds: saved } = await matchService.saveLineup(
+      tournamentId,
+      matchId,
+      teamId,
+      playerIds,
+    )
+
+    set(state => ({
+      tournaments: state.tournaments.map(tournament => {
+        if (tournament.id !== tournamentId) return tournament
+        return {
+          ...tournament,
+          matches: tournament.matches.map(match => {
+            if (match.id !== matchId) return match
+            if (match.homeTeamId !== teamId && match.awayTeamId !== teamId) return match
+            const side = match.homeTeamId === teamId ? 'home' : 'away'
+            const lineups = {
+              home: {
+                starting: match.lineups?.home?.starting ?? [],
+                substitutes: match.lineups?.home?.substitutes ?? [],
+              },
+              away: {
+                starting: match.lineups?.away?.starting ?? [],
+                substitutes: match.lineups?.away?.substitutes ?? [],
+              },
+            }
+            // The server's answer, not the request: it drops anyone no longer
+            // registered, and the screen should show what was actually stored.
+            lineups[side] = { ...lineups[side], starting: saved }
+            return { ...match, lineups }
+          }),
+        }
+      }),
+    }))
   },
 
   // Settings
