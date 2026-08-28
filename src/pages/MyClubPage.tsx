@@ -13,7 +13,7 @@ import type { Organizer, Player, Team, Tournament, Match } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
-import { registeredPlayers } from '../utils/squads'
+import { hasSquadEntry, registeredPlayers } from '../utils/squads'
 import Trophy from '../components/Trophy'
 import LogoUploader from '../components/LogoUploader'
 import {
@@ -814,8 +814,13 @@ function CompetitionRow({
 }) {
   const players = team.players ?? []
   const stored = tournament.squads?.[team.id]
-  const entered = stored ?? players.map((player) => player.id)
+  // Not the stored list: it can name somebody the club has since released, and
+  // counting them would tell a manager they have a player more than they can
+  // put on a teamsheet.
+  const entered = registeredPlayers(tournament, team).map((player) => player.id)
   const locked = tournament.squadsLocked === true
+  const strict = tournament.squadsStrict === true
+  const submitted = hasSquadEntry(tournament, team.id)
 
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<string[]>(entered)
@@ -823,9 +828,9 @@ function CompetitionRow({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setSelected(stored ?? players.map((player) => player.id))
+    setSelected(registeredPlayers(tournament, team).map((player) => player.id))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournament.id, stored?.join(','), players.length])
+  }, [tournament.id, stored?.join(','), strict, players.length])
 
   const save = async () => {
     setSaving(true)
@@ -848,9 +853,18 @@ function CompetitionRow({
           {seriesName(tournament)} <span className="opacity-60">{seasonLabel(tournament)}</span>
         </span>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">
-            playing
-          </span>
+          {/* A competition that registers its players says so, and says loudest
+              to the club that has not registered any: under that rule nobody it
+              names can play, and the row would otherwise look like every other. */}
+          {strict && !submitted ? (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">
+              squad needed
+            </span>
+          ) : (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">
+              playing
+            </span>
+          )}
           <button
             onClick={() => setOpen(!open)}
             className="text-xs px-2 py-1 rounded-lg glass hover:bg-white/10 transition-colors inline-flex items-center gap-1.5"
@@ -876,6 +890,8 @@ function CompetitionRow({
                   <span className="inline-flex items-center gap-1.5 text-amber-300">
                     <IconLock size={12} /> The organiser has closed squads for this competition.
                   </span>
+                ) : strict ? (
+                  'This competition registers its players: only the ones ticked here can be named in a match, and somebody you sign later has to be added to this list before they play.'
                 ) : (
                   'Everyone ticked is registered here. Leave them all ticked and anyone you sign later joins automatically.'
                 )}

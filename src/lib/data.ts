@@ -216,6 +216,32 @@ export const tournamentService = {
     await api.delete(`/admin/tournaments/${encodeURIComponent(id)}`)
     return true
   },
+
+  /**
+   * The organiser entering one club, for the clubs with no manager to do it —
+   * which, in a new competition, is most of them.
+   */
+  async saveSquad(
+    tournamentId: string,
+    teamId: string,
+    playerIds: string[],
+  ): Promise<{ playerIds: string[]; all: boolean }> {
+    return api.put(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/squads/${encodeURIComponent(teamId)}`,
+      { playerIds },
+    )
+  },
+
+  /**
+   * Strict entry on or off. Not part of `update`, because turning it on also
+   * enters every club that has not been entered, and the reply says how many.
+   */
+  async setSquadMode(
+    tournamentId: string,
+    strict: boolean,
+  ): Promise<{ strict: boolean; entered: number }> {
+    return api.put(`/admin/tournaments/${encodeURIComponent(tournamentId)}/squad-mode`, { strict })
+  },
 }
 
 export type TeamContext = {

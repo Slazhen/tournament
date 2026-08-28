@@ -411,6 +411,64 @@ export const tournaments = {
   },
 
   /**
+   * Makes sure the `squads` map exists, so nested writes into it have somewhere
+   * to land. Its own call so that a run of them can pay for it once instead of
+   * once per club — switching a competition with two dozen clubs to a
+   * registration list does all of them inside a single request.
+   */
+  async ensureSquads(tournamentId: string): Promise<void> {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id: tournamentId },
+        ConditionExpression: 'attribute_exists(id)',
+        UpdateExpression: 'SET #squads = if_not_exists(#squads, :empty)',
+        ExpressionAttributeNames: { '#squads': 'squads' },
+        ExpressionAttributeValues: { ':empty': {} },
+      }),
+    )
+    invalidate('tournaments:')
+  },
+
+  /**
+   * Enters a club as it stands, but only if it has not been entered already.
+   *
+   * Used when a competition is switched to a registration list: every club that
+   * has not chosen a squad has its current one written down, so the rule change
+   * means "the lists are fixed from here" rather than "everybody out".
+   *
+   * The condition is the whole point of it existing beside `setSquad`. Which
+   * clubs need entering is worked out from a read, and a manager saving their
+   * own squad in the same second would otherwise be overwritten by a list this
+   * call decided on before they saved. A club that has an entry by the time the
+   * write lands keeps it, and the caller is told so rather than failing.
+   */
+  async enterSquadIfAbsent(
+    tournamentId: string,
+    teamId: string,
+    playerIds: string[],
+  ): Promise<boolean> {
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id: tournamentId },
+          ConditionExpression: 'attribute_exists(id) AND attribute_not_exists(#squads.#team)',
+          UpdateExpression: 'SET #squads.#team = :ids',
+          ExpressionAttributeNames: { '#squads': 'squads', '#team': teamId },
+          ExpressionAttributeValues: { ':ids': playerIds },
+        }),
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return false
+      throw error
+    }
+
+    invalidate('tournaments:')
+    return true
+  },
+
+  /**
    * Applies a partial update to one match inside a tournament's matches array.
    *
    * One element, not the whole array. Writing `matches` back whole meant every

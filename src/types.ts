@@ -235,14 +235,28 @@ export type Tournament = {
    * Which of each club's players are entered in this competition, by club id.
    *
    * A club's squad belongs to the club and follows it everywhere; who is
-   * registered for one particular competition does not. A club absent from this
-   * map has its whole squad entered — which is what every competition assumed
-   * before the field existed, so nothing shifts underneath a club that never
-   * touches it.
+   * registered for one particular competition does not. What a club absent from
+   * this map means depends on `squadsStrict`.
    */
   squads?: Record<string, string[]>
   /** Set by the organiser when the deadline passes: managers can no longer change their squad. */
   squadsLocked?: boolean
+  /**
+   * Whether a club has to be entered before its players may be named.
+   *
+   * Off — the default, and what every competition did before this existed — a
+   * club absent from `squads` has its whole squad registered, and anyone it
+   * signs later joins automatically. That is the right answer for a friendly
+   * league: nobody there wants to be told a new signing cannot play.
+   *
+   * On, a club absent from `squads` has nobody registered, and an entry is the
+   * exact list it was saved as: a player signed afterwards does not join it.
+   * That is what a competition with a registration deadline means by a squad.
+   *
+   * Turning it on enters every club's current squad first, so a season already
+   * being played does not lose its teamsheets to a checkbox.
+   */
+  squadsStrict?: boolean
 }
 
 export type AppSettings = {

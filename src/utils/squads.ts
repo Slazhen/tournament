@@ -1,23 +1,48 @@
 import type { Player, Team, Tournament } from '../types'
 
+/** Everything about a competition these functions need. */
+type SquadRules = Pick<Tournament, 'squads' | 'squadsStrict'>
+
+/**
+ * Whether this club has been entered in this competition at all.
+ *
+ * Absent is not the same as empty, and only one of the two is a decision
+ * somebody made: an empty list is a manager who ticked nobody, absence is a
+ * manager who has not opened the screen. The two look identical to
+ * `registeredPlayers` under a strict competition — both mean nobody may play —
+ * but a screen that cannot tell them apart cannot ask the right club to act.
+ */
+export function hasSquadEntry(
+  tournament: SquadRules | null | undefined,
+  teamId: string | undefined,
+): boolean {
+  if (!tournament || !teamId) return false
+  return Array.isArray(tournament.squads?.[teamId])
+}
+
 /**
  * Who a club has actually registered for one competition.
  *
  * A club's squad belongs to the club and travels with it; who is registered for
  * a particular competition does not. The selection lives on the competition,
- * keyed by club, and a club that is absent from it has everybody registered —
- * which is what every competition assumed before the field existed, so nothing
- * shifts underneath a club whose manager never opens the screen.
+ * keyed by club, and what a club absent from it means is the organiser's
+ * choice: in an ordinary competition everybody is registered — which is what
+ * every competition assumed before the field existed, so nothing shifts
+ * underneath a club whose manager never opens the screen — and in a strict one
+ * nobody is, because there the entry is the thing that lets a player play.
+ *
+ * The list is filtered from the club's current players either way, so a player
+ * released since the entry was saved cannot come back through a stale id.
  */
 export function registeredPlayers(
-  tournament: Pick<Tournament, 'squads'> | null | undefined,
+  tournament: SquadRules | null | undefined,
   team: Pick<Team, 'id' | 'players'> | null | undefined,
 ): Player[] {
   const players = team?.players ?? []
   if (!tournament || !team) return players
 
   const chosen = tournament.squads?.[team.id]
-  if (!chosen) return players
+  if (!Array.isArray(chosen)) return tournament.squadsStrict === true ? [] : players
 
   const registered = new Set(chosen)
   return players.filter((player) => registered.has(player.id))
@@ -32,7 +57,7 @@ export function registeredPlayers(
  * name, so they stay in the list until the record itself is changed.
  */
 export function playersForPicking(
-  tournament: Pick<Tournament, 'squads'> | null | undefined,
+  tournament: SquadRules | null | undefined,
   team: Pick<Team, 'id' | 'players'> | null | undefined,
   ...alreadyNamed: Array<string | undefined>
 ): Player[] {

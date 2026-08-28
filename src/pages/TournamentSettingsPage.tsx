@@ -9,11 +9,12 @@ import FormatPicker from '../components/FormatPicker'
 import { findFormat, formatOptionFor } from '../utils/formats'
 import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
 import type { TournamentFormat } from '../utils/fixtures'
-import { clubService } from '../lib/data'
+import { clubService, tournamentService } from '../lib/data'
 import type { ClubManager, Entry } from '../lib/data'
-import type { Team } from '../types'
+import type { Team, Tournament } from '../types'
+import { hasSquadEntry, registeredPlayers } from '../utils/squads'
 import Trophy from '../components/Trophy'
-import { IconLink, IconUser } from '../components/icons'
+import { IconLink, IconUser, IconUsers } from '../components/icons'
 import {
   adminSeasonUrl,
   championOf,
@@ -534,32 +535,12 @@ export default function TournamentSettingsPage() {
       )}
 
       {/* ---------- Squads ---------- */}
-      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
-        <h2 className="font-semibold">Squads</h2>
-        <p className="text-sm opacity-70">
-          Each club's manager chooses which of their players are registered here. A club that
-          chooses nobody in particular has its whole squad registered, so a club that never opens
-          the screen is never left short.
-        </p>
-
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={tournament.squadsLocked === true}
-            onChange={(event) =>
-              updateTournament(tournament.id, { squadsLocked: event.target.checked })
-            }
-            className="mt-1"
-          />
-          <span>
-            <span className="block">Close squads</span>
-            <span className="block text-sm opacity-70">
-              Managers can no longer change who is registered. You still can — somebody has to be
-              able to fix a mistake after the deadline.
-            </span>
-          </span>
-        </label>
-      </section>
+      <SquadsSection
+        tournament={tournament}
+        teams={teams.filter((team) => tournament.teamIds.includes(team.id))}
+        onLock={(locked) => updateTournament(tournament.id, { squadsLocked: locked })}
+        onReload={loadTournaments}
+      />
 
       {/* ---------- Season ---------- */}
       <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-5">
@@ -1002,5 +983,235 @@ function ClubManagers({
 
       {failed && <p className="text-sm text-red-300">{failed}</p>}
     </section>
+  )
+}
+
+/* ================================================================== *
+ * Squads: who is entered, and under which rule
+ * ================================================================== */
+
+/**
+ * The organiser's view of entries.
+ *
+ * Two things live here that look alike and are not. Closing squads is a
+ * deadline: it stops the managers writing, and changes nothing about who is
+ * registered. Strict entry is a rule: it changes what a club with no entry
+ * means, from everybody to nobody, which is the difference between a friendly
+ * league and a competition with a registration list.
+ *
+ * The organiser can also enter any club themselves. Most clubs in a new
+ * competition have no manager at all, and a competition whose entries only a
+ * coach can fill in is one the organiser cannot run.
+ */
+function SquadsSection({
+  tournament,
+  teams,
+  onLock,
+  onReload,
+}: {
+  tournament: Tournament
+  teams: Team[]
+  onLock: (locked: boolean) => void
+  onReload: () => Promise<void>
+}) {
+  const strict = tournament.squadsStrict === true
+  const [switching, setSwitching] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+
+  const setMode = async (next: boolean) => {
+    setSwitching(true)
+    setFailed(null)
+    try {
+      await tournamentService.setSquadMode(tournament.id, next)
+      await onReload()
+    } catch (error) {
+      setFailed(error instanceof Error ? error.message : 'That could not be changed.')
+    } finally {
+      setSwitching(false)
+    }
+  }
+
+  return (
+    <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-5">
+      <h2 className="font-semibold">Squads</h2>
+      <p className="text-sm opacity-70">
+        Who each club has registered here. A club's manager chooses, and so can you — most clubs
+        have nobody to do it for them yet.
+      </p>
+
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={strict}
+          disabled={switching}
+          onChange={(event) => setMode(event.target.checked)}
+          className="mt-1"
+        />
+        <span>
+          <span className="block">Registration list</span>
+          <span className="block text-sm opacity-70">
+            {strict
+              ? 'A club plays only the players entered here, and a player signed later does not join until somebody enters them.'
+              : 'Off, a club that has entered nobody in particular plays its whole squad, and anyone it signs joins automatically. Turning this on enters every club as it stands today, so nothing already arranged is lost.'}
+          </span>
+        </span>
+      </label>
+
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={tournament.squadsLocked === true}
+          onChange={(event) => onLock(event.target.checked)}
+          className="mt-1"
+        />
+        <span>
+          <span className="block">Close squads</span>
+          <span className="block text-sm opacity-70">
+            Managers can no longer change who is registered. You still can — somebody has to be
+            able to fix a mistake after the deadline.
+          </span>
+        </span>
+      </label>
+
+      {failed && <p className="text-sm text-red-300">{failed}</p>}
+
+      {teams.length > 0 && (
+        <ul className="space-y-1.5 pt-1">
+          {teams.map((team) => (
+            <SquadRow key={team.id} tournament={tournament} team={team} onReload={onReload} />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** One club, and the players it has entered. */
+function SquadRow({
+  tournament,
+  team,
+  onReload,
+}: {
+  tournament: Tournament
+  team: Team
+  onReload: () => Promise<void>
+}) {
+  const players = team.players ?? []
+  const entered = registeredPlayers(tournament, team)
+  const submitted = hasSquadEntry(tournament, team.id)
+  const strict = tournament.squadsStrict === true
+
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<string[]>(entered.map((player) => player.id))
+  const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+
+  // The list is reset from the record whenever the record changes underneath
+  // it, so a manager saving their own squad while this is open does not get
+  // overwritten by a stale set of ticks the next time Save is pressed.
+  useEffect(() => {
+    setSelected(registeredPlayers(tournament, team).map((player) => player.id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournament.id, tournament.squads?.[team.id]?.join(','), strict, players.length])
+
+  const save = async () => {
+    setSaving(true)
+    setFailed(null)
+    try {
+      await tournamentService.saveSquad(tournament.id, team.id, selected)
+      await onReload()
+      setOpen(false)
+    } catch (error) {
+      setFailed(error instanceof Error ? error.message : 'That squad could not be saved.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <li className="rounded-lg bg-white/[0.03]">
+      <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <span className="truncate">{team.name}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {strict && !submitted && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">
+              not entered
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            className="text-xs px-2 py-1 rounded-lg glass hover:bg-white/10 transition-colors inline-flex items-center gap-1.5"
+          >
+            <IconUsers size={13} />
+            {players.length === 0 ? 'no players' : `${entered.length} of ${players.length}`}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="px-3 pb-3 pt-1 border-t border-white/10">
+          {players.length === 0 ? (
+            <p className="text-sm opacity-60 py-2">
+              This club has no players yet. Add them on the club's own page first.
+            </p>
+          ) : (
+            <>
+              <ul className="grid gap-1 sm:grid-cols-2">
+                {players.map((player) => {
+                  const on = selected.includes(player.id)
+                  return (
+                    <li key={player.id}>
+                      <label
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-white/10 ${
+                          on ? 'bg-white/[0.06]' : 'bg-transparent opacity-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() =>
+                            setSelected(
+                              on
+                                ? selected.filter((id) => id !== player.id)
+                                : [...selected, player.id],
+                            )
+                          }
+                        />
+                        <span className="text-sm truncate">
+                          {player.number ? (
+                            <span className="opacity-60 mr-2">{player.number}</span>
+                          ) : null}
+                          {player.firstName} {player.lastName}
+                        </span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <div className="flex items-center gap-3 mt-3">
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelected(players.map((player) => player.id))}
+                  className="text-sm opacity-70 hover:opacity-100 transition-opacity"
+                >
+                  Everyone
+                </button>
+                {failed && <span className="text-sm text-red-300">{failed}</span>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </li>
   )
 }

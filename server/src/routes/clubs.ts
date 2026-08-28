@@ -20,7 +20,13 @@ import {
   type Entry,
   type TeamInvite,
 } from '../repos-clubs.js'
-import { pickLineup, registeredPlayerIds, sideOfTeam } from '../lib/lineups.js'
+import {
+  nameableInMatch,
+  pickLineup,
+  refusedByRegistration,
+  sideOfTeam,
+} from '../lib/lineups.js'
+import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
@@ -90,6 +96,10 @@ const CARRIED_TOURNAMENT_FIELDS = [
   'socialMedia',
   'visibility',
   'squadsLocked',
+  // Without this a club playing in a strict competition would be shown its
+  // squad screen under the ordinary rules, and told everybody was registered
+  // when in fact nobody was.
+  'squadsStrict',
 ]
 
 /**
@@ -527,9 +537,13 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
    * who played in February. So the selection lives on the competition, keyed by
    * club, and the club's own squad stays untouched by it.
    *
-   * No selection means everybody. That is the honest default: it is what every
-   * competition assumed before this existed, so nothing changes underneath a
-   * manager who never opens the screen.
+   * What no selection means is the competition's own rule, and `chooseSquad`
+   * holds it: everybody in an ordinary competition, nobody in a strict one.
+   *
+   * This is the club's half of the write. The organiser has one of their own in
+   * `admin.ts`, for the many clubs that have no manager yet and for the ones
+   * whose manager has gone quiet — the same shape as the teamsheet, which two
+   * people can also write for the same reason.
    */
   router.put('/manager/tournaments/:tournamentId/squad', async (ctx, params) => {
     const user = await ctx.user()
@@ -553,33 +567,22 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
       throw forbidden('The organiser has closed squads for this competition')
     }
 
-    const known = new Set(
-      ((team.players as Array<{ id?: string }> | undefined) ?? [])
-        .map((player) => player.id)
-        .filter((id): id is string => typeof id === 'string'),
-    )
-    const requested: unknown[] = Array.isArray(ctx.body.playerIds) ? ctx.body.playerIds : []
-    const playerIds = requested.filter(
-      (id): id is string => typeof id === 'string' && known.has(id),
-    )
+    const known = squadPlayerIds(team as Team)
+    const { playerIds, store, all } = chooseSquad(ctx.body.playerIds, known, isStrict(tournament))
 
-    // "Everybody" and "no selection" are the same state, and storing it as no
-    // selection is what keeps the two in step when the club signs somebody new
-    // afterwards.
-    const everyone = playerIds.length === known.size
-    await tournaments.setSquad(params.tournamentId!, teamId, everyone ? null : playerIds)
+    await tournaments.setSquad(params.tournamentId!, teamId, store)
 
     await record(user, {
       action: 'squad.update',
       entity: 'tournament',
       entityId: params.tournamentId!,
-      summary: everyone
+      summary: all
         ? `Entered the whole squad of ${team.name} in ${tournament.name}`
         : `Entered ${playerIds.length} of ${known.size} players of ${team.name} in ${tournament.name}`,
       organizerId: tournament.organizerId,
     })
 
-    return { playerIds, all: everyone }
+    return { playerIds, all }
   })
 
 
@@ -618,7 +621,19 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const side = sideOfTeam(match, teamId)
     if (!side) throw forbidden('This club is not playing in that match')
 
-    const playerIds = pickLineup(ctx.body.playerIds, registeredPlayerIds(tournament, team as Team))
+    const allowed = nameableInMatch(tournament, team as Team, match, side)
+    const refused = refusedByRegistration(
+      ctx.body.playerIds,
+      allowed,
+      squadPlayerIds(team as Team),
+    )
+    if (refused.length > 0) {
+      throw badRequest(
+        `${refused.length === 1 ? 'A player' : 'Some players'} in this teamsheet are not registered for this competition. Reload the page and try again.`,
+      )
+    }
+
+    const playerIds = pickLineup(ctx.body.playerIds, allowed)
     await tournaments.setLineup(params.tournamentId!, params.matchId!, teamId, side, playerIds)
 
     await record(user, {

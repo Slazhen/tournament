@@ -23,7 +23,13 @@ import {
   unlinkManagerFromTeam,
   unlinkOwnerManagers,
 } from '../repos-clubs.js'
-import { pickLineup, registeredPlayerIds, sideOfTeam } from '../lib/lineups.js'
+import {
+  nameableInMatch,
+  pickLineup,
+  refusedByRegistration,
+  sideOfTeam,
+} from '../lib/lineups.js'
+import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
@@ -656,10 +662,36 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     return tournament
   })
 
+  /**
+   * Everything else about a competition, from the screen that edits it.
+   *
+   * This one passes the body through rather than picking from a named list,
+   * which the rest of the API does not do. Two fields are held back from it by
+   * name, because each has a route of its own that does something a plain write
+   * cannot:
+   *
+   * - `squads` is one map shared by every club in the competition, and writing
+   *   it whole is how two clubs saving in the same minute erase each other.
+   *   `setSquad` writes one key inside it.
+   * - `squadsStrict` changes what an absent entry means, from everybody to
+   *   nobody. Set here it would empty every teamsheet picker in a season
+   *   already being played; `squad-mode` enters the clubs first.
+   *
+   * The rest of the record staying open is a debt, not a decision — a field
+   * added to a tournament for the organiser is writable here the day it exists.
+   */
+  const TOURNAMENT_PATCH_FORBIDDEN = ['squads', 'squadsStrict']
+
   router.patch('/admin/tournaments/:id', async (ctx, params) => {
     const user = await ctx.user()
     const tournament = await tournaments.getOrThrow(params.id!)
     assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const refused = TOURNAMENT_PATCH_FORBIDDEN.filter((field) => field in ctx.body)
+    if (refused.length > 0) {
+      throw badRequest(`${refused.join(' and ')} cannot be edited here`)
+    }
+
     await tournaments.update(params.id!, ctx.body)
     await record(user, {
       action: 'tournament.update',
@@ -729,7 +761,19 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     if (!side) throw badRequest('That club is not playing in this match')
 
     const team = await teams.getOrThrow(teamId)
-    const playerIds = pickLineup(ctx.body.playerIds, registeredPlayerIds(tournament, team as Team))
+    const allowed = nameableInMatch(tournament, team as Team, match, side)
+    const refused = refusedByRegistration(
+      ctx.body.playerIds,
+      allowed,
+      squadPlayerIds(team as Team),
+    )
+    if (refused.length > 0) {
+      throw badRequest(
+        `${refused.length === 1 ? 'A player' : 'Some players'} in this teamsheet are not registered for this competition. Reload the page and try again.`,
+      )
+    }
+
+    const playerIds = pickLineup(ctx.body.playerIds, allowed)
     await tournaments.setLineup(params.tournamentId!, params.matchId!, teamId, side, playerIds)
 
     await record(user, {
@@ -741,6 +785,128 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     })
 
     return { playerIds }
+  })
+
+  /**
+   * The organiser entering one club in their competition.
+   *
+   * The club's manager has the same write in `clubs.ts`, and for the same
+   * reason as the teamsheet: most clubs have no manager, and the ones that do
+   * have one who can go quiet a week before the deadline. A competition whose
+   * entries only a coach can fill in is a competition an organiser cannot run.
+   *
+   * `squadsLocked` is not consulted here. It is the deadline the organiser
+   * themselves set for the managers; somebody has to be able to fix a mistake
+   * after it, and that somebody is the person who set it.
+   */
+  router.put('/admin/tournaments/:tournamentId/squads/:teamId', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.tournamentId!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const teamId = params.teamId!
+    if (!(tournament.teamIds ?? []).includes(teamId)) {
+      throw badRequest('This club is not in that competition')
+    }
+
+    // The club is read for its squad, not for permission: what the organiser
+    // may write was settled by the competition they run, and a club playing in
+    // it is theirs to enter whoever owns the club record.
+    const team = await teams.getOrThrow(teamId)
+    const known = squadPlayerIds(team as Team)
+    const { playerIds, store, all } = chooseSquad(ctx.body.playerIds, known, isStrict(tournament))
+
+    await tournaments.setSquad(params.tournamentId!, teamId, store)
+
+    await record(user, {
+      action: 'squad.update',
+      entity: 'tournament',
+      entityId: params.tournamentId!,
+      summary: all
+        ? `Entered the whole squad of ${team.name} in ${tournament.name}`
+        : `Entered ${playerIds.length} of ${known.size} players of ${team.name} in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return { playerIds, all }
+  })
+
+  /**
+   * Turning strict entry on and off.
+   *
+   * Its own route rather than a field of the tournament PATCH, because turning
+   * it on is not only a flag: under the strict rule a club with no entry has
+   * nobody registered, so flipping it on a season already being played would
+   * empty every teamsheet picker in the competition at once. Every club that
+   * has not been entered is therefore entered as it stands first, which makes
+   * the change mean "from here on the list is fixed" rather than "everybody
+   * out". Only then is the flag written.
+   *
+   * It is done twice, and the second pass is not belt and braces. A manager
+   * ticking their whole squad in an open competition is stored as no entry at
+   * all — the two mean the same thing there — so one landing between the first
+   * pass and the flag would leave that club entered by nobody under a rule that
+   * reads absence as nobody: the manager who pressed "everyone" would have
+   * registered no one. Once the flag is written that save cannot happen again,
+   * because every squad write reads the competition afresh and a strict one
+   * stores the list itself. So the second pass runs after the flag and picks up
+   * whatever landed in the gap.
+   *
+   * Turning it off leaves those entries alone. They are what the clubs actually
+   * registered, and the open rule reads them the same way; it only changes what
+   * an absent one means.
+   */
+  router.put('/admin/tournaments/:tournamentId/squad-mode', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.tournamentId!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const strict = ctx.body.strict === true
+    let entered = 0
+
+    /**
+     * Enters every club of this competition that has no entry, as it stands.
+     *
+     * Reads the competition again rather than trusting the copy the handler
+     * opened with, and each write is conditional on the club still having no
+     * entry, so a manager who saved a squad in the meantime keeps it. Both
+     * matter: the list of who is missing is a snapshot the moment it is taken.
+     */
+    const enterEveryoneMissing = async (): Promise<void> => {
+      const current = await tournaments.getOrThrow(params.tournamentId!)
+      const existing =
+        current.squads && typeof current.squads === 'object'
+          ? (current.squads as Record<string, unknown>)
+          : {}
+      const missing = (current.teamIds ?? []).filter((id) => !Array.isArray(existing[id]))
+      if (missing.length === 0) return
+
+      await tournaments.ensureSquads(params.tournamentId!)
+      for (const team of await teams.getMany(missing)) {
+        const wrote = await tournaments.enterSquadIfAbsent(params.tournamentId!, team.id, [
+          ...squadPlayerIds(team as Team),
+        ])
+        if (wrote) entered += 1
+      }
+    }
+
+    if (strict && !isStrict(tournament)) await enterEveryoneMissing()
+
+    await tournaments.update(params.tournamentId!, { squadsStrict: strict })
+
+    if (strict && !isStrict(tournament)) await enterEveryoneMissing()
+
+    await record(user, {
+      action: 'tournament.update',
+      entity: 'tournament',
+      entityId: params.tournamentId!,
+      summary: strict
+        ? `Made squads strict in ${tournament.name}${entered > 0 ? `, entering ${entered} clubs as they stand` : ''}`
+        : `Made squads open in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return { strict, entered }
   })
 
   /* ---------------- accounts (super admin only) ---------------- */

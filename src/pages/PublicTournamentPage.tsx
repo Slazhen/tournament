@@ -11,8 +11,10 @@ import InstagramIcon from '../components/InstagramIcon'
 import LocationIcon from '../components/LocationIcon'
 import { teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import { allMatches, playerRecords } from '../utils/matches'
+import { hasSquadEntry, registeredPlayers } from '../utils/squads'
 import {
   IconTrophy,
+  IconUsers,
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 
@@ -627,12 +629,28 @@ export default function PublicTournamentPage() {
     tournament.format?.mode === 'league_custom_playoff' &&
     (tournament.format?.customPlayoffConfig?.playoffRounds?.length ?? 0) > 0
 
+  // The clubs in this competition, each with the players registered for it —
+  // which is not the same as the players the club has. A club in two
+  // competitions may field two different squads, and the club's own page cannot
+  // say which is which because it belongs to no competition.
+  const squads = (tournament.teamIds || [])
+    .map((teamId: string) => teams.find((team: any) => team.id === teamId))
+    .filter(Boolean)
+    .map((team: any) => ({
+      team,
+      players: registeredPlayers(tournament, team),
+      entered: hasSquadEntry(tournament, team.id),
+    }))
+    .filter((row: any) => row.players.length > 0 || row.entered)
+    .sort((a: any, b: any) => String(a.team.name).localeCompare(String(b.team.name)))
+
   // A plain array, not useMemo: this sits after the loading and not-found
   // early returns, where an extra hook would change the hook order.
   const sections: Section[] = [
     { id: 'standings', label: 'Table' },
     ...(hasPlayoffBracket ? [{ id: 'playoffs', label: 'Playoffs' }] : []),
     { id: 'fixtures', label: 'Fixtures' },
+    ...(squads.length > 0 ? [{ id: 'squads', label: 'Squads' }] : []),
     { id: 'stats', label: 'Stats' },
   ]
 
@@ -1317,6 +1335,72 @@ export default function PublicTournamentPage() {
             })
           })()}
         </div>
+
+        {/* Squads */}
+        {squads.length > 0 && (
+          <div id="squads" className="mb-12 scroll-mt-20">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                Squads
+              </h2>
+              <p className="text-sm text-gray-300">
+                Who each club has registered for this competition.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {squads.map(({ team, players }: any) => (
+                <div
+                  key={team.id}
+                  className="glass rounded-2xl p-4 sm:p-5 border border-white/20 shadow-xl"
+                >
+                  <Link
+                    to={`/public/teams/${team.id}`}
+                    className="flex items-center gap-3 mb-3 hover:opacity-80 transition-opacity"
+                  >
+                    {team.logo ? (
+                      <img
+                        src={team.logo}
+                        alt=""
+                        className="w-9 h-9 rounded-lg object-cover shrink-0"
+                      />
+                    ) : (
+                      <span className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                        <IconUsers size={16} />
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-white truncate">{team.name}</span>
+                      <span className="block text-xs text-gray-400">
+                        {players.length} {players.length === 1 ? 'player' : 'players'}
+                      </span>
+                    </span>
+                  </Link>
+
+                  {players.length === 0 ? (
+                    <p className="text-sm text-gray-400">No squad registered yet.</p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {players.map((player: any) => (
+                        <li key={player.id} className="text-sm text-gray-200 truncate">
+                          {player.number ? (
+                            <span className="opacity-50 mr-2 tabular-nums">{player.number}</span>
+                          ) : null}
+                          <Link
+                            to={`/public/players/${player.id}`}
+                            className="hover:text-white transition-colors"
+                          >
+                            {player.firstName} {player.lastName}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Statistics */}
         <div id="stats" className="mb-12 scroll-mt-20">

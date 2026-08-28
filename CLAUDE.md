@@ -60,9 +60,27 @@ aggregate statistics were considered and deliberately rejected.
 **A club is global; its participation is not.** A `Team` is the club — name,
 crest, colours, squad — and belongs to whoever runs it. Its participation in one
 competition is separate: `tournament.teamIds` for who is in, `tournament.squads`
-for which of that club's players are registered. A club absent from `squads` has
-its whole squad registered, which is what every competition assumed before the
-field existed. `src/utils/squads.ts` is the only place that decides this.
+for which of that club's players are registered. `src/utils/squads.ts` decides
+this for the site and `server/src/lib/lineups.ts` for the API, and the two must
+agree — the server cannot take the browser's word for who may play.
+
+**What an absent entry means is the organiser's choice.** `squadsStrict` off,
+which is the default and what every competition did before the field existed, a
+club absent from `squads` has its whole squad registered and anyone it signs
+later joins automatically. On, that club has *nobody* registered, and an entry is
+the exact list it was saved as. The distinction only exists in the empty case,
+which is why "everyone is ticked" is stored as no entry at all in an open
+competition and as the list itself in a strict one (`chooseSquad` in
+`server/src/lib/squads.ts` is the one place that decides).
+
+Turning the flag on therefore cannot be a plain field write: on a season already
+under way it would empty every teamsheet picker at once. `PUT
+/admin/tournaments/:id/squad-mode` enters every club as it stands first, with a
+conditional write per club so a manager saving in the same second is not
+overwritten, and does it again after the flag is written — a manager pressing
+"everyone" in the gap would otherwise be stored as an absent entry that the new
+rule reads as nobody. `squads` and `squadsStrict` are both refused by the
+tournament `PATCH` for this reason.
 
 **Formats live in `src/utils/formats.ts` and `fixtures.ts`.** One of them is not
 generic: `progressive_elimination` reproduces a real organiser's system — a
@@ -85,7 +103,16 @@ hand-roll the comparison.
 - `assertCanAccessOrganizer(user, organizerId)` — anything a competition owns:
   fixtures, results, tournament settings, deleting a club.
 - `assertManagesTeam(user, team)` — anything a club owns: its name, crest,
-  colours, squad, images, and which of its players are registered where.
+  colours, squad, images.
+
+Entering a club in a competition is not on either list alone, because the record
+written is the competition's and the players named are the club's. It has two
+routes, `PUT /manager/tournaments/:t/squad` guarded by `assertManagesTeam` and
+`PUT /admin/tournaments/:t/squads/:teamId` guarded by
+`assertCanAccessOrganizer` — the same arrangement as the teamsheet, and for the
+same reason: most clubs have no manager, and a competition whose entries only a
+coach can fill in is one the organiser cannot run. The organiser's route ignores
+`squadsLocked`, which is the deadline they set for the managers.
 
 `assertCanAccessOrganizer` rejects a missing id on purpose. A team manager has no
 `organizerId`, so `user.organizerId !== thing.organizerId` written by hand is
@@ -171,6 +198,16 @@ no deadline: a teamsheet is filled in after the whistle as often as before it,
 and appearances exist nowhere else. `lineups` is therefore absent from the
 fields the match `PATCH` accepts, because that route writes the match from the
 browser's copy and would undo whichever manager saved last.
+
+**Who may be named is the registration plus whoever is already on the sheet.**
+`nameableInMatch` unions the two, because an entry can be narrowed after a match
+has been played and the appearances of everyone dropped exist nowhere but that
+teamsheet — without the union, the next save of that match, by somebody who only
+wanted to add a substitute, would file it without them. A requested player who
+belongs to the club but is not nameable is *refused*, not filtered: that is
+somebody looking at a screen that has gone stale, and silence would cost them
+the record. An id belonging to no club at all is still dropped quietly, since
+that is a hand-made request rather than a mistake anyone can make on screen.
 
 Writes that reach the database are recorded by `lib/audit.ts`. A failed audit
 write never fails the request that caused it.
