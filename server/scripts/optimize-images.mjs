@@ -21,7 +21,16 @@ import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand } fr
 import sharp from 'sharp'
 
 const BUCKET = process.env.S3_BUCKET ?? 'football-tournaments-images'
-const MAX_EDGE = Number(process.env.MAX_EDGE ?? 400)
+/**
+ * 400 was the old limit, chosen when every image in the bucket was a crest.
+ * A club's team photo and a player's photograph live under the same prefixes —
+ * `teams/<id>/…` beside the crest, `teams/<id>/players/…` — and there is
+ * nothing in the key to tell them apart, so running this at 400 would flatten
+ * every photograph in the bucket to the size of a badge. Re-encoding at quality
+ * 82 is where most of the saving comes from anyway; set MAX_EDGE yourself if a
+ * bucket of crests is all you are shrinking.
+ */
+const MAX_EDGE = Number(process.env.MAX_EDGE ?? 1200)
 const CACHE_CONTROL = 'public, max-age=31536000, immutable'
 const APPLY = process.argv.includes('--apply')
 

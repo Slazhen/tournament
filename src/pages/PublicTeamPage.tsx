@@ -171,26 +171,31 @@ export default function PublicTeamPage() {
               </div>
             </div>
             
-            {/* Team Photo - Larger and more prominent */}
-            <div 
-              className="w-[200px] h-[150px] rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity shadow-2xl" 
-              onClick={() => team.photo && setShowPhotoModal(true)}
-            >
-              {team.photo ? (
-                <img
-              loading="lazy"
-              decoding="async"
-                  src={team.photo}
-                  alt={`${team.name} photo`}
-                  className="w-full h-full object-cover rounded-xl"
-                />
-              ) : (
-                <div className="text-white opacity-60">Team Photo</div>
-              )}
-            </div>
           </div>
         </div>
       </section>
+
+      {/* The team photograph, at a size worth looking at.
+          It used to be a 200x150 stamp in the corner of the header, beside a
+          name set in 4xl — a photograph of eleven people printed smaller than
+          the crest above it. Clicking still opens it full screen. */}
+      {team.photo && (
+        <section className="w-full max-w-6xl">
+          <button
+            type="button"
+            onClick={() => setShowPhotoModal(true)}
+            title="Open the photo"
+            className="block w-full rounded-2xl overflow-hidden border border-white/10 hover:border-white/25 transition-colors"
+          >
+            <img
+              decoding="async"
+              src={team.photo}
+              alt={`${team.name} team photo`}
+              className="w-full max-h-[540px] object-cover"
+            />
+          </button>
+        </section>
+      )}
 
       {/* Social Media Links - Only show if not empty */}
       {(team.socialMedia?.facebook || team.socialMedia?.instagram || team.socialMedia?.youtube) && (

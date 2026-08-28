@@ -828,23 +828,21 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
             </>
           )}
 
-        </div>
-      </div>
 
-      {/* The team photograph, under everything and the width of the card. It
-          used to be a stamp beside the form fields, which is the size of a
-          thumbnail and not the size of a photograph of eleven people. */}
-      <div className="mt-5">
-        <span className="text-sm text-gray-300">Team photo</span>
-        <div className="mt-1">
-          <PhotoUploader
-            photo={team.photo}
-            alt={team.name}
-            label="team photo"
-            width="100%"
-            height={240}
-            onUpload={(file) => upload(file, 'photo')}
-          />
+          {/* Small here on purpose: this card is where the photograph is
+              changed, not where it is looked at. The public team page shows it
+              at full width. */}
+          <div>
+            <span className="text-sm text-gray-300">Team photo</span>
+            <div className="mt-1">
+              <PhotoUploader
+                photo={team.photo}
+                alt={team.name}
+                label="team photo"
+                onUpload={(file) => upload(file, 'photo')}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

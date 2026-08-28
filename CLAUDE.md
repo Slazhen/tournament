@@ -327,6 +327,12 @@ round: a row whose player cannot be found still counts, under "Former player".
 - A `PATCH` that would change nothing is refused. It is not free: the write
   rewrites the record from the copy read at the start of the same request, so
   it can undo a save somebody else made in between.
+- **A crest and a photograph are compressed differently.** `getCompressionOptions`
+  in `src/utils/imageCompression.ts` gave the team photo the crest's settings —
+  400px, 300 KB — and a squad photo at 400px is a picture in which nobody can be
+  told apart. Photographs go through `photo` (2000px) and `profile` (1200px);
+  `server/scripts/optimize-images.mjs` has the same trap, because a team photo
+  sits under the same key prefix as the crest.
 - **The table is sorted deterministically.** `sortTeamsByStandings` used to end
   in a coin toss, so a season nobody had played — where every club ties on every
   criterion — dealt out different positions on every render.

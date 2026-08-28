@@ -139,7 +139,16 @@ export function formatFileSize(bytes: number): string {
  * @param useCase - The use case for the image
  * @returns ImageCompressionOptions - Recommended options
  */
-export function getCompressionOptions(useCase: 'logo' | 'profile' | 'tournament' | 'team' | 'general'): ImageCompressionOptions {
+/**
+ * How hard to squeeze, by what the picture is for.
+ *
+ * A crest is a small circle and can take 400px; a photograph of a team is
+ * looked at, and at 400px nobody can tell which player is which. The two used
+ * the same settings, which is why the squad photo came out unreadable.
+ */
+export function getCompressionOptions(
+  useCase: 'logo' | 'profile' | 'tournament' | 'team' | 'photo' | 'general',
+): ImageCompressionOptions {
   switch (useCase) {
     case 'logo':
       return {
@@ -148,10 +157,19 @@ export function getCompressionOptions(useCase: 'logo' | 'profile' | 'tournament'
         quality: 0.9 // Higher quality for logos
       }
     case 'profile':
+      // A player's photograph, shown on their page at a size worth looking at.
       return {
-        maxSizeMB: 0.3, // 300KB max for profile images
-        maxWidthOrHeight: 500, // 500px max dimension
-        quality: 0.85 // Good quality for profiles
+        maxSizeMB: 0.8,
+        maxWidthOrHeight: 1200,
+        quality: 0.9
+      }
+    case 'photo':
+      // A team photograph: eleven faces across the frame, so the width has to
+      // carry them. Under 1.5 MB, which the upload limit (5 MB) allows easily.
+      return {
+        maxSizeMB: 1.5,
+        maxWidthOrHeight: 2000,
+        quality: 0.9
       }
     case 'tournament':
       return {
