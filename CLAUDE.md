@@ -270,6 +270,17 @@ Useful scripts, run with your own AWS credentials:
   as well as `template.yaml`. `lib/env.ts` reads its configuration at import time
   and throws when something is missing, so a forgotten one fails every test — and,
   if it reaches production, every request.
+- **A hand-written DynamoDB expression aliases every attribute name**, the way
+  `buildUpdate` already does for the ones it generates. `token` is one of
+  DynamoDB's reserved words, so `ConditionExpression: 'attribute_exists(token)'`
+  in `consumeInvite` was a ValidationException on every call — every attempt to
+  take up an invitation answered 500, and no club could change hands for as long
+  as it was deployed. The list is long and full of ordinary words: `name`,
+  `status`, `format`, `owner`, `value`, `date`, `size`, `token`. Nothing else in
+  the pipeline sees it — `tsc` does not look inside a string, the tests mock
+  `repos.js` above the DynamoDB call, and `smoke-init` only proves the bundle
+  loads — so `server/tests/expressions.test.ts` reads every literal `…Expression`
+  in `server/src` and fails on a bare reserved word.
 - **Both halves of `lineups` are optional**, and `src/types.ts` says so. The two
   sides are written separately, so a reader that dereferences `lineups.away`
   because `lineups` exists will throw on a match only one manager has named.
