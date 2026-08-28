@@ -101,7 +101,10 @@ export async function consumeInvite(token: string): Promise<TeamInvite | null> {
       new DeleteCommand({
         TableName: TABLES.INVITES,
         Key: { token },
-        ConditionExpression: 'attribute_exists(token)',
+        // `token` is a DynamoDB reserved word and cannot appear in a
+        // ConditionExpression by name.
+        ConditionExpression: 'attribute_exists(#token)',
+        ExpressionAttributeNames: { '#token': 'token' },
       }),
     )
   } catch (error) {
