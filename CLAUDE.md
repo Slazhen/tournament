@@ -82,6 +82,25 @@ overwritten, and does it again after the flag is written — a manager pressing
 rule reads as nobody. `squads` and `squadsStrict` are both refused by the
 tournament `PATCH` for this reason.
 
+**A player's date of birth is never public.** `toPublicTeam` in
+`routes/public.ts` strips it and puts an `age` in its place, worked out on the
+server, so no public page ever holds the date and none of them has to do the
+arithmetic. Whether the age goes out at all is the club's decision and not each
+player's — `team.hidePlayerAges`, set once for the squad — because a manager who
+does not want the squad's ages published does not want one of them published.
+Absent means shown, which is what every club did before the flag existed.
+
+`/public/players/:id` returns the player *from the projected squad*, not the
+stored record beside it: returning the stored one is exactly how `isPublic` was
+undone once before, and it would put the date of birth back on the wire the
+projection had just taken off.
+
+**A squad list can contain a hole.** `null` sits in `players` in records from
+the browser-side era, and `POST /admin/tournaments` still passes its body
+through, so one can be written today. Every public projection filters them out
+before it touches a player, because these routes fan out across clubs: a single
+null once meant 500 for every visitor of every page that named that club.
+
 **Formats live in `src/utils/formats.ts` and `fixtures.ts`.** One of them is not
 generic: `progressive_elimination` reproduces a real organiser's system — a
 single round robin, then survivors paired by table position each week with the
@@ -113,6 +132,12 @@ routes, `PUT /manager/tournaments/:t/squad` guarded by `assertManagesTeam` and
 same reason: most clubs have no manager, and a competition whose entries only a
 coach can fill in is one the organiser cannot run. The organiser's route ignores
 `squadsLocked`, which is the deadline they set for the managers.
+
+A club's own player screen, `/my-club/players/:id`, reads `/manager/overview`
+rather than a route of its own: the squad is already in that answer, and a
+second endpoint would be a second permission check to get wrong. The
+organiser's `/players/:id` is a different page reading the organiser's store,
+and a coach has no organizer to read.
 
 `assertCanAccessOrganizer` rejects a missing id on purpose. A team manager has no
 `organizerId`, so `user.organizerId !== thing.organizerId` written by hand is
@@ -255,7 +280,22 @@ round: a row whose player cannot be found still counts, under "Former player".
 - `PATCH` bodies are picked from a named list of fields, never passed through.
   The records are schemaless, so anything not named gets persisted.
 - Player edits touch one player, not the whole squad — two edits made seconds
-  apart used to overwrite each other.
+  apart used to overwrite each other. The body is picked from `PLAYER_FIELDS`
+  like every other `PATCH`; it used to be passed through.
+- **`null` clears a field, `undefined` does not exist.** `JSON.stringify` drops
+  an undefined value, so a key left out of the body means "unchanged" — which is
+  why emptying a shirt number on screen used to leave the old number in the
+  record. A player update sends `null` to clear, `teams.updatePlayer` deletes
+  the key rather than storing a null, and `addPlayer` drops them (a new player
+  has nothing to clear). `isPublic` is the exception: absent means public, so
+  the route refuses anything but a boolean there rather than letting a null
+  publish somebody who asked not to be.
+- A `PATCH` that would change nothing is refused. It is not free: the write
+  rewrites the record from the copy read at the start of the same request, so
+  it can undo a save somebody else made in between.
+- **The table is sorted deterministically.** `sortTeamsByStandings` used to end
+  in a coin toss, so a season nobody had played — where every club ties on every
+  criterion — dealt out different positions on every render.
 - Anything derived from match results treats a score as played only when it is
   `typeof === 'number'`. `!== undefined` counts an unplayed fixture and produces
   `NaN` in the table.

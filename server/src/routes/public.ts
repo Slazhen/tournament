@@ -28,10 +28,45 @@ function toPublicTeam(team: Team): Team {
   const { managerUserIds: _managers, managerLinkedAt: _linked, ...rest } = team
   if (!Array.isArray(team.players)) return rest as Team
 
-  const players = (team.players as Array<{ isPublic?: boolean }>).filter(
-    (player) => player?.isPublic !== false,
-  )
+  const showAges = team.hidePlayerAges !== true
+  const players = (team.players as Array<Record<string, unknown> | null>)
+    // A hole in the list. These records come from the browser-side era and
+    // from a tournament POST that passes its body through, so one exists; the
+    // projection below destructures, and a null there answered 500 to every
+    // visitor of every page that names this club.
+    .filter((player): player is Record<string, unknown> => Boolean(player) && typeof player === 'object')
+    .filter((player) => player.isPublic !== false)
+    .map((player) => {
+      // The date itself never leaves the club. What a visitor comes for is how
+      // old somebody is, and that is a number the server can work out — sending
+      // the date instead handed out a birthday nobody asked to publish, and put
+      // the arithmetic in every page that showed it.
+      const { dateOfBirth, ...withoutDate } = player
+      const age = showAges ? ageFrom(dateOfBirth) : undefined
+      return age === undefined ? withoutDate : { ...withoutDate, age }
+    })
+
   return { ...(rest as Team), players }
+}
+
+/**
+ * Someone's age today, or nothing at all.
+ *
+ * Dates in these records were typed by hand years apart and some of them are
+ * not dates; a page asked to render NaN says "NaN years old" rather than
+ * nothing, so an unusable value is dropped here instead.
+ */
+function ageFrom(dateOfBirth: unknown): number | undefined {
+  if (typeof dateOfBirth !== 'string' || !dateOfBirth) return undefined
+  const born = new Date(dateOfBirth)
+  if (Number.isNaN(born.getTime())) return undefined
+
+  const now = new Date()
+  let age = now.getUTCFullYear() - born.getUTCFullYear()
+  const months = now.getUTCMonth() - born.getUTCMonth()
+  if (months < 0 || (months === 0 && now.getUTCDate() < born.getUTCDate())) age--
+
+  return age >= 0 && age < 120 ? age : undefined
 }
 
 const toPublicTeams = (list: Team[]): Team[] => list.map(toPublicTeam)
@@ -222,7 +257,16 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
         (candidate) => candidate?.id === params.id && candidate.isPublic !== false,
       )
       if (player) {
-        return { player, ...(await buildTeamContext(team)) }
+        const context = await buildTeamContext(team)
+        // The player is taken from the projected squad rather than from the
+        // stored record: returning the stored one beside it is exactly how
+        // `isPublic` was undone once already, and it would put the date of
+        // birth back on the wire that the projection just took off.
+        const projected = (context.team.players as Array<{ id?: string }> | undefined)?.find(
+          (candidate) => candidate?.id === params.id,
+        )
+        if (!projected) throw notFound('Player not found')
+        return { player: projected, ...context }
       }
     }
 

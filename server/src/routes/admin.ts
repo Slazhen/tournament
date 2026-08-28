@@ -77,7 +77,78 @@ const TEAM_FIELDS = [
   'photo',
   'socialMedia',
   'establishedDate',
+  // Whether the public is told how old this club's players are. A club-wide
+  // decision, so it lives here and not on each player.
+  'hidePlayerAges',
 ] as const
+
+/**
+ * What may be written about one player.
+ *
+ * The PATCH below used to hand its body to the store untouched. These records
+ * are schemaless, so whatever anybody sent was persisted onto the player —
+ * the same hole `TEAM_FIELDS` and `MATCH_FIELDS` exist to close, and the one
+ * place in the API that still had it open.
+ *
+ * `null` means "clear this": JSON has no undefined, so a number a manager
+ * emptied on screen arrives as nothing at all and would keep its old value.
+ */
+const PLAYER_FIELDS = [
+  'firstName',
+  'lastName',
+  'number',
+  'position',
+  'dateOfBirth',
+  'heightCm',
+  'weightKg',
+  'preferredFoot',
+  'photo',
+  'socialMedia',
+  'isPublic',
+] as const
+
+const FEET = new Set(['left', 'right', 'both'])
+
+/**
+ * The player fields worth typing, checked.
+ *
+ * A height of "very tall" or a shirt number of NaN is a page that renders
+ * nonsense for as long as nobody notices, and these records have no schema to
+ * catch it later.
+ */
+function playerUpdates(body: Record<string, unknown>): Record<string, unknown> {
+  const updates = pick(body, PLAYER_FIELDS)
+
+  for (const field of ['number', 'heightCm', 'weightKg'] as const) {
+    const value = updates[field]
+    if (value === undefined || value === null) continue
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw badRequest(`${field} must be a number`)
+    }
+  }
+
+  const foot = updates.preferredFoot
+  if (foot !== undefined && foot !== null && !FEET.has(foot as string)) {
+    throw badRequest('preferredFoot must be left, right or both')
+  }
+
+  // `isPublic` is the one field where a wrong value publishes somebody who
+  // asked not to be published: absent means public, so a null — which clears
+  // the field — and a string "false" both read as "show this player". It is a
+  // boolean or it is not sent.
+  if (updates.isPublic !== undefined && typeof updates.isPublic !== 'boolean') {
+    throw badRequest('isPublic must be true or false')
+  }
+
+  return updates
+}
+
+/** The same list, with the clearing nulls dropped: a new player has nothing to clear. */
+function newPlayerFields(body: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(playerUpdates(body)).filter(([, value]) => value !== null),
+  )
+}
 
 // `players` is deliberately absent. A squad is a list, and a list written back
 // whole loses whatever a second writer put there in the meantime — the same
@@ -592,6 +663,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertManagesTeam(user, team)
 
     const player = await teams.addPlayer(params.id!, {
+      ...newPlayerFields(ctx.body),
       firstName: typeof ctx.body.firstName === 'string' ? ctx.body.firstName : '',
       lastName: typeof ctx.body.lastName === 'string' ? ctx.body.lastName : '',
       position: typeof ctx.body.position === 'string' ? ctx.body.position : '',
@@ -613,10 +685,14 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const team = await teams.getOrThrow(params.id!)
     assertManagesTeam(user, team)
 
-    const updates = { ...ctx.body }
-    // The id is the anchor for the targeted write; it is never a field to change.
-    delete updates.id
-    delete updates.createdAtISO
+    // Named fields only: the id is the anchor for the targeted write and
+    // never a field to change, and the record is schemaless, so anything not
+    // on the list would be persisted onto the player by whoever asked.
+    const updates = playerUpdates(ctx.body)
+    // A write that changes nothing still rewrites the element from the copy
+    // read at the start of this request, which is how a save made a moment ago
+    // by somebody else disappears.
+    if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
 
     const player = await teams.updatePlayer(params.id!, params.playerId!, updates)
     await record(user, {

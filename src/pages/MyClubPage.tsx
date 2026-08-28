@@ -16,6 +16,8 @@ import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
 import { hasSquadEntry, registeredPlayers } from '../utils/squads'
 import Trophy from '../components/Trophy'
 import LogoUploader from '../components/LogoUploader'
+import MiniTable from '../components/MiniTable'
+import PhotoUploader from '../components/PhotoUploader'
 import {
   IconCalendar,
   IconChart,
@@ -29,6 +31,7 @@ import {
   IconShield,
   IconTrash,
   IconTrophy,
+  IconUser,
   IconUsers,
 } from '../components/icons'
 
@@ -213,34 +216,20 @@ function ClubCard({
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-3 inline-flex items-center gap-2">
             <IconChart size={15} /> In the table
           </h2>
-          {standings.length === 0 ? (
+          {playing.length === 0 ? (
             <p className="opacity-60 text-sm">Not in a competition yet.</p>
           ) : (
-            <ul className="space-y-3">
-              {standings.map(({ tournament, position, of, points }) => (
-                <li key={tournament.id} className="flex items-center gap-3">
-                  <span
-                    className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center font-bold ${
-                      position === 1
-                        ? 'bg-yellow-500 text-black'
-                        : position === 2
-                          ? 'bg-gray-300 text-black'
-                          : position === 3
-                            ? 'bg-orange-500 text-black'
-                            : 'bg-white/10'
-                    }`}
-                  >
-                    {position}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{seriesName(tournament)}</div>
-                    <div className="text-xs text-gray-300">
-                      {seasonLabel(tournament)} · {position} of {of} · {points} pts
-                    </div>
-                  </div>
-                </li>
+            <div className="space-y-3">
+              {playing.map((tournament) => (
+                <MiniTable
+                  key={tournament.id}
+                  tournament={tournament}
+                  teamId={team.id}
+                  teamNames={{ ...teamNames, [team.id]: team.name }}
+                  organizerName={organizerNames[tournament.organizerId]}
+                />
               ))}
-            </ul>
+            </div>
           )}
         </div>
 
@@ -576,6 +565,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
   const [facebook, setFacebook] = useState(team.socialMedia?.facebook ?? '')
   const [instagram, setInstagram] = useState(team.socialMedia?.instagram ?? '')
   const [established, setEstablished] = useState(team.establishedDate ?? '')
+  const [hideAges, setHideAges] = useState(team.hidePlayerAges === true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -587,6 +577,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
     setFacebook(team.socialMedia?.facebook ?? '')
     setInstagram(team.socialMedia?.instagram ?? '')
     setEstablished(team.establishedDate ?? '')
+    setHideAges(team.hidePlayerAges === true)
   }, [team])
 
   const save = async () => {
@@ -604,6 +595,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
         // undefined, so clearing a date would silently keep the old one.
         establishedDate: established,
         socialMedia: { facebook: facebook.trim(), instagram: instagram.trim() },
+        hidePlayerAges: hideAges,
       })
       await onReload()
       setEditing(false)
@@ -724,6 +716,25 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
                 </label>
               </div>
 
+              {/* Ages are the club's call, not each player's: a manager who
+                  does not want the squad's ages published does not want any
+                  of them published. The date itself is never public either
+                  way — the site works out the age from it. */}
+              <label className="flex items-start gap-2 text-sm text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={!hideAges}
+                  onChange={(event) => setHideAges(!event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Show players' ages on the public pages
+                  <span className="block text-xs text-gray-500">
+                    Dates of birth are never published — only how old somebody is.
+                  </span>
+                </span>
+              </label>
+
               {error && <p className="text-sm text-red-300">{error}</p>}
 
               <div className="flex gap-2">
@@ -777,19 +788,12 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
 
           <div>
             <span className="text-sm text-gray-300">Team photo</span>
-            <div className="mt-1 flex items-center gap-3">
-              {team.photo && (
-                <img
-                  src={team.photo}
-                  alt={`${team.name}`}
-                  className="w-28 h-16 object-cover rounded-lg border border-white/15"
-                />
-              )}
-              <LogoUploader
-                currentLogo={undefined}
-                size={64}
-                compressionType="team"
-                onLogoUpload={(file) => upload(file, 'photo')}
+            <div className="mt-1">
+              <PhotoUploader
+                photo={team.photo}
+                alt={team.name}
+                label="team photo"
+                onUpload={(file) => upload(file, 'photo')}
               />
             </div>
           </div>
@@ -1276,12 +1280,28 @@ function Squad({ team, onReload }: { team: Team; onReload: () => Promise<void> }
                 <span className="w-8 text-center text-sm opacity-60 shrink-0">
                   {player.number ?? '—'}
                 </span>
-                <span className="flex-1 min-w-0 truncate">
+                {player.photo ? (
+                  <img
+                    loading="lazy"
+                    decoding="async"
+                    src={player.photo}
+                    alt=""
+                    className="w-7 h-7 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <span className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 opacity-50">
+                    <IconUser size={13} />
+                  </span>
+                )}
+                <Link
+                  to={`/my-club/players/${player.id}`}
+                  className="flex-1 min-w-0 truncate hover:underline"
+                >
                   {player.firstName} {player.lastName}
                   {player.position && (
                     <span className="text-xs text-gray-400 ml-2">{player.position}</span>
                   )}
-                </span>
+                </Link>
                 <button
                   onClick={() => setEditingId(player.id)}
                   className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/10"
@@ -1368,7 +1388,9 @@ function PlayerEditor({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         position: position.trim(),
-        number: number ? Number(number) : undefined,
+        // `null`, not undefined: JSON drops undefined, so a number cleared here
+        // would come back the next time the page loaded.
+        number: number ? Number(number) : null,
       })
       await onDone()
     } finally {

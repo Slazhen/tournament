@@ -144,21 +144,33 @@ export default function PublicPlayerPage() {
                   <div className="font-semibold">{player.position}</div>
                 </div>
               )}
-              {player.dateOfBirth && (
+              {/* An age, worked out by the API. The date of birth is never
+                  sent here, and a club that has turned ages off sends no age
+                  either — so there is nothing to print rather than "N/A". */}
+              {typeof player.age === 'number' && (
                 <div>
-                  <span className="opacity-70">Date of Birth:</span>
-                  <div className="font-semibold">{new Date(player.dateOfBirth).toLocaleDateString()}</div>
+                  <span className="opacity-70">Age:</span>
+                  <div className="font-semibold">{player.age}</div>
                 </div>
               )}
-              <div>
-                <span className="opacity-70">Age:</span>
-                <div className="font-semibold">
-                  {player.dateOfBirth ? 
-                    Math.floor((Date.now() - new Date(player.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365.25)) : 
-                    'N/A'
-                  }
+              {player.heightCm && (
+                <div>
+                  <span className="opacity-70">Height:</span>
+                  <div className="font-semibold">{player.heightCm} cm</div>
                 </div>
-              </div>
+              )}
+              {player.weightKg && (
+                <div>
+                  <span className="opacity-70">Weight:</span>
+                  <div className="font-semibold">{player.weightKg} kg</div>
+                </div>
+              )}
+              {player.preferredFoot && (
+                <div>
+                  <span className="opacity-70">Stronger foot:</span>
+                  <div className="font-semibold capitalize">{player.preferredFoot}</div>
+                </div>
+              )}
             </div>
           </div>
           

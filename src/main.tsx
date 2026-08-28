@@ -61,6 +61,7 @@ const ResetPasswordPage = lazyPage(() => import('./pages/ResetPasswordPage.tsx')
 const AuditLogPage = lazyPage(() => import('./pages/AuditLogPage.tsx'))
 const ClaimTeamPage = lazyPage(() => import('./pages/ClaimTeamPage.tsx'))
 const MyClubPage = lazyPage(() => import('./pages/MyClubPage.tsx'))
+const ClubPlayerPage = lazyPage(() => import('./pages/ClubPlayerPage.tsx'))
 const OrganizersPage = lazyPage(() => import('./pages/OrganizersPage.tsx'))
 const TournamentsPage = lazyPage(() => import('./pages/TournamentsPage.tsx'))
 const CreateTournamentPage = lazyPage(() => import('./pages/CreateTournamentPage.tsx'))
@@ -93,6 +94,17 @@ const router = createBrowserRouter([
       // An invitation to run a club: opened from a link somebody was sent.
       { path: 'join', element: <ClaimTeamPage /> },
       { path: 'my-club', element: <MyClubPage /> },
+      // A player of a club this account runs. Separate from /players/:id, which
+      // is the organiser's screen and reads the organiser's store; this one
+      // reads /manager/overview, so a coach with no organizer can open it.
+      {
+        path: 'my-club/players/:playerId',
+        element: (
+          <ProtectedRoute>
+            <ClubPlayerPage />
+          </ProtectedRoute>
+        ),
+      },
       { path: 'reset-password', element: <ResetPasswordPage /> },
       {
         path: 'admin/changes',

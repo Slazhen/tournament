@@ -1,5 +1,5 @@
 import { api, isSignedIn } from './api'
-import type { Team, Tournament, Organizer, Match, Player } from '../types'
+import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate } from '../types'
 
 /**
  * Data access for the whole app.
@@ -288,7 +288,7 @@ export const playerService = {
     return api.post<Player>(`/admin/teams/${encodeURIComponent(teamId)}/players`, player)
   },
 
-  async update(teamId: string, playerId: string, updates: Partial<Player>): Promise<Player> {
+  async update(teamId: string, playerId: string, updates: PlayerUpdate): Promise<Player> {
     return api.patch<Player>(
       `/admin/teams/${encodeURIComponent(teamId)}/players/${encodeURIComponent(playerId)}`,
       updates,

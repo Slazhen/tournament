@@ -212,7 +212,9 @@ export default function PlayerPage() {
                   <InlineInput
                     type="number"
                     value={player.number || ''}
-                    onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : undefined })}
+                    // `null`, not undefined: JSON drops undefined, so clearing
+                    // the number used to leave the old one in place.
+                    onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : null })}
                     className="w-16 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
                     placeholder="#"
                   />
@@ -228,6 +230,47 @@ export default function PlayerPage() {
                     className="px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
                     placeholder="Position"
                   />
+                </div>
+              </div>
+              <div>
+                <span className="opacity-70">Height (cm):</span>
+                <div className="flex items-center gap-2">
+                  <InlineInput
+                    type="number"
+                    value={player.heightCm || ''}
+                    onCommit={(value) => updatePlayer(player.id, { heightCm: value ? Number(value) : null })}
+                    className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
+                    placeholder="cm"
+                  />
+                </div>
+              </div>
+              <div>
+                <span className="opacity-70">Weight (kg):</span>
+                <div className="flex items-center gap-2">
+                  <InlineInput
+                    type="number"
+                    value={player.weightKg || ''}
+                    onCommit={(value) => updatePlayer(player.id, { weightKg: value ? Number(value) : null })}
+                    className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
+                    placeholder="kg"
+                  />
+                </div>
+              </div>
+              <div>
+                <span className="opacity-70">Stronger foot:</span>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={player.preferredFoot || ''}
+                    onChange={(event) =>
+                      updatePlayer(player.id, { preferredFoot: event.target.value || null })
+                    }
+                    className="px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-xs"
+                  >
+                    <option value="" className="bg-gray-900">Not said</option>
+                    <option value="right" className="bg-gray-900">Right</option>
+                    <option value="left" className="bg-gray-900">Left</option>
+                    <option value="both" className="bg-gray-900">Both</option>
+                  </select>
                 </div>
               </div>
               <div>

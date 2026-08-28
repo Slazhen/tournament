@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import Logo from './Logo'
-import { IconArrowLeft } from './icons'
+import { useAuth } from '../contexts/AuthContext'
+import { IconArrowLeft, IconShield } from './icons'
 
 /**
  * The way back.
@@ -11,12 +12,28 @@ import { IconArrowLeft } from './icons'
  * even was. The logo goes home; anything else here would compete with the page.
  */
 export default function PublicHeader({ back }: { back?: { to: string; label: string } }) {
+  // A manager who followed a table out of their own club's page had no way
+  // back into it: these pages carry no admin bar, so the only route was the
+  // browser's back button or typing the address.
+  const { user } = useAuth()
+  const runsAClub = (user?.teamIds?.length ?? 0) > 0
+
   return (
     <header className="relative z-20">
       <div className="container mx-auto px-4 h-14 flex items-center justify-between gap-4">
         <Link to="/" className="shrink-0 hover:opacity-80 transition-opacity">
           <Logo size={26} />
         </Link>
+
+        <div className="flex items-center gap-4">
+        {runsAClub && (
+          <Link
+            to="/my-club"
+            className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-colors"
+          >
+            <IconShield size={14} /> My club
+          </Link>
+        )}
 
         {back ? (
           <Link
@@ -33,6 +50,7 @@ export default function PublicHeader({ back }: { back?: { to: string; label: str
             All leagues
           </Link>
         )}
+        </div>
       </div>
     </header>
   )

@@ -41,6 +41,29 @@ const organizerUser: AuthUser = {
 
 const otherTeam = { id: 'team-other', name: 'Rivals', organizerId: 'org-2' }
 
+/**
+ * A club as the public route finds it: someone with a date of birth, someone
+ * marked private, and a hole in the list of the kind the browser-side era left
+ * behind. The projection has to survive all three.
+ */
+const bornInJanuary = `${new Date().getUTCFullYear() - 25}-01-01`
+
+const publicTeam = {
+  id: 'team-public',
+  name: 'Public FC',
+  organizerId: 'org-1',
+  managerUserIds: ['u-9'],
+  managerLinkedAt: { 'u-9': '2026-01-01T00:00:00.000Z' },
+  players: [
+    { id: 'p-open', firstName: 'Open', lastName: 'Player', dateOfBirth: bornInJanuary },
+    { id: 'p-hidden', firstName: 'Hidden', lastName: 'Player', isPublic: false },
+    null,
+  ],
+}
+
+/** The same club, with the age switched off. */
+const shyTeam = { ...publicTeam, id: 'team-shy', hidePlayerAges: true }
+
 const ownTeam = {
   id: 'team-own',
   name: 'FC Volna',
@@ -58,7 +81,15 @@ vi.mock('../src/repos.js', async (importOriginal) => {
     organizers: { list: vi.fn(async () => []) },
     teams: {
       get: vi.fn(async (id: string) =>
-        id === 'team-other' ? otherTeam : id === 'team-own' ? ownTeam : null,
+        id === 'team-other'
+          ? otherTeam
+          : id === 'team-own'
+            ? ownTeam
+            : id === 'team-public'
+              ? publicTeam
+              : id === 'team-shy'
+                ? shyTeam
+                : null,
       ),
       getOrThrow: vi.fn(async (id: string) => {
         if (id === 'team-other') return otherTeam
@@ -292,6 +323,55 @@ describe('player editing', () => {
     expect(repos.teams.removePlayer).toHaveBeenCalledWith('team-own', 'p-2')
   })
 
+  it('refuses a change to nothing at all', async () => {
+    const response = await request('PATCH', '/admin/teams/team-own/players/p-1', {
+      token: 'good-token',
+      body: { somethingNobodyHasInvented: true },
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
+  })
+
+  // Absent means public, so a null — which clears the field — and a string
+  // "false" both end up showing somebody who asked not to be shown.
+  it('refuses anything but a boolean for isPublic', async () => {
+    for (const value of [null, 'false', 0]) {
+      const response = await request('PATCH', '/admin/teams/team-own/players/p-1', {
+        token: 'good-token',
+        body: { isPublic: value },
+      })
+      expect(response.statusCode).toBe(400)
+    }
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
+  })
+
+  it('refuses a height that is not a number and a foot that is not a foot', async () => {
+    const height = await request('PATCH', '/admin/teams/team-own/players/p-1', {
+      token: 'good-token',
+      body: { heightCm: 'very tall' },
+    })
+    expect(height.statusCode).toBe(400)
+
+    const foot = await request('PATCH', '/admin/teams/team-own/players/p-1', {
+      token: 'good-token',
+      body: { preferredFoot: 'either' },
+    })
+    expect(foot.statusCode).toBe(400)
+  })
+
+  it('creates a player without storing the nulls that mean "clear this"', async () => {
+    await request('POST', '/admin/teams/team-own/players', {
+      token: 'good-token',
+      body: { firstName: 'New', lastName: 'Player', heightCm: null, preferredFoot: 'left' },
+    })
+
+    const [, created] = (repos.teams.addPlayer as unknown as { mock: { calls: any[][] } }).mock
+      .calls[0]
+    expect(created.preferredFoot).toBe('left')
+    expect('heightCm' in created).toBe(false)
+  })
+
   it('refuses player edits with no token', async () => {
     const response = await request('PATCH', '/admin/teams/team-own/players/p-1', {
       body: { lastName: 'Nope' },
@@ -330,5 +410,40 @@ describe('CORS and errors', () => {
       requestContext: { http: { method: 'POST', sourceIp: '198.51.100.7' } },
     } as unknown as APIGatewayProxyEventV2)
     expect((response as { statusCode: number }).statusCode).toBe(400)
+  })
+})
+
+describe('what the public is told about a squad', () => {
+  it('sends an age and never the date of birth', async () => {
+    const response = await request('GET', '/public/teams/team-public')
+    const team = parse(response.body)
+
+    expect(response.statusCode).toBe(200)
+    const player = team.players.find((one: any) => one.id === 'p-open')
+    expect(player.age).toBe(25)
+    expect(player.dateOfBirth).toBeUndefined()
+  })
+
+  it('sends no age at all for a club that has turned them off', async () => {
+    const team = parse((await request('GET', '/public/teams/team-shy')).body)
+    const player = team.players.find((one: any) => one.id === 'p-open')
+
+    expect(player.age).toBeUndefined()
+    expect(player.dateOfBirth).toBeUndefined()
+  })
+
+  it('still leaves out a private player and who runs the club', async () => {
+    const team = parse((await request('GET', '/public/teams/team-public')).body)
+
+    expect(team.players.some((one: any) => one?.id === 'p-hidden')).toBe(false)
+    expect(team.managerUserIds).toBeUndefined()
+    expect(team.managerLinkedAt).toBeUndefined()
+  })
+
+  // One bad row used to answer 500 to every visitor of every page naming this club.
+  it('survives a hole in the squad', async () => {
+    const response = await request('GET', '/public/teams/team-public')
+    expect(response.statusCode).toBe(200)
+    expect(parse(response.body).players.every(Boolean)).toBe(true)
   })
 })

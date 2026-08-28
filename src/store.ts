@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Team, Tournament, Match, Organizer, Player, AppSettings } from './types'
+import type { Team, Tournament, Match, Organizer, Player, PlayerUpdate, AppSettings } from './types'
 import { generateGroupsWithDivisionsSchedule } from './utils/tournament'
 import { advanceKnockoutWinners } from './utils/schedule'
 import { generateFixtures } from './utils/fixtures'
@@ -57,7 +57,7 @@ type AppStore = {
   deleteTeam: (teamId: string) => Promise<void>
 
   addPlayer: (teamId: string, player?: Partial<Player>) => Promise<Player | null>
-  updatePlayer: (teamId: string, playerId: string, updates: Partial<Player>) => Promise<void>
+  updatePlayer: (teamId: string, playerId: string, updates: PlayerUpdate) => Promise<void>
   removePlayer: (teamId: string, playerId: string) => Promise<void>
   
   createTournament: (
@@ -335,7 +335,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
-  updatePlayer: async (teamId: string, playerId: string, updates: Partial<Player>) => {
+  updatePlayer: async (teamId: string, playerId: string, updates: PlayerUpdate) => {
+    // The same rule the API applies: a null clears the field rather than being
+    // stored, so the copy on screen matches what was saved.
+    const applied = (player: Player): Player => {
+      const next = { ...player, ...updates } as Record<string, unknown>
+      for (const [field, value] of Object.entries(updates)) {
+        if (value === null) delete next[field]
+      }
+      return next as Player
+    }
+
     const previous = get().teams.find(t => t.id === teamId)?.players?.find(p => p.id === playerId)
 
     // Show the change straight away, then confirm it with the server.
@@ -344,9 +354,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         team.id === teamId
           ? {
               ...team,
-              players: (team.players || []).map(p =>
-                p.id === playerId ? { ...p, ...updates } : p
-              )
+              players: (team.players || []).map(p => (p.id === playerId ? applied(p) : p))
             }
           : team
       )

@@ -793,8 +793,12 @@ export function sortTeamsByStandings(standings: TeamStanding[]): TeamStanding[] 
     // 6. Fewer disciplinary points (ascending)
     if (a.disciplinaryPoints !== b.disciplinaryPoints) return a.disciplinaryPoints - b.disciplinaryPoints
     
-    // 7. Coin toss (random)
-    return Math.random() - 0.5
+    // 7. Nothing left to separate them. The order has to come from somewhere,
+    // and it has to be the same order every time: a random tiebreak reshuffled
+    // the table on every render, so a season nobody had played yet — where
+    // every club ties on every criterion — dealt out a different set of
+    // positions each time the page drew itself.
+    return a.teamId < b.teamId ? -1 : a.teamId > b.teamId ? 1 : 0
   }).map((standing, index) => ({
     ...standing,
     position: index + 1

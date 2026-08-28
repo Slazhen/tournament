@@ -504,6 +504,25 @@ export default function TeamPage() {
                 <span className="opacity-70">Created:</span>
                 <div className="font-semibold">{new Date(team.createdAtISO).toLocaleDateString()}</div>
               </div>
+              <div>
+                {/* A club-wide choice rather than a per-player one: a club that
+                    does not publish ages does not publish any of them. The date
+                    of birth itself is never public either way. */}
+                <span className="opacity-70">Ages public:</span>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={team.hidePlayerAges !== true}
+                    onChange={(event) =>
+                      updateTeam(team.id, { hidePlayerAges: !event.target.checked })
+                    }
+                    className="w-4 h-4 rounded border border-white/20"
+                  />
+                  <span className="text-xs">
+                    {team.hidePlayerAges === true ? 'Hidden' : 'Shown'}
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
           
@@ -744,7 +763,7 @@ export default function TeamPage() {
                       <InlineInput
                         type="number"
                         value={player.number || ''}
-                        onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : undefined })}
+                        onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : null })}
                         className="w-full px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                         placeholder="#"
                       />

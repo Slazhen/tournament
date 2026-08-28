@@ -11,6 +11,7 @@ import {
   IconClose,
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
+import MiniTable from '../components/MiniTable'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
 
 export default function PublicTeamPage() {
@@ -79,6 +80,12 @@ export default function PublicTeamPage() {
   // club plays in. Appearances come from the lineups, goals and assists from
   // the goal events — see utils/matches.
   const records = playerRecords(teamTournaments.flatMap((tournament) => allMatches(tournament)))
+
+  // The context carries every club those competitions mention, which is what a
+  // table needs to name the rows above and below this one.
+  const teamNames: Record<string, string> = Object.fromEntries(
+    [...teams, team].map((one) => [one.id, one.name]),
+  )
 
   // Create dynamic gradient based on team colors
   const getTeamGradient = () => {
@@ -214,6 +221,25 @@ export default function PublicTeamPage() {
         </section>
       )}
 
+      {/* Where the club stands in each competition it is in. The page showed
+          every result and never once said what they added up to. */}
+      {teamTournaments.length > 0 && (
+        <section className="glass rounded-xl p-6 w-full max-w-6xl">
+          <h2 className="text-xl font-semibold mb-4 text-center">In the table</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {teamTournaments.map((tournament) => (
+              <MiniTable
+                key={tournament.id}
+                tournament={tournament}
+                teamId={team.id}
+                teamNames={teamNames}
+                to={`/public/tournaments/${tournament.id}`}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Players Section - Only show if players exist */}
       {team.players && team.players.length > 0 && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
@@ -230,6 +256,7 @@ export default function PublicTeamPage() {
                   <th className="py-3 px-4 text-left">Player</th>
                   <th className="py-3 px-4 text-left">Position</th>
                   <th className="py-3 px-4 text-left">Number</th>
+                  <th className="py-3 px-4 text-left">Age</th>
                   <th className="py-3 px-4 text-center">Played</th>
                   <th className="py-3 px-4 text-center">Goals</th>
                   <th className="py-3 px-4 text-center">Assists</th>
@@ -270,6 +297,11 @@ export default function PublicTeamPage() {
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-sm">{player.number || '—'}</span>
+                    </td>
+                    {/* The API sends an age, never a date of birth, and sends
+                        nothing at all for a club that has turned ages off. */}
+                    <td className="py-3 px-4">
+                      <span className="text-sm">{player.age ?? '—'}</span>
                     </td>
                     <td className="py-3 px-4 text-center text-sm">{record?.played ?? 0}</td>
                     <td className="py-3 px-4 text-center text-sm font-semibold">

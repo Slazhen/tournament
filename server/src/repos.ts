@@ -175,6 +175,14 @@ export const teams = {
     if (index === -1) throw notFound('Player not found in this team')
 
     const merged = { ...players[index], ...updates, id: playerId }
+    // JSON has no undefined, so a field a manager emptied on screen cannot be
+    // sent as "absent" — it would simply keep its old value. `null` is how the
+    // client says "clear this", and it is dropped rather than stored, so the
+    // record never grows a key whose value means "no value".
+    const fields = merged as Record<string, unknown>
+    for (const [field, value] of Object.entries(updates)) {
+      if (value === null) delete fields[field]
+    }
 
     await ddb.send(
       new UpdateCommand({

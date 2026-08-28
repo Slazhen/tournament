@@ -11,9 +11,23 @@ export type Player = {
   id: string
   firstName: string
   lastName: string
+  /**
+   * Never sent to a visitor. Public routes work out `age` from it and send
+   * that instead, so the exact date stays inside the club.
+   */
   dateOfBirth?: string // ISO date string
+  /**
+   * How old the player is, worked out by the API for public pages.
+   *
+   * Absent rather than zero when there is nothing to show — no date recorded,
+   * or a club that has turned ages off.
+   */
+  age?: number
   number?: number
   position?: string
+  heightCm?: number
+  weightKg?: number
+  preferredFoot?: 'left' | 'right' | 'both'
   photo?: string
   socialMedia?: {
     facebook?: string
@@ -21,6 +35,18 @@ export type Player = {
   }
   isPublic: boolean // Whether to show on public pages
   createdAtISO: string
+}
+
+/**
+ * A change to one player.
+ *
+ * `null` means "clear this field", and it has to: JSON has no undefined, so a
+ * key left out of the body means "unchanged" — which is why emptying a shirt
+ * number on screen used to leave the old number in the record. The API drops a
+ * null rather than storing it, and so does the optimistic copy in the store.
+ */
+export type PlayerUpdate = {
+  [K in keyof Player]?: Player[K] | null
 }
 
 export type Team = {
@@ -37,6 +63,14 @@ export type Team = {
   players: Player[]
   createdAtISO: string
   establishedDate?: string // ISO date string for when team was established
+  /**
+   * Whether the public is told how old this club's players are.
+   *
+   * The club's decision rather than each player's: a manager sets it once for
+   * the squad. Absent means ages are shown, which is what every club did
+   * before the flag existed.
+   */
+  hidePlayerAges?: boolean
 }
 
 export type Match = {
