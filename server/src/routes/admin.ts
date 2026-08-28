@@ -193,6 +193,7 @@ const MATCH_FIELDS = [
   'status',
   'statistics',
   'goals',
+  'cards',
   'preview',
   'report',
   'videoUrl',

@@ -12,10 +12,13 @@ import InlineTextarea from '../components/InlineTextarea'
 import {
   IconBall,
   IconArrowLeft,
+  IconCard,
   IconClipboard,
 } from '../components/icons'
 import { playersForPicking, registeredPlayers } from '../utils/squads'
 import { youtubeEmbedUrl } from '../utils/video'
+import { cardLabel, cardTotals, statValue } from '../utils/matches'
+import type { CardType } from '../utils/matches'
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
@@ -118,6 +121,27 @@ export default function MatchPage() {
     updateMatch({ goals })
   }
 
+  const createCard = (team: 'home' | 'away') => {
+    const cards = [
+      ...(match.cards ?? []),
+      { id: uid(), team, playerId: '', minute: 0, type: 'yellow' as CardType },
+    ]
+    updateMatch({ cards })
+  }
+
+  const updateCard = (
+    cardId: string,
+    updates: Partial<{ minute: number; playerId: string; type: CardType }>,
+  ) => {
+    updateMatch({
+      cards: (match.cards ?? []).map((card) => (card.id === cardId ? { ...card, ...updates } : card)),
+    })
+  }
+
+  const deleteCard = (cardId: string) => {
+    updateMatch({ cards: (match.cards ?? []).filter((card) => card.id !== cardId) })
+  }
+
   const deleteGoal = (goalId: string) => {
     const goals = match.goals?.filter(g => g.id !== goalId) || []
     updateMatch({ goals })
@@ -149,6 +173,9 @@ export default function MatchPage() {
   }
 
   const matchStatus = getMatchStatus()
+
+  // Counted from the bookings, which are the only place they are written now.
+  const cardsShown = cardTotals(match)
 
   return (
     <div className="grid gap-6 place-items-center">
@@ -334,14 +361,20 @@ export default function MatchPage() {
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Goals', home: match.homeGoals || 0, away: match.awayGoals || 0 },
-                    { label: 'Shots', home: match.statistics?.home.shots || 0, away: match.statistics?.away.shots || 0 },
-                    { label: 'Shots on Target', home: match.statistics?.home.shotsOnTarget || 0, away: match.statistics?.away.shotsOnTarget || 0 },
-                    { label: 'Corners', home: match.statistics?.home.corners || 0, away: match.statistics?.away.corners || 0 },
-                    { label: 'Fouls', home: match.statistics?.home.fouls || 0, away: match.statistics?.away.fouls || 0 },
-                    { label: 'Yellow Cards', home: match.statistics?.home.yellowCards || 0, away: match.statistics?.away.yellowCards || 0 },
-                    { label: 'Red Cards', home: match.statistics?.home.redCards || 0, away: match.statistics?.away.redCards || 0 },
-                    { label: 'Possession', home: `${match.statistics?.home.possession || 50}%`, away: `${match.statistics?.away.possession || 50}%` }
+                    { label: 'Goals', home: statValue(match.homeGoals), away: statValue(match.awayGoals) },
+                    { label: 'Shots', home: statValue(match.statistics?.home.shots), away: statValue(match.statistics?.away.shots) },
+                    { label: 'Shots on Target', home: statValue(match.statistics?.home.shotsOnTarget), away: statValue(match.statistics?.away.shotsOnTarget) },
+                    { label: 'Corners', home: statValue(match.statistics?.home.corners), away: statValue(match.statistics?.away.corners) },
+                    { label: 'Fouls', home: statValue(match.statistics?.home.fouls), away: statValue(match.statistics?.away.fouls) },
+                    { label: 'Yellow Cards', home: cardsShown.home.yellow, away: cardsShown.away.yellow },
+                    { label: 'Red Cards', home: cardsShown.home.red, away: cardsShown.away.red },
+                    // The percent sign is attached here rather than in the cell,
+                    // so a possession nobody entered reads as a dash and not "-%".
+                    {
+                      label: 'Possession',
+                      home: typeof match.statistics?.home.possession === 'number' ? `${match.statistics.home.possession}%` : statValue(undefined),
+                      away: typeof match.statistics?.away.possession === 'number' ? `${match.statistics.away.possession}%` : statValue(undefined),
+                    }
                   ].map(stat => (
                     <tr key={stat.label} className="border-b border-white/10">
                       <td className="py-3 px-4 font-medium">{stat.label}</td>
@@ -415,8 +448,6 @@ export default function MatchPage() {
                     { label: 'Shots on Target', home: 'shotsOnTarget', away: 'shotsOnTarget' },
                     { label: 'Corners', home: 'corners', away: 'corners' },
                     { label: 'Fouls', home: 'fouls', away: 'fouls' },
-                    { label: 'Yellow Cards', home: 'yellowCards', away: 'yellowCards' },
-                    { label: 'Red Cards', home: 'redCards', away: 'redCards' },
                     { label: 'Possession', home: 'possession', away: 'possession', suffix: '%' }
                   ].map(stat => (
                     <tr key={stat.label} className="border-b border-white/10">
@@ -426,8 +457,8 @@ export default function MatchPage() {
                           type="number"
                           min="0"
                           value={stat.label === 'Goals' 
-                            ? (match.homeGoals || '')
-                            : (match.statistics?.home[stat.home as keyof typeof match.statistics.home] || '')
+                            ? (match.homeGoals ?? '')
+                            : (match.statistics?.home[stat.home as keyof typeof match.statistics.home] ?? '')
                           }
                           onChange={(e) => {
                             const value = e.target.value ? Number(e.target.value) : undefined
@@ -451,8 +482,8 @@ export default function MatchPage() {
                           type="number"
                           min="0"
                           value={stat.label === 'Goals' 
-                            ? (match.awayGoals || '')
-                            : (match.statistics?.away[stat.away as keyof typeof match.statistics.away] || '')
+                            ? (match.awayGoals ?? '')
+                            : (match.statistics?.away[stat.away as keyof typeof match.statistics.away] ?? '')
                           }
                           onChange={(e) => {
                             const value = e.target.value ? Number(e.target.value) : undefined
@@ -473,9 +504,31 @@ export default function MatchPage() {
                       </td>
                     </tr>
                   ))}
+                  {/* Not typed here. Both numbers are counted from the bookings
+                      on the Goals & Events tab, because a total stored beside
+                      the events it comes from is a second answer waiting to
+                      disagree with the first. */}
+                  {[
+                    { label: 'Yellow Cards', home: cardsShown.home.yellow, away: cardsShown.away.yellow },
+                    { label: 'Red Cards', home: cardsShown.home.red, away: cardsShown.away.red },
+                  ].map(stat => (
+                    <tr key={stat.label} className="border-b border-white/10">
+                      <td className="py-3 px-4 font-medium">{stat.label}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="text-blue-400 font-bold">{stat.home}</span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="text-red-400 font-bold">{stat.away}</span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
+            <p className="text-sm opacity-70">
+              Yellow and red cards are counted from the bookings recorded on the Goals and events
+              tab. A second yellow counts as both.
+            </p>
           </div>
         )}
 
@@ -658,6 +711,140 @@ export default function MatchPage() {
                   <div className="mb-4 flex justify-center opacity-60"><IconBall size={36} /></div>
                   <h4 className="font-semibold text-lg mb-2">No Goals Yet</h4>
                   <p className="text-gray-400">Click the buttons above to add goals</p>
+                </div>
+              )}
+            </div>
+
+            {/* Bookings. Recorded here rather than as two numbers on the
+                statistics tab: who was booked is the part a visitor comes for,
+                and the totals fall out of the list on their own. */}
+            <div className="space-y-4 pt-4 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-xl">Cards</h3>
+                <div className="text-sm text-gray-400 flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconCard size={14} variant="yellow" />
+                    {cardsShown.home.yellow + cardsShown.away.yellow}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconCard size={14} variant="red" />
+                    {cardsShown.home.red + cardsShown.away.red}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={() => createCard('home')}
+                  className="px-4 py-2 rounded-lg glass hover:bg-blue-500/20 transition-all border border-blue-400/30 text-blue-400"
+                >
+                  + Add {homeTeam.name} card
+                </button>
+                <button
+                  onClick={() => createCard('away')}
+                  className="px-4 py-2 rounded-lg glass hover:bg-red-500/20 transition-all border border-red-400/30 text-red-400"
+                >
+                  + Add {awayTeam.name} card
+                </button>
+              </div>
+
+              {(match.cards?.length ?? 0) > 0 ? (
+                <div className="space-y-4">
+                  {/* Copied before sorting: the array belongs to the record this
+                      page is holding, and sorting it in place reorders it there. */}
+                  {[...(match.cards ?? [])]
+                    .sort((a, b) => a.minute - b.minute)
+                    .map(card => {
+                      const team = card.team === 'home' ? homeTeam : awayTeam
+                      const isHomeTeam = card.team === 'home'
+                      return (
+                        <div key={card.id} className="glass rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <IconCard size={20} variant={card.type} />
+                              {team.logo && (
+                                <img
+                                  loading="lazy"
+                                  decoding="async"
+                                  src={team.logo}
+                                  alt={`${team.name} logo`}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                />
+                              )}
+                              <span className={`font-semibold ${isHomeTeam ? 'text-blue-400' : 'text-red-400'}`}>
+                                {team.name} — {cardLabel(card.type)}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => deleteCard(card.id)}
+                              className="text-red-400 hover:text-red-300 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
+
+                          <div className="grid md:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium mb-2">Minute</label>
+                              <InlineInput
+                                type="number"
+                                min="1"
+                                max="120"
+                                value={card.minute || ''}
+                                onCommit={(value) => updateCard(card.id, { minute: Number(value) })}
+                                className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
+                                  isHomeTeam
+                                    ? 'focus:border-blue-400/50 focus:ring-blue-400/20'
+                                    : 'focus:border-red-400/50 focus:ring-red-400/20'
+                                }`}
+                                placeholder="Minute"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium mb-2">Player</label>
+                              <select
+                                value={card.playerId || ''}
+                                onChange={(e) => updateCard(card.id, { playerId: e.target.value })}
+                                className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
+                                  isHomeTeam
+                                    ? 'focus:border-blue-400/50 focus:ring-blue-400/20'
+                                    : 'focus:border-red-400/50 focus:ring-red-400/20'
+                                }`}
+                              >
+                                <option value="">Select player</option>
+                                {playersForPicking(tournament, team, card.playerId).map(player => (
+                                  <option key={player.id} value={player.id}>
+                                    {player.firstName} {player.lastName}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium mb-2">Card</label>
+                              <select
+                                value={card.type}
+                                onChange={(e) => updateCard(card.id, { type: e.target.value as CardType })}
+                                className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
+                                  isHomeTeam
+                                    ? 'focus:border-blue-400/50 focus:ring-blue-400/20'
+                                    : 'focus:border-red-400/50 focus:ring-red-400/20'
+                                }`}
+                              >
+                                <option value="yellow">Yellow card</option>
+                                <option value="second_yellow">Second yellow</option>
+                                <option value="red">Red card</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              ) : (
+                <div className="glass rounded-xl p-8 text-center">
+                  <div className="mb-4 flex justify-center"><IconCard size={36} /></div>
+                  <h4 className="font-semibold text-lg mb-2">No cards yet</h4>
+                  <p className="text-gray-400">Add a booking with the buttons above</p>
                 </div>
               )}
             </div>

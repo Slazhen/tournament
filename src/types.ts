@@ -107,14 +107,19 @@ export type Match = {
   referee?: string
   status?: 'scheduled' | 'live' | 'finished' | 'postponed' | 'cancelled'
   // Statistics
+  /**
+   * The team totals somebody types in by hand.
+   *
+   * Cards are deliberately not among them any more: they are counted from
+   * `cards` below, and a total stored beside the events it comes from is a
+   * second answer waiting to disagree with the first.
+   */
   statistics?: {
     home: {
       shots?: number
       shotsOnTarget?: number
       corners?: number
       fouls?: number
-      yellowCards?: number
-      redCards?: number
       possession?: number
     }
     away: {
@@ -122,8 +127,6 @@ export type Match = {
       shotsOnTarget?: number
       corners?: number
       fouls?: number
-      yellowCards?: number
-      redCards?: number
       possession?: number
     }
   }
@@ -136,6 +139,24 @@ export type Match = {
     type: 'goal' | 'penalty' | 'own_goal'
     assistPlayerId?: string
     goalNumber?: number // Goal number for this team (1st, 2nd, 3rd goal, etc.)
+  }>
+  /**
+   * Bookings, as events rather than as counts.
+   *
+   * The team totals in `statistics` are worked out from this list and are not
+   * stored beside it: two places to write the same fact is two places to
+   * disagree, and the count is the shorter of the two answers anyway.
+   *
+   * `second_yellow` is its own type because a sending-off for two bookings is
+   * not a straight red, and the totals need it to be both — it is a yellow the
+   * player was shown and a dismissal the team played out.
+   */
+  cards?: Array<{
+    id: string
+    team: 'home' | 'away'
+    playerId: string
+    minute: number
+    type: 'yellow' | 'second_yellow' | 'red'
   }>
   /**
    * Who played, one side at a time.

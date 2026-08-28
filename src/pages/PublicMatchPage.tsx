@@ -2,11 +2,13 @@ import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
 import { findTournamentBySlug } from '../utils/urls'
-import { allMatches } from '../utils/matches'
+import { allMatches, cardLabel, cardTotals, NO_STAT, statValue } from '../utils/matches'
 import type { Tournament, Team, Match, Organizer } from '../types'
 import { getSeasonUrl } from '../utils/seasons'
 import {
   IconArrowLeft,
+  IconBall,
+  IconCard,
   IconKnockout,
   IconVideo,
 } from '../components/icons'
@@ -204,9 +206,26 @@ export default function PublicMatchPage() {
 
   const matchStatus = getMatchStatus()
 
+  const cards = cardTotals(match)
+
   const hasStatistics = (['home', 'away'] as const).some((side) =>
     Object.values(match.statistics?.[side] ?? {}).some((value) => typeof value === 'number'),
   )
+
+  /**
+   * What happened, in the order it happened.
+   *
+   * Goals and bookings are one story and are filled in by the same person at
+   * the same time; as two lists side by side, working out which came first was
+   * left to the reader. Copied before sorting, because the array belongs to the
+   * match record this page is holding.
+   */
+  const events = [
+    ...(match.goals ?? []).map((goal) => ({ kind: 'goal' as const, minute: goal.minute ?? 0, goal })),
+    ...(match.cards ?? [])
+      .filter((card) => Boolean(card.playerId))
+      .map((card) => ({ kind: 'card' as const, minute: card.minute ?? 0, card })),
+  ].sort((a, b) => a.minute - b.minute)
 
   const anyoneNamed = (['home', 'away'] as const).some(
     (side) =>
@@ -362,33 +381,26 @@ export default function PublicMatchPage() {
               </thead>
               <tbody>
                 {[
-                  { label: 'Goals', home: 'goals', away: 'goals' },
-                  { label: 'Shots', home: 'shots', away: 'shots' },
-                  { label: 'Shots on Target', home: 'shotsOnTarget', away: 'shotsOnTarget' },
-                  { label: 'Corners', home: 'corners', away: 'corners' },
-                  { label: 'Fouls', home: 'fouls', away: 'fouls' },
-                  { label: 'Yellow Cards', home: 'yellowCards', away: 'yellowCards' },
-                  { label: 'Red Cards', home: 'redCards', away: 'redCards' },
-                  { label: 'Possession', home: 'possession', away: 'possession', suffix: '%' }
+                  { label: 'Goals', home: match.homeGoals ?? 0, away: match.awayGoals ?? 0 },
+                  { label: 'Shots', home: statValue(match.statistics?.home?.shots), away: statValue(match.statistics?.away?.shots) },
+                  { label: 'Shots on Target', home: statValue(match.statistics?.home?.shotsOnTarget), away: statValue(match.statistics?.away?.shotsOnTarget) },
+                  { label: 'Corners', home: statValue(match.statistics?.home?.corners), away: statValue(match.statistics?.away?.corners) },
+                  { label: 'Fouls', home: statValue(match.statistics?.home?.fouls), away: statValue(match.statistics?.away?.fouls) },
+                  // Counted from the bookings below, not stored beside them.
+                  { label: 'Yellow Cards', home: cards.home.yellow, away: cards.away.yellow },
+                  { label: 'Red Cards', home: cards.home.red, away: cards.away.red },
+                  { label: 'Possession', home: statValue(match.statistics?.home?.possession), away: statValue(match.statistics?.away?.possession), suffix: '%' }
                 ].map(stat => (
                   <tr key={stat.label} className="border-b border-white/10">
                     <td className="py-3 px-4 font-medium">{stat.label}</td>
                     <td className="py-3 px-4 text-center">
                       <span className="text-blue-400 font-bold">
-                        {stat.label === 'Goals' 
-                          ? (match.homeGoals || 0)
-                          : (match.statistics?.home[stat.home as keyof typeof match.statistics.home] || 0)
-                        }
-                        {stat.suffix || ''}
+                        {stat.home}{stat.home === NO_STAT ? '' : stat.suffix || ''}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="text-red-400 font-bold">
-                        {stat.label === 'Goals' 
-                          ? (match.awayGoals || 0)
-                          : (match.statistics?.away[stat.away as keyof typeof match.statistics.away] || 0)
-                        }
-                        {stat.suffix || ''}
+                        {stat.away}{stat.away === NO_STAT ? '' : stat.suffix || ''}
                       </span>
                     </td>
                   </tr>
@@ -399,41 +411,67 @@ export default function PublicMatchPage() {
         </section>
       )}
 
-      {/* Goals Timeline */}
-      {match.goals && match.goals.length > 0 && (
+      {/* Goals and bookings on one timeline. */}
+      {events.length > 0 && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
-          <h2 className="text-lg font-semibold mb-4 text-center">Goals Timeline</h2>
+          <h2 className="text-lg font-semibold mb-4 text-center">Match Events</h2>
           <div className="space-y-2">
-            {match.goals
-              .sort((a, b) => a.minute - b.minute)
-              .map(goal => (
-              <div key={goal.id} className="flex items-center justify-between p-3 glass rounded-lg">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-mono bg-white/20 px-2 py-1 rounded">
-                    {goal.minute}'
-                  </span>
-                  <Link 
-                    to={`/public/players/${goal.playerId}`}
-                    className={`font-semibold hover:opacity-80 transition-opacity ${goal.team === 'home' ? 'text-blue-400' : 'text-red-400'}`}
-                  >
-                    {getPlayerName(goal.playerId, goal.team === 'home' ? homeTeam : awayTeam)}
-                  </Link>
-                  <span className="text-sm opacity-70">
-                    {goal.type === 'penalty' ? '(Penalty)' : goal.type === 'own_goal' ? '(Own Goal)' : ''}
-                  </span>
-                  {goal.assistPlayerId && (
-                    <span className="text-sm opacity-70">
-                      (Assist: <Link 
-                        to={`/public/players/${goal.assistPlayerId}`}
-                        className="hover:opacity-80 transition-opacity"
-                      >
-                        {getPlayerName(goal.assistPlayerId, goal.team === 'home' ? homeTeam : awayTeam)}
-                      </Link>)
+            {events.map((event) => {
+              const team = event.kind === 'goal'
+                ? (event.goal.team === 'home' ? homeTeam : awayTeam)
+                : (event.card.team === 'home' ? homeTeam : awayTeam)
+              const accent = (event.kind === 'goal' ? event.goal.team : event.card.team) === 'home'
+                ? 'text-blue-400'
+                : 'text-red-400'
+
+              return (
+                <div
+                  key={event.kind === 'goal' ? event.goal.id : event.card.id}
+                  className="flex items-center justify-between p-3 glass rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-mono bg-white/20 px-2 py-1 rounded">
+                      {event.minute}'
                     </span>
-                  )}
+                    {event.kind === 'goal' ? (
+                      <>
+                        <IconBall size={15} className="opacity-70" />
+                        <Link
+                          to={`/public/players/${event.goal.playerId}`}
+                          className={`font-semibold hover:opacity-80 transition-opacity ${accent}`}
+                        >
+                          {getPlayerName(event.goal.playerId, team)}
+                        </Link>
+                        <span className="text-sm opacity-70">
+                          {event.goal.type === 'penalty' ? '(Penalty)' : event.goal.type === 'own_goal' ? '(Own Goal)' : ''}
+                        </span>
+                        {event.goal.assistPlayerId && (
+                          <span className="text-sm opacity-70">
+                            (Assist: <Link
+                              to={`/public/players/${event.goal.assistPlayerId}`}
+                              className="hover:opacity-80 transition-opacity"
+                            >
+                              {getPlayerName(event.goal.assistPlayerId, team)}
+                            </Link>)
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <IconCard size={15} variant={event.card.type} />
+                        <Link
+                          to={`/public/players/${event.card.playerId}`}
+                          className={`font-semibold hover:opacity-80 transition-opacity ${accent}`}
+                        >
+                          {getPlayerName(event.card.playerId, team)}
+                        </Link>
+                        <span className="text-sm opacity-70">{cardLabel(event.card.type)}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
       )}

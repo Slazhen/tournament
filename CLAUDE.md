@@ -298,6 +298,17 @@ Two different sources, filled in by different people at different times:
   has no appearances to show, and inferring them from the squad list would
   credit a match to everyone who was injured that week.
 
+**A card is an event, and the totals are counted from it.** `match.cards` holds
+one row per booking — player, side, minute, and `yellow`, `second_yellow` or
+`red` — and the Yellow Cards and Red Cards rows of the match statistics table
+are derived from that list by `cardTotals`, not typed in beside it. The
+statistics record used to carry its own `yellowCards` and `redCards`; they were
+never once filled in, and a total stored beside the events it comes from is a
+second answer waiting to disagree with the first. A second yellow counts in both
+columns, because the player was booked and the side finished a man down.
+Bookings feed nothing else: `playerRecords` does not read them, so a card cannot
+move an appearance or a table position.
+
 `allMatches()` in the same file is what every one of these reads. A tournament's
 knockout rounds live inside `format.customPlayoffConfig.playoffRounds`, not in
 `matches`, so anything that reads `tournament.matches` directly stops at the

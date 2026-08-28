@@ -264,6 +264,44 @@ export function IconKey(props: IconProps) {
   )
 }
 
+/**
+ * A booking.
+ *
+ * The one icon in this set that does not inherit `currentColor`: a yellow card
+ * drawn in the colour of the text beside it is not a yellow card. A second
+ * yellow is drawn as both cards overlapping, which is what a referee holds up
+ * and what the totals count it as.
+ */
+export function IconCard({
+  size = 15,
+  variant = 'yellow',
+  ...rest
+}: Omit<IconProps, 'variant'> & { variant?: 'yellow' | 'second_yellow' | 'red' }) {
+  const yellow = '#FACC15'
+  const red = '#EF4444'
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      {...rest}
+    >
+      {variant === 'second_yellow' ? (
+        <>
+          <rect x="4" y="3" width="11" height="16" rx="2" fill={yellow} />
+          <rect x="9" y="5" width="11" height="16" rx="2" fill={red} stroke="rgba(0,0,0,0.35)" />
+        </>
+      ) : (
+        <rect x="6" y="3" width="12" height="18" rx="2" fill={variant === 'red' ? red : yellow} />
+      )}
+    </svg>
+  )
+}
+
 export function IconVideo(props: IconProps) {
   return (
     <Svg {...props}>
