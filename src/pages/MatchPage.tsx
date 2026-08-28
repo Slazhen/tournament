@@ -210,7 +210,7 @@ export default function MatchPage() {
               decoding="async" src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
                   </div>
                 ) : (
-                  <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: homeTeam.colors?.[0] || '#3B82F6' }}>
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: homeTeam.colors?.[0] || '#3B82F6' }}>
                     <span className="text-white font-bold text-lg">{homeTeam.name.charAt(0)}</span>
                   </div>
                 )}
@@ -233,7 +233,7 @@ export default function MatchPage() {
               decoding="async" src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
                   </div>
                 ) : (
-                  <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: awayTeam.colors?.[0] || '#3B82F6' }}>
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: awayTeam.colors?.[0] || '#3B82F6' }}>
                     <span className="text-white font-bold text-lg">{awayTeam.name.charAt(0)}</span>
                   </div>
                 )}

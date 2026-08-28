@@ -55,6 +55,19 @@ export type Team = {
   organizerId: string // Add organizer isolation
   colors: string[] // Array of color hex codes (1 or 2 colors)
   logo?: string
+  /**
+   * The crest's own dominant colour, read from the file when it was uploaded.
+   *
+   * The public club header is painted in this rather than in `colors[0]`: the
+   * two disagree for most clubs, because nobody goes back to the colour picker
+   * after changing a crest. Absent for every club whose crest predates this,
+   * and the header falls back to `colors` — see `utils/crest.ts`. Null where a
+   * crest was replaced by one that could not be measured: that clears what the
+   * previous crest left rather than keeping its colour.
+   */
+  crestColor?: string | null
+  /** Whether that crest is artwork on a solid plate rather than a cut-out badge. */
+  crestOpaqueBackground?: boolean | null
   photo?: string
   socialMedia?: {
     facebook?: string

@@ -14,6 +14,7 @@ import {
 import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
+import { headerColor, inkOn, shade } from '../utils/crest'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
@@ -88,17 +89,16 @@ export default function PublicTeamPage() {
     [...teams, team].map((one) => [one.id, one.name]),
   )
 
-  // Create dynamic gradient based on team colors
-  const getTeamGradient = () => {
-    if (team.colors && team.colors.length > 0) {
-      if (team.colors.length === 1) {
-        return `linear-gradient(135deg, ${team.colors[0]} 0%, ${team.colors[0]}CC 50%, ${team.colors[0]}99 100%)`
-      } else {
-        return `linear-gradient(135deg, ${team.colors[0]} 0%, ${team.colors[1]} 50%, ${team.colors[0]}CC 100%)`
-      }
-    }
-    return 'linear-gradient(135deg, #3B82F6 0%, #1E40AF 50%, #1E3A8A 100%)'
-  }
+  // The header is the club's crest, twice: once as the badge and once, blown up
+  // and dimmed, as the ground it sits on. What stood here was a diagonal
+  // gradient between the two colours in `colors` — and since almost every club
+  // has only one, the middle stop fell back to grey and the whole header came
+  // out muddy. The colour now comes from the crest itself where it has been
+  // read, which also fixes clubs whose stored colour has nothing to do with
+  // their badge; `utils/crest.ts` covers where it comes from and why.
+  const base = headerColor(team)
+  const ink = inkOn(shade(base, -0.2))
+  const headerBackground = `linear-gradient(15deg, ${shade(base, -0.36)} 0%, ${shade(base, -0.1)} 55%, ${shade(base, 0.1)} 100%)`
 
   return (
     <div className="grid gap-6 place-items-center">
@@ -108,17 +108,45 @@ export default function PublicTeamPage() {
 
       {/* Dynamic Team Header */}
       <section className="relative w-full max-w-6xl rounded-xl overflow-hidden">
-        {/* Background with team colors */}
-        <div 
+        {/* Background in the club's own colour */}
+        <div className="absolute inset-0" style={{ background: headerBackground }} />
+
+        {/* The crest as the ground, running off the right edge.
+            Two things keep it from reading as a pasted-on box. The radial mask
+            fades its outer edge into the colour, which is what a crest uploaded
+            with its background still on it — a JPEG, or a PNG with a white
+            plate behind the badge — otherwise shows: a pale rectangle rather
+            than a badge. Such a crest is also dimmed further and drained of
+            colour, since the plate is the largest thing in it. */}
+        {team.logo && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 -right-10 -translate-y-1/2 h-[300px] w-[300px] sm:h-[340px] sm:w-[340px]"
+            style={{
+              opacity: team.crestOpaqueBackground ? 0.14 : 0.2,
+              filter: team.crestOpaqueBackground ? 'grayscale(1) contrast(0.8)' : undefined,
+              maskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
+              WebkitMaskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
+            }}
+          >
+            <img
+              decoding="async"
+              src={team.logo}
+              alt=""
+              className="w-full h-full object-contain"
+            />
+          </div>
+        )}
+
+        {/* Enough shadow on the left for the name to sit on, whatever the crest
+            behind it turns out to be. */}
+        <div
           className="absolute inset-0"
-          style={{ 
-            background: getTeamGradient(),
-            filter: 'brightness(0.8)'
+          style={{
+            background:
+              'linear-gradient(100deg, rgba(0,0,0,.46) 0%, rgba(0,0,0,.16) 52%, rgba(255,255,255,.05) 100%)',
           }}
         />
-        
-        {/* Overlay for better text readability */}
-        <div className="absolute inset-0 bg-black/20" />
         
         {/* Content.
             What stood here was a row of four labelled tiles: Players, Founded,
@@ -132,13 +160,15 @@ export default function PublicTeamPage() {
             page, and counting them in the header only said in words what the
             page was about to show. */}
         <div className="relative p-8 flex items-center gap-6 sm:gap-8">
-          <div className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl">
+          {/* `object-cover` here cropped every crest that was not square — the
+              badge lost its edges to fill a box it was never drawn for. */}
+          <div className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl p-1.5">
             {team.logo ? (
               <img
                 decoding="async"
                 src={team.logo}
                 alt={`${team.name} logo`}
-                className="w-full h-full object-cover rounded-2xl"
+                className="w-full h-full object-contain rounded-xl"
               />
             ) : (
               <div className="opacity-80"><IconTrophy size={38} /></div>
@@ -146,7 +176,10 @@ export default function PublicTeamPage() {
           </div>
 
           <div className="flex-1 min-w-0">
-            <h1 className="text-3xl sm:text-5xl font-bold text-white drop-shadow-lg leading-tight">
+            <h1
+              className="text-3xl sm:text-5xl font-bold drop-shadow-lg leading-tight"
+              style={{ color: ink }}
+            >
               {team.name}
             </h1>
           </div>

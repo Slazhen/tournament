@@ -447,3 +447,55 @@ describe('what the public is told about a squad', () => {
     expect(parse(response.body).players.every(Boolean)).toBe(true)
   })
 })
+
+/**
+ * Colours reach a public page inside a CSS declaration, so the API checks them
+ * rather than trusting the browser that computed them. `colors` went unchecked
+ * for a long time and is printed through the `background` shorthand, which
+ * accepts `url(...)`: a club manager could have made every visitor to a public
+ * match fetch an address of their choosing.
+ */
+describe('club colours', () => {
+  it('refuses a crest colour that is not a colour', async () => {
+    const response = await request('PATCH', '/admin/teams/team-own', {
+      token: 'good-token',
+      body: { crestColor: 'url(https://elsewhere.example/beacon.png)' },
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(repos.teams.update).not.toHaveBeenCalled()
+  })
+
+  it('takes null as clearing the crest colour', async () => {
+    const response = await request('PATCH', '/admin/teams/team-own', {
+      token: 'good-token',
+      body: { logo: 'https://images.example/crest.png', crestColor: null, crestOpaqueBackground: null },
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(repos.teams.update).toHaveBeenCalledWith(
+      'team-own',
+      expect.objectContaining({ crestColor: null, crestOpaqueBackground: null }),
+    )
+  })
+
+  it('refuses club colours that are not one or two hex values', async () => {
+    for (const colors of [['red'], [], ['#ffffff', '#000000', '#123456'], 'red']) {
+      const response = await request('PATCH', '/admin/teams/team-own', {
+        token: 'good-token',
+        body: { colors },
+      })
+      expect(response.statusCode).toBe(400)
+    }
+    expect(repos.teams.update).not.toHaveBeenCalled()
+  })
+
+  it('still accepts an ordinary pair of colours', async () => {
+    const response = await request('PATCH', '/admin/teams/team-own', {
+      token: 'good-token',
+      body: { colors: ['#d95000', '#ffffff'] },
+    })
+
+    expect(response.statusCode).toBe(200)
+  })
+})

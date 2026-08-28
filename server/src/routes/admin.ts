@@ -74,6 +74,12 @@ const TEAM_FIELDS = [
   'name',
   'colors',
   'logo',
+  // Read from the crest by the browser that uploaded it — the image goes
+  // straight to S3 with a presigned POST, so the API never sees the bytes and
+  // cannot work these out for itself. The public club header is painted from
+  // them; `src/utils/crest.ts` explains why not from `colors`.
+  'crestColor',
+  'crestOpaqueBackground',
   'photo',
   'socialMedia',
   'establishedDate',
@@ -499,6 +505,33 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       updates.organizerId = ctx.body.organizerId
     }
     if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
+
+    // Colours are written into CSS declarations on pages anybody can read, so
+    // they are checked here rather than trusted: the browser computes them, and
+    // a browser is not a place a value becomes safe. `colors` was never checked
+    // and is printed through the `background` shorthand on the match pages,
+    // which accepts `url(...)` — a club manager could have made every visitor
+    // to a public match fetch an address of their choosing.
+    //
+    // `null` clears, as everywhere else: a crest that could not be measured
+    // must be able to take the previous crest's colour off the club with it.
+    const colour = (value: unknown) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
+    if ('crestColor' in updates && updates.crestColor !== null && !colour(updates.crestColor)) {
+      throw badRequest('crestColor must be a #rrggbb colour')
+    }
+    if (
+      'crestOpaqueBackground' in updates &&
+      updates.crestOpaqueBackground !== null &&
+      typeof updates.crestOpaqueBackground !== 'boolean'
+    ) {
+      throw badRequest('crestOpaqueBackground must be true or false')
+    }
+    if ('colors' in updates) {
+      const colors = updates.colors
+      if (!Array.isArray(colors) || colors.length === 0 || colors.length > 2 || !colors.every(colour)) {
+        throw badRequest('colors must be one or two #rrggbb colours')
+      }
+    }
 
     // A club changing hands takes its manager list with it, and the previous
     // owner's own link to it was granted by owning it. Done before the move

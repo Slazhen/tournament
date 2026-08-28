@@ -6,6 +6,7 @@ import { generateFixtures } from './utils/fixtures'
 import { applySchedule } from './utils/matchdates'
 import type { ScheduleOptions } from './utils/matchdates'
 import { organizerService, teamService, tournamentService, matchService, playerService, uploadImage } from './lib/data'
+import { readCrestAppearance } from './utils/crest'
 
 /** Routes that render an organizer's own teams and tournaments. */
 const ADMIN_ROUTES = /^\/(admin|teams|tournaments|players|calendar)(\/|$)/
@@ -873,8 +874,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
   uploadTeamLogo: async (teamId: string, file: File) => {
     try {
       const url = await uploadImage(file, { kind: 'team', id: teamId })
-      
-      await get().updateTeam(teamId, { logo: url })
+
+      // The crest's colours have to be read here, from the file, because the
+      // published image is served without CORS headers and a canvas that has
+      // drawn it will not hand its pixels back. A crest that could not be read
+      // clears what the previous one left, or the header keeps painting itself
+      // in the colour of a badge the club no longer has.
+      const appearance = await readCrestAppearance(file)
+      await get().updateTeam(teamId, {
+        logo: url,
+        ...(appearance ?? { crestColor: null, crestOpaqueBackground: null }),
+      })
     } catch (error) {
       console.error('Error uploading team logo:', error)
     }

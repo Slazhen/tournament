@@ -343,6 +343,22 @@ round: a row whose player cannot be found still counts, under "Former player".
   told apart. Photographs go through `photo` (2000px) and `profile` (1200px);
   `server/scripts/optimize-images.mjs` has the same trap, because a team photo
   sits under the same key prefix as the crest.
+- **A crest is measured while the browser still holds the file.** The public
+  club header is painted in `team.crestColor`, read from the image at upload
+  time by `readCrestAppearance` in `src/utils/crest.ts` and saved beside
+  `logo`. It cannot be read later: the image bucket answers without CORS
+  headers, so a canvas that has drawn a published crest refuses its pixels, and
+  the API never sees the bytes either — crests go to S3 through a presigned
+  POST. Every club whose crest predates this has no colour and falls back to
+  `colors[0]`, which is what the header used before and is wrong for about half
+  of them: nobody returns to the colour picker after changing a crest.
+- **A colour is checked by the API, not by the browser that computed it.**
+  `colors` went unvalidated for a long time and is printed into a `background`
+  shorthand, which accepts `url(...)` — a club manager could have made every
+  visitor to a public match fetch an address of their choosing. The teams
+  `PATCH` now refuses anything but one or two `#rrggbb` values, and the pages
+  set `backgroundColor` rather than `background`. Both halves matter: the
+  validation stops it being stored, the property stops it being honoured.
 - **The table is sorted deterministically.** `sortTeamsByStandings` used to end
   in a coin toss, so a season nobody had played — where every club ties on every
   criterion — dealt out different positions on every render.

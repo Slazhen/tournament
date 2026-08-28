@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
 import { hasSquadEntry, registeredPlayers } from '../utils/squads'
+import { readCrestAppearance } from '../utils/crest'
 import { getPublicTournamentUrl } from '../utils/urls'
 import Trophy from '../components/Trophy'
 import FacebookIcon from '../components/FacebookIcon'
@@ -648,7 +649,16 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
   /** The crest and the team photo save on their own — there is nothing to confirm. */
   const upload = async (file: File, field: 'logo' | 'photo') => {
     const url = await uploadImage(file, { kind: 'team', id: team.id })
-    await teamService.update(team.id, { [field]: url })
+    // A crest carries the colour the public header is painted in, and it can
+    // only be read from the file: the bucket serves the published image without
+    // CORS headers, so nothing downstream can measure it.
+    // A crest that could not be measured clears what the previous one left,
+    // or the public header keeps the colour of a badge this club has replaced.
+    const measured =
+      field === 'logo'
+        ? ((await readCrestAppearance(file)) ?? { crestColor: null, crestOpaqueBackground: null })
+        : {}
+    await teamService.update(team.id, { [field]: url, ...measured })
     await onReload()
   }
 

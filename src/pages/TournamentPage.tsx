@@ -1172,7 +1172,7 @@ export default function TournamentPage() {
                                     )
                                   } else {
                                     return (
-                                      <span className="h-2.5 w-2.5 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
+                                      <span className="h-2.5 w-2.5 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                                     )
                                   }
                                 })()}
@@ -1267,7 +1267,7 @@ export default function TournamentPage() {
               loading="lazy"
               decoding="async" src={team.logo} alt={team.name} className="w-5 h-5 rounded-full object-cover" />
                         ) : (
-                          <span className="w-5 h-5 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
+                          <span className="w-5 h-5 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                         )}
                         <span className="text-sm text-white">{team?.name || teamId}</span>
                         <span className="text-xs text-gray-400">Click to add</span>
@@ -1318,7 +1318,7 @@ export default function TournamentPage() {
               loading="lazy"
               decoding="async" src={team.logo} alt={team.name} className="w-6 h-6 rounded-full object-cover" />
                           ) : (
-                            <span className="w-6 h-6 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
+                            <span className="w-6 h-6 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                           )}
                           <span className="flex-1 text-white">{team?.name || teamId}</span>
                           <button
@@ -1442,7 +1442,7 @@ export default function TournamentPage() {
                                 )
                               } else {
                                 return (
-                                                                  <span className="h-3 w-3 rounded-full inline-block" style={{ background: team?.colors?.[0] || '#3B82F6' }} />
+                                                                  <span className="h-3 w-3 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                                 )
                               }
                             })()}
@@ -1538,7 +1538,7 @@ export default function TournamentPage() {
                                        )
                                      } else if (homeTeam) {
                                        return (
-                                         <span className="h-3 w-3 rounded-full inline-block" style={{ background: homeTeam.colors?.[0] || '#3B82F6' }} />
+                                         <span className="h-3 w-3 rounded-full inline-block" style={{ backgroundColor: homeTeam.colors?.[0] || '#3B82F6' }} />
                                        )
                                      }
                                      return null
@@ -1571,7 +1571,7 @@ export default function TournamentPage() {
                                        )
                                      } else if (awayTeam) {
                                        return (
-                                         <span className="h-3 w-3 rounded-full inline-block" style={{ background: awayTeam.colors?.[0] || '#3B82F6' }} />
+                                         <span className="h-3 w-3 rounded-full inline-block" style={{ backgroundColor: awayTeam.colors?.[0] || '#3B82F6' }} />
                                        )
                                      }
                                      return null
