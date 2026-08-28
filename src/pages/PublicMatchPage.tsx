@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
 import { findTournamentBySlug } from '../utils/urls'
+import { allMatches } from '../utils/matches'
 import type { Tournament, Team, Match, Organizer } from '../types'
 import { getSeasonUrl } from '../utils/seasons'
 import {
@@ -12,7 +13,7 @@ import {
 import PublicHeader from '../components/PublicHeader'
 
 export default function PublicMatchPage() {
-  const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
+  const { tournamentId, matchId, orgSlug, tournamentSlug, seriesSlug, seasonSlug } = useParams()
   const [tournament, setTournament] = useState<Tournament | null>(null)
   const [homeTeam, setHomeTeam] = useState<Team | null>(null)
   const [awayTeam, setAwayTeam] = useState<Team | null>(null)
@@ -35,7 +36,8 @@ export default function PublicMatchPage() {
   // Load data directly from DynamoDB (no authentication required for public pages)
   useEffect(() => {
     const loadData = async () => {
-      if ((!tournamentId && (!orgSlug || !tournamentSlug)) || !matchId) {
+      const hasSlugRoute = Boolean(orgSlug && (tournamentSlug || (seriesSlug && seasonSlug)))
+      if ((!tournamentId && !hasSlugRoute) || !matchId) {
         setError('Missing tournament or match ID')
         setIsLoading(false)
         return
@@ -56,6 +58,23 @@ export default function PublicMatchPage() {
             setIsLoading(false)
             return
           }
+        } else if (orgSlug && seriesSlug && seasonSlug) {
+          // /:orgSlug/:seriesSlug/:seasonSlug/matches/:matchId — a match inside
+          // a named season, which is the address every link on the season page
+          // now uses. One request returns the season whole.
+          const bundle = await tournamentService.getSeason(
+            decodeURIComponent(orgSlug).trim(),
+            decodeURIComponent(seriesSlug).trim(),
+            decodeURIComponent(seasonSlug).trim(),
+          )
+
+          if (!bundle?.tournament) {
+            setError('Tournament not found')
+            setIsLoading(false)
+            return
+          }
+
+          tournamentData = bundle.tournament
         } else if (orgSlug && tournamentSlug) {
           // New route: /:orgSlug/:tournamentSlug/matches/:matchId
           // Resolve the id from lightweight summaries (no match data), then GetItem the one tournament.
@@ -91,8 +110,9 @@ export default function PublicMatchPage() {
 
         setTournament(tournamentData)
 
-        // Find the match
-        const matchData = tournamentData.matches?.find(m => m.id === matchId)
+        // Find the match — including the rounds built by hand, which live
+        // inside the format rather than in `matches`.
+        const matchData = allMatches(tournamentData).find(m => m.id === matchId)
         if (!matchData) {
           setError('Match not found')
           setIsLoading(false)
@@ -122,7 +142,7 @@ export default function PublicMatchPage() {
     }
 
     loadData()
-  }, [tournamentId, matchId, orgSlug, tournamentSlug])
+  }, [tournamentId, matchId, orgSlug, tournamentSlug, seriesSlug, seasonSlug])
 
   if (isLoading) {
     return (
@@ -180,6 +200,10 @@ export default function PublicMatchPage() {
   }
 
   const matchStatus = getMatchStatus()
+
+  const hasStatistics = (['home', 'away'] as const).some((side) =>
+    Object.values(match.statistics?.[side] ?? {}).some((value) => typeof value === 'number'),
+  )
 
   return (
     <div className="grid gap-6 place-items-center">
@@ -307,8 +331,13 @@ export default function PublicMatchPage() {
         </div>
       </section>
 
-      {/* Match Statistics */}
-      {match.statistics && (
+      {/* Match Statistics.
+
+          `match.statistics &&` also passed for the empty object the editor
+          leaves behind the first time it is opened, so a match nobody recorded
+          anything for showed a full table of zeroes as though they were real.
+          The block appears when at least one number was actually entered. */}
+      {hasStatistics && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <h2 className="text-lg font-semibold mb-4 text-center">Match Statistics</h2>
           <div className="overflow-x-auto">

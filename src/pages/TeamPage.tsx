@@ -305,7 +305,11 @@ export default function TeamPage() {
                 </ul>
               )}
 
-              {managersLoaded && !managersFailed && !iRunThisClub && (
+              {/* Not offered to the super admin: they can already edit every
+                  club, so the only thing this would add is their own email
+                  address in somebody else's list of managers. If they are
+                  somehow linked, the button below still lets them out. */}
+              {managersLoaded && !managersFailed && !iRunThisClub && !superAdmin && (
                 <div className="mt-3">
                   <button
                     type="button"

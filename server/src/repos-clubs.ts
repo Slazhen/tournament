@@ -9,6 +9,7 @@ import {
 } from './lib/ddb.js'
 import { INVITE_TTL_MS, TABLES } from './lib/env.js'
 import { generateId, generateToken } from './lib/passwords.js'
+import { getUserById } from './lib/sessions.js'
 import type { AuthUser, Team } from './lib/types.js'
 
 /**
@@ -182,6 +183,30 @@ export async function linkManagerToTeam(user: AuthUser, team: Team): Promise<voi
     )
   } catch (error) {
     if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+  }
+}
+
+/**
+ * Drops the manager links an organizer held over their own club when the club
+ * moves to somebody else.
+ *
+ * The link is granted on ownership — "this is my club, I run it as well" — but
+ * honoured afterwards on identity alone, so moving a club to another organizer
+ * left the previous owner editing a squad inside somebody else's league, and
+ * indistinguishable in the manager list from an invited coach. An invited
+ * manager keeps the club: their link came from an invitation, and the club
+ * changing hands is not their business.
+ */
+export async function unlinkOwnerManagers(team: Team, previousOrganizerId: string): Promise<void> {
+  for (const managerId of team.managerUserIds ?? []) {
+    const account = await getUserById(managerId)
+    // Only an organizer's own account carries an organizerId, so an invited
+    // coach never matches this and is left alone.
+    if (!account?.organizerId || account.organizerId !== previousOrganizerId) continue
+    // A super admin carrying an organizerId is a mistake in the data, not an
+    // organizer, and their link was not granted by owning the club.
+    if (account.role === 'super_admin') continue
+    await unlinkManagerFromTeam(managerId, team)
   }
 }
 

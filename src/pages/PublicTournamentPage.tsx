@@ -10,6 +10,7 @@ import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import LocationIcon from '../components/LocationIcon'
 import { teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
+import { allMatches, playerRecords } from '../utils/matches'
 import {
   IconTrophy,
 } from '../components/icons'
@@ -79,29 +80,6 @@ function kickOff(match: any): { day: string; time: string } | null {
     match.time ||
     date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
   return { day, time }
-}
-
-/** Every match of the tournament, including the hand-built playoff rounds. */
-function allTournamentMatches(tournament: any): any[] {
-  const matches = [...(tournament?.matches || [])]
-
-  const rounds = tournament?.format?.customPlayoffConfig?.playoffRounds
-  if (tournament?.format?.mode === 'league_custom_playoff' && Array.isArray(rounds)) {
-    rounds.forEach((round: any) => {
-      if (!Array.isArray(round?.matches)) return
-      round.matches.forEach((match: any) => {
-        matches.push({
-          ...match,
-          isPlayoff: true,
-          isElimination: match.isElimination || round.isElimination || false,
-          playoffRound: round.roundNumber || 0,
-          roundName: round.name || '',
-        })
-      })
-    })
-  }
-
-  return matches
 }
 
 export default function PublicTournamentPage() {
@@ -307,8 +285,6 @@ export default function PublicTournamentPage() {
     )
   }
 
-  // Helper function to get all matches including custom playoff matches
-  const getAllMatches = () => allTournamentMatches(tournament)
 
   const calculateTable = () => {
     if (!tournament) return { table: [], eliminatedTeams: new Set<string>(), groupTables: {} }
@@ -416,8 +392,8 @@ export default function PublicTournamentPage() {
     })
 
     // Process all matches (including custom playoff matches)
-    const allMatches = getAllMatches()
-    allMatches.forEach((match: any) => {
+    const played = allMatches(tournament)
+    played.forEach((match: any) => {
       // Only process matches that have been played (both scores are valid numbers)
       const hasValidScores = typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number' &&
                            !isNaN(match.homeGoals) && !isNaN(match.awayGoals) &&
@@ -459,7 +435,7 @@ export default function PublicTournamentPage() {
     // whose knockout games are hand-built rounds — the format this league
     // actually uses — never showed anyone as eliminated.
     const knockoutModes = ['league_playoff', 'swiss_elimination']
-    allMatches.forEach((match: any) => {
+    played.forEach((match: any) => {
       const decidesElimination =
         match.isElimination === true ||
         (match.isPlayoff && knockoutModes.includes(tournament.format?.mode))
@@ -493,6 +469,18 @@ export default function PublicTournamentPage() {
   const otherSeasons = seasons.filter((season) => season.id !== tournament.id)
   const seasonHref = (season: TournamentSummary) =>
     `/${organizerSlug}/${slugify(seriesName(season))}/${slugify(seasonLabel(season))}`
+
+  /**
+   * Where a fixture's own page lives.
+   *
+   * The season address when we know it, so the link a visitor follows stays in
+   * the season they were reading; the old id address otherwise, which is what
+   * /public/tournaments/:id still resolves.
+   */
+  const matchHref = (match: any) =>
+    organizerSlug
+      ? `/${organizerSlug}/${slugify(competition)}/${slugify(thisSeason)}/matches/${encodeURIComponent(match.id)}`
+      : `/public/tournaments/${tournament.id}/matches/${encodeURIComponent(match.id)}`
 
   const renderMatch = (match: any) => {
     const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
@@ -559,8 +547,16 @@ export default function PublicTournamentPage() {
             </div>
           </div>
           
-          {/* Score/VS */}
-          <div className="text-center px-2 sm:px-6">
+          {/* Score/VS — and the way into the match itself.
+
+              The score was a plain block of text. Everybody pressed it, nothing
+              happened, and the match page that shows the goals, the lineups and
+              the shot count was reachable only by typing its address. */}
+          <Link
+            to={matchHref(match)}
+            className="text-center px-2 sm:px-6 rounded-lg hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 transition-colors py-1"
+            aria-label={`Match details: ${homeTeam?.name || 'Home'} against ${awayTeam?.name || 'Away'}`}
+          >
             {isMatchFinished ? (
               <div className="space-y-1 sm:space-y-2">
                 <div className="text-xl sm:text-3xl font-bold text-white">
@@ -585,7 +581,11 @@ export default function PublicTournamentPage() {
                 </div>
               )
             })()}
-          </div>
+
+            <div className="text-[10px] sm:text-xs text-gray-400 mt-1 underline decoration-white/20 underline-offset-4">
+              Match details
+            </div>
+          </Link>
           
           {/* Away Team */}
           <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
@@ -1363,125 +1363,152 @@ export default function PublicTournamentPage() {
                 </div>
               </div>
               
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-base">
-                  <thead>
-                    <tr className="border-b border-white/20">
-                      <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Player</th>
-                      <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Club</th>
-                      <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Goals</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      // Filter teams to only include teams from this tournament
-                      const tournamentTeams = teams.filter((team: any) => 
-                        tournament.teamIds && tournament.teamIds.includes(team.id)
-                      )
-                      
-                      // Calculate player statistics
-                      const playerStats = tournamentTeams.flatMap((team: any) => 
-                        (team.players || []).map((player: any) => {
-                          const playerMatches = tournament.matches?.filter((match: any) => {
-                            const isHome = match.homeTeamId === team.id
-                            const teamPlayers = isHome ? match.lineups?.home?.starting || [] : match.lineups?.away?.starting || []
-                            return teamPlayers.includes(player.id) && match.homeGoals !== null && match.awayGoals !== null
-                          }) || []
-                          
-                          let goals = 0
-                          let assists = 0
-                          
-                          tournament.matches?.forEach((match: any) => {
-                            if (match.goals) {
-                              match.goals.forEach((goal: any) => {
-                                if (goal.playerId === player.id) goals++
-                                if (goal.assistPlayerId === player.id) assists++
-                              })
-                            }
-                          })
-                          
-                          return {
-                            player,
-                            team,
-                            gamesPlayed: playerMatches.length,
-                            goals,
-                            assists
-                          }
-                        })
-                      )
-                      
-                      // Filter and sort based on selected filter
-                      let filteredStats = playerStats
-                      if (playerStatsFilter === 'scorers') {
-                        filteredStats = playerStats.filter(p => p.goals > 0).sort((a, b) => b.goals - a.goals).slice(0, 5)
-                      } else if (playerStatsFilter === 'assists') {
-                        filteredStats = playerStats.filter(p => p.assists > 0).sort((a, b) => b.assists - a.assists).slice(0, 5)
-                      } else {
-                        // Sort by goals first, then assists
-                        filteredStats = playerStats.sort((a, b) => {
-                          if (b.goals !== a.goals) return b.goals - a.goals
-                          return b.assists - a.assists
-                        })
-                      }
-                      
-                      return filteredStats.map((stats) => (
-                        <tr key={`${stats.team.id}-${stats.player.id}`} className="border-b border-white/10 hover:bg-white/5 transition-colors">
-                          <td className="py-2 px-1 sm:px-6">
-                            <div className="flex items-center gap-1 sm:gap-3">
-                              {stats.player.photo ? (
-                                <img
-              loading="lazy"
-              decoding="async" 
-                                  src={stats.player.photo} 
-                                  alt={`${stats.player.firstName} ${stats.player.lastName}`}
-                                  className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover border border-white/20"
-                                />
-                              ) : (
-                                <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
-                                  <span className="text-xs font-bold text-white">
-                                    {stats.player.firstName.charAt(0)}{stats.player.lastName.charAt(0)}
-                                  </span>
-                                </div>
-                              )}
-                              <div>
-                                <div className="text-white font-semibold text-xs sm:text-lg">
-                                  {stats.player.firstName} {stats.player.lastName}
-                                </div>
-                                {stats.player.number && (
-                                  <div className="text-xs text-gray-300">#{stats.player.number}</div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-2 px-1 sm:px-6">
-                            <div className="flex items-center gap-1 sm:gap-2">
-                              {stats.team.logo ? (
-                                <img
-              loading="lazy"
-              decoding="async" 
-                                  src={stats.team.logo} 
-                                  alt={`${stats.team.name} logo`}
-                                  className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
-                                  <span className="text-xs font-bold text-white">
-                                    {stats.team.name.charAt(0)}
-                                  </span>
-                                </div>
-                              )}
-                              <span className="text-white font-medium text-xs sm:text-lg">{stats.team.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-2 px-1 sm:px-6 text-center text-white font-semibold">
-                            <span className="text-yellow-400 font-bold text-xs sm:text-base">{stats.goals}</span>
-                          </td>
+              {(() => {
+                const records = [...playerRecords(allMatches(tournament)).values()]
+
+                // Who each record belongs to. A goal scored by somebody since
+                // taken off the squad still happened, so the club's current
+                // squad decides the name, never whether the row exists.
+                const named = records.map((record) => {
+                  const team =
+                    teams.find((candidate: any) =>
+                      (candidate.players || []).some((player: any) => player.id === record.playerId),
+                    ) || teams.find((candidate: any) => candidate.id === record.teamId)
+                  const player = (team?.players || []).find(
+                    (candidate: any) => candidate.id === record.playerId,
+                  )
+                  return { record, team, player }
+                })
+
+                let rows = named
+                if (playerStatsFilter === 'scorers') {
+                  rows = named
+                    .filter((row) => row.record.goals > 0)
+                    .sort((a, b) => b.record.goals - a.record.goals || b.record.assists - a.record.assists)
+                    .slice(0, 10)
+                } else if (playerStatsFilter === 'assists') {
+                  rows = named
+                    .filter((row) => row.record.assists > 0)
+                    .sort((a, b) => b.record.assists - a.record.assists || b.record.goals - a.record.goals)
+                    .slice(0, 10)
+                } else {
+                  rows = [...named].sort(
+                    (a, b) =>
+                      b.record.goals - a.record.goals ||
+                      b.record.assists - a.record.assists ||
+                      b.record.played - a.record.played,
+                  )
+                }
+
+                // An empty table used to be the whole answer, which reads as a
+                // broken page rather than as a competition whose goalscorers
+                // nobody has entered yet.
+                if (rows.length === 0) {
+                  return (
+                    <p className="text-center text-gray-300 py-6">
+                      No player statistics yet. Goals, assists and lineups are recorded
+                      match by match, and this competition has none entered so far.
+                    </p>
+                  )
+                }
+
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs sm:text-base">
+                      <thead>
+                        <tr className="border-b border-white/20">
+                          <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Player</th>
+                          <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Club</th>
+                          <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">P</th>
+                          <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Goals</th>
+                          <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Assists</th>
                         </tr>
-                      ))
-                    })()}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody>
+                        {rows.map(({ record, team, player }) => (
+                          <tr
+                            key={record.playerId}
+                            className="border-b border-white/10 hover:bg-white/5 transition-colors"
+                          >
+                            <td className="py-2 px-1 sm:px-6">
+                              <div className="flex items-center gap-1 sm:gap-3">
+                                {player?.photo ? (
+                                  <img
+                                    loading="lazy"
+                                    decoding="async"
+                                    src={player.photo}
+                                    alt={`${player.firstName} ${player.lastName}`}
+                                    className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover border border-white/20"
+                                  />
+                                ) : (
+                                  <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
+                                    <span className="text-xs font-bold text-white">
+                                      {player ? `${player.firstName.charAt(0)}${player.lastName.charAt(0)}` : '?'}
+                                    </span>
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="text-white font-semibold text-xs sm:text-lg">
+                                    {player ? (
+                                      <Link
+                                        to={`/public/players/${player.id}`}
+                                        className="hover:text-blue-300 transition-colors"
+                                      >
+                                        {player.firstName} {player.lastName}
+                                      </Link>
+                                    ) : (
+                                      // The squad no longer holds this player, so
+                                      // there is no name to print — but the goals
+                                      // were scored and the total has to add up.
+                                      <span className="text-gray-300">Former player</span>
+                                    )}
+                                  </div>
+                                  {player?.number && (
+                                    <div className="text-xs text-gray-300">#{player.number}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-2 px-1 sm:px-6">
+                              <div className="flex items-center gap-1 sm:gap-2">
+                                {team?.logo ? (
+                                  <img
+                                    loading="lazy"
+                                    decoding="async"
+                                    src={team.logo}
+                                    alt={`${team.name} logo`}
+                                    className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
+                                    <span className="text-xs font-bold text-white">
+                                      {team?.name?.charAt(0) || '?'}
+                                    </span>
+                                  </div>
+                                )}
+                                <span className="text-white font-medium text-xs sm:text-lg">
+                                  {team?.name || 'Unknown club'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-1 sm:px-6 text-center text-white font-medium">
+                              {record.played}
+                            </td>
+                            <td className="py-2 px-1 sm:px-6 text-center font-semibold">
+                              <span className="text-yellow-400 font-bold text-xs sm:text-base">
+                                {record.goals}
+                              </span>
+                            </td>
+                            <td className="py-2 px-1 sm:px-6 text-center text-white font-medium">
+                              {record.assists}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -1633,7 +1660,7 @@ function Highlights({ tournament, teams }: { tournament: any; teams: any[] }) {
   // Rounds built by hand live inside the format, not in `matches` — without
   // them "Latest results" for a finished tournament showed the league, months
   // before the final that actually decided it.
-  const fixtures: any[] = allTournamentMatches(tournament).filter(
+  const fixtures: any[] = allMatches(tournament).filter(
     (match: any) => match?.homeTeamId && match?.awayTeamId,
   )
 

@@ -10,6 +10,8 @@ import {
   IconGlobe,
   IconClose,
 } from '../components/icons'
+import PublicHeader from '../components/PublicHeader'
+import { allMatches, isPlayed, playerRecords } from '../utils/matches'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
@@ -73,6 +75,11 @@ export default function PublicTeamPage() {
     t.teamIds.includes(teamId!)
   )
 
+  // What each of this club's players has done, across every competition the
+  // club plays in. Appearances come from the lineups, goals and assists from
+  // the goal events — see utils/matches.
+  const records = playerRecords(teamTournaments.flatMap((tournament) => allMatches(tournament)))
+
   // Create dynamic gradient based on team colors
   const getTeamGradient = () => {
     if (team.colors && team.colors.length > 0) {
@@ -87,6 +94,10 @@ export default function PublicTeamPage() {
 
   return (
     <div className="grid gap-6 place-items-center">
+      <div className="w-full">
+        <PublicHeader />
+      </div>
+
       {/* Dynamic Team Header */}
       <section className="relative w-full max-w-6xl rounded-xl overflow-hidden">
         {/* Background with team colors */}
@@ -206,7 +217,11 @@ export default function PublicTeamPage() {
       {/* Players Section - Only show if players exist */}
       {team.players && team.players.length > 0 && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
-          <h2 className="text-xl font-semibold mb-4 text-center">Players ({team.players.length})</h2>
+          <h2 className="text-xl font-semibold mb-1 text-center">Players ({team.players.length})</h2>
+          <p className="text-xs opacity-60 text-center mb-4">
+            Appearances come from the lineup recorded for each match; goals and assists
+            from the goals recorded in it.
+          </p>
           
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -215,11 +230,15 @@ export default function PublicTeamPage() {
                   <th className="py-3 px-4 text-left">Player</th>
                   <th className="py-3 px-4 text-left">Position</th>
                   <th className="py-3 px-4 text-left">Number</th>
-                  <th className="py-3 px-4 text-left">Joined</th>
+                  <th className="py-3 px-4 text-center">Played</th>
+                  <th className="py-3 px-4 text-center">Goals</th>
+                  <th className="py-3 px-4 text-center">Assists</th>
                 </tr>
               </thead>
               <tbody>
-                {team.players.map((player) => (
+                {team.players.map((player) => {
+                  const record = records.get(player.id)
+                  return (
                   <tr key={player.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
@@ -243,7 +262,6 @@ export default function PublicTeamPage() {
                           >
                             {`${player.firstName} ${player.lastName}`}
                           </Link>
-                          <div className="text-xs opacity-70">ID: {player.id.slice(-6)}</div>
                         </div>
                       </div>
                     </td>
@@ -253,11 +271,14 @@ export default function PublicTeamPage() {
                     <td className="py-3 px-4">
                       <span className="text-sm">{player.number || '—'}</span>
                     </td>
-                    <td className="py-3 px-4 text-sm opacity-70">
-                      {new Date(player.createdAtISO).toLocaleDateString()}
+                    <td className="py-3 px-4 text-center text-sm">{record?.played ?? 0}</td>
+                    <td className="py-3 px-4 text-center text-sm font-semibold">
+                      {record?.goals ?? 0}
                     </td>
+                    <td className="py-3 px-4 text-center text-sm">{record?.assists ?? 0}</td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -280,25 +301,24 @@ export default function PublicTeamPage() {
           let goalsAgainst = 0
           
           teamTournaments.forEach(tournament => {
-            const teamMatches = tournament.matches.filter(m => 
+            const teamMatches = allMatches(tournament).filter(m => 
               m.homeTeamId === team.id || m.awayTeamId === team.id
             )
             
             teamMatches.forEach(match => {
-              if (match.homeGoals != null && match.awayGoals != null) {
+              if (isPlayed(match)) {
                 totalGames++
                 const isHome = match.homeTeamId === team.id
-                const teamGoals = isHome ? match.homeGoals : match.awayGoals
-                const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                
+                // isPlayed has already established both are numbers.
+                const teamGoals = (isHome ? match.homeGoals : match.awayGoals) as number
+                const opponentGoals = (isHome ? match.awayGoals : match.homeGoals) as number
+
                 goalsFor += teamGoals
                 goalsAgainst += opponentGoals
-                
-                if (teamGoals != null && opponentGoals != null) {
-                  if (teamGoals > opponentGoals) wins++
-                  else if (teamGoals < opponentGoals) losses++
-                  else draws++
-                }
+
+                if (teamGoals > opponentGoals) wins++
+                else if (teamGoals < opponentGoals) losses++
+                else draws++
               }
             })
           })
@@ -345,7 +365,7 @@ export default function PublicTeamPage() {
           <div className="grid gap-4">
             {teamTournaments.map((tournament) => {
               // Get all matches for this team in this tournament
-              const teamMatches = tournament.matches.filter(m => 
+              const teamMatches = allMatches(tournament).filter(m => 
                 m.homeTeamId === team.id || m.awayTeamId === team.id
               )
               
@@ -369,12 +389,12 @@ export default function PublicTeamPage() {
                       
                       return (
                         <div key={match.id} className={`grid grid-cols-4 gap-2 items-center p-2 glass rounded text-sm ${
-                          match.homeGoals != null && match.awayGoals != null 
+                          isPlayed(match) 
                             ? (() => {
                                 const isHome = match.homeTeamId === team.id
                                 const teamGoals = isHome ? match.homeGoals : match.awayGoals
                                 const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals != null && opponentGoals != null) {
+                                if (typeof teamGoals === 'number' && typeof opponentGoals === 'number') {
                                   if (teamGoals > opponentGoals) return 'border-l-4 border-l-green-500'
                                   if (teamGoals < opponentGoals) return 'border-l-4 border-l-red-500'
                                   return 'border-l-4 border-l-yellow-500'
@@ -394,7 +414,7 @@ export default function PublicTeamPage() {
                           </div>
                           
                           <div className="text-center">
-                            {match.homeGoals != null && match.awayGoals != null ? (
+                            {isPlayed(match) ? (
                               <span className="font-semibold">
                                 {match.homeGoals} : {match.awayGoals}
                               </span>
@@ -461,11 +481,11 @@ export default function PublicTeamPage() {
                           <div className="text-xs opacity-70">
                             {(() => {
                               // Calculate team position in tournament
-                              const teamMatches = tournament.matches.filter(m => 
+                              const teamMatches = allMatches(tournament).filter(m => 
                                 m.homeTeamId === team.id || m.awayTeamId === team.id
                               )
                               const completedMatches = teamMatches.filter(m => 
-                                m.homeGoals != null && m.awayGoals != null
+                                isPlayed(m)
                               )
                               if (completedMatches.length === 0) return 'No games played'
                               
@@ -475,7 +495,7 @@ export default function PublicTeamPage() {
                                 const isHome = match.homeTeamId === team.id
                                 const teamGoals = isHome ? match.homeGoals : match.awayGoals
                                 const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals != null && opponentGoals != null) {
+                                if (typeof teamGoals === 'number' && typeof opponentGoals === 'number') {
                                   if (teamGoals > opponentGoals) points += 3
                                   else if (teamGoals === opponentGoals) points += 1
                                 }
@@ -491,7 +511,7 @@ export default function PublicTeamPage() {
                       <span className="font-semibold">{tournament.teamIds.length}</span>
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <span className="font-semibold">{tournament.matches.length}</span>
+                      <span className="font-semibold">{allMatches(tournament).length}</span>
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="text-sm">
@@ -501,11 +521,11 @@ export default function PublicTeamPage() {
                     <td className="py-3 px-4 text-center">
                       {(() => {
                         // Calculate team position in tournament
-                        const teamMatches = tournament.matches.filter(m => 
+                        const teamMatches = allMatches(tournament).filter(m => 
                           m.homeTeamId === team.id || m.awayTeamId === team.id
                         )
                         const completedMatches = teamMatches.filter(m => 
-                          m.homeGoals != null && m.awayGoals != null
+                          isPlayed(m)
                         )
                         if (completedMatches.length === 0) return <span className="text-sm opacity-70">No games</span>
                         
@@ -515,7 +535,7 @@ export default function PublicTeamPage() {
                           const isHome = match.homeTeamId === team.id
                           const teamGoals = isHome ? match.homeGoals : match.awayGoals
                           const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                          if (teamGoals != null && opponentGoals != null) {
+                          if (typeof teamGoals === 'number' && typeof opponentGoals === 'number') {
                             if (teamGoals > opponentGoals) points += 3
                             else if (teamGoals === opponentGoals) points += 1
                           }

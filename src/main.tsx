@@ -72,8 +72,13 @@ const TeamPage = lazyPage(() => import('./pages/TeamPage.tsx'))
 const PlayerPage = lazyPage(() => import('./pages/PlayerPage.tsx'))
 const MatchPage = lazyPage(() => import('./pages/MatchPage.tsx'))
 const PublicTournamentPage = lazyPage(() => import('./pages/PublicTournamentPage.tsx'))
-const NewPublicTeam = lazyPage(() => import('./pages/NewPublicTeam.tsx'))
-const NewPublicPlayer = lazyPage(() => import('./pages/NewPublicPlayer.tsx'))
+// Two versions of these pages lived in the tree. The ones the router used
+// showed a club's crest and squad and nothing else, and found a player by
+// pulling every team into the browser through a service that follows a
+// signed-in user to /admin/teams. These read the purpose-built public
+// endpoints and show what a visitor comes for: the matches and the numbers.
+const PublicTeamPage = lazyPage(() => import('./pages/PublicTeamPage.tsx'))
+const PublicPlayerPage = lazyPage(() => import('./pages/PublicPlayerPage.tsx'))
 const PublicMatchPage = lazyPage(() => import('./pages/PublicMatchPage.tsx'))
 
 const router = createBrowserRouter([
@@ -240,12 +245,12 @@ const router = createBrowserRouter([
         element: <PublicTournamentPage />
       },
       { 
-        path: 'teams/:id', 
-        element: <NewPublicTeam />
+        path: 'teams/:teamId', 
+        element: <PublicTeamPage />
       },
       { 
-        path: 'players/:id', 
-        element: <NewPublicPlayer />
+        path: 'players/:playerId', 
+        element: <PublicPlayerPage />
       },
     ],
   },
@@ -269,9 +274,16 @@ const router = createBrowserRouter([
         path: ':tournamentSlug/matches/:matchId', 
         element: <PublicMatchPage />
       },
+      {
+        // A match inside a named season. Without it the only address a fixture
+        // had was the two-segment one, so a link built from the page a visitor
+        // was actually reading had nowhere to land.
+        path: ':seriesSlug/:seasonSlug/matches/:matchId',
+        element: <PublicMatchPage />,
+      },
       { 
         path: 'players/:playerId', 
-        element: <NewPublicPlayer />
+        element: <PublicPlayerPage />
       },
     ],
   },

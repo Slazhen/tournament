@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { completePasswordReset } from '../lib/auth'
+import { completePasswordReset, landingPathFor } from '../lib/auth'
 import { useAuth } from '../contexts/AuthContext'
 import Logo from '../components/Logo'
 
@@ -34,8 +34,8 @@ export default function ResetPasswordPage() {
     setError(null)
     try {
       await completePasswordReset(token, password)
-      await refresh()
-      navigate('/admin')
+      // The reset signs them in, so this lands where a fresh sign-in would.
+      navigate(landingPathFor(await refresh()))
     } catch (caught) {
       setError(
         caught instanceof Error && caught.message

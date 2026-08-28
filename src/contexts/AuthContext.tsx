@@ -13,11 +13,12 @@ import { useAppStore } from '../store'
 interface AuthContextType {
   user: AuthUser | null
   isLoading: boolean
-  login: (loginCredential: string, password: string) => Promise<boolean>
+  /** The account on success, null when the credentials do not match one. */
+  login: (loginCredential: string, password: string) => Promise<AuthUser | null>
   logout: () => Promise<void>
   canAccess: (organizerId: string) => boolean
   /** Re-reads the session from the API — after a password reset signs someone in. */
-  refresh: () => Promise<void>
+  refresh: () => Promise<AuthUser | null>
   isSuperAdmin: boolean
   isOrganizer: boolean
 }
@@ -75,15 +76,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const login = async (loginCredential: string, password: string): Promise<boolean> => {
+  const login = async (
+    loginCredential: string,
+    password: string,
+  ): Promise<AuthUser | null> => {
     setIsLoading(true)
     try {
       const result = await authenticateUser(loginCredential, password)
-      if (!result) return false
+      if (!result) return null
 
       setUser(result.user)
       applyOrganizerScope(result.user)
-      return true
+      // Returned rather than only stored: the caller decides where to send
+      // somebody, and the state set here is not readable until the next render.
+      return result.user
     } finally {
       setIsLoading(false)
     }
@@ -100,10 +106,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const canAccess = (organizerId: string): boolean => canAccessOrganizer(user, organizerId)
 
-  const refresh = async (): Promise<void> => {
+  const refresh = async (): Promise<AuthUser | null> => {
     const result = await verifySession()
     setUser(result?.user ?? null)
     applyOrganizerScope(result?.user ?? null)
+    return result?.user ?? null
   }
 
   const value: AuthContextType = {

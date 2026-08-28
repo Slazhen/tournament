@@ -21,6 +21,7 @@ import {
   deleteInvitesOfOrganizer,
   linkManagerToTeam,
   unlinkManagerFromTeam,
+  unlinkOwnerManagers,
 } from '../repos-clubs.js'
 import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
@@ -69,8 +70,13 @@ const TEAM_FIELDS = [
   'photo',
   'socialMedia',
   'establishedDate',
-  'players',
 ] as const
+
+// `players` is deliberately absent. A squad is a list, and a list written back
+// whole loses whatever a second writer put there in the meantime — the same
+// failure that cost `managerUserIds` a removal and `teamIds` an entry. The
+// three routes below write one player at a time, under a condition, and they
+// are the only way in.
 
 function pick(body: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {}
@@ -284,6 +290,11 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     }
 
     for (const team of ownTeams) {
+      // The organizer being deleted may have run this club as well as owned it,
+      // and the link on the club would outlive their account. Before the move,
+      // so that a failure here leaves the club unmoved and the whole request
+      // repeatable, which is what every other step of this route is.
+      await unlinkOwnerManagers(team as Team, id)
       await teams.update(team.id, { organizerId: teamsTo })
     }
 
@@ -374,7 +385,31 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       updates.organizerId = ctx.body.organizerId
     }
     if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
+
+    // A club changing hands takes its manager list with it, and the previous
+    // owner's own link to it was granted by owning it. Done before the move
+    // rather than after: the unlink keys on the club id alone, so failing here
+    // leaves the club where it was and the move can simply be repeated —
+    // whereas moving first and failing second is unrepairable, because the
+    // retry reads the new owner and no longer sees a move to react to. What a
+    // retry cannot repair is a manager dropped from the club but not from their
+    // own account; `/manager/overview` decides from the club record for that
+    // reason, and the two are load-bearing for each other.
+    const movingTo = typeof updates.organizerId === 'string' ? updates.organizerId : ''
+    const isMove = movingTo !== '' && movingTo !== team.organizerId
+    if (isMove) await unlinkOwnerManagers(team as Team, team.organizerId as string)
+
     await teams.update(params.id!, updates)
+
+    if (isMove) {
+      await record(user, {
+        action: 'team.move',
+        entity: 'team',
+        entityId: params.id!,
+        summary: `Moved ${team.name} to ${movingTo}; its previous organizer no longer runs it`,
+        organizerId: team.organizerId,
+      })
+    }
     await record(user, {
       action: 'team.update',
       entity: 'team',
@@ -479,7 +514,18 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const team = await teams.get(params.id!)
     if (!team) throw notFound('Team not found')
     assertCanAccessOrganizer(user, team.organizerId)
+
     await teams.remove(params.id!)
+
+    // Whoever ran this club stops running it. The link is stored on the account
+    // as well as on the club, so deleting the club alone left `teamIds` naming
+    // a record that no longer exists. After the delete rather than before: a
+    // delete that fails would otherwise leave a live club with no managers and
+    // no way back except a fresh invitation, and a failure here is harmless —
+    // the manager's own overview reads the club record, which has gone.
+    for (const managerId of (team as Team).managerUserIds ?? []) {
+      await unlinkManagerFromTeam(managerId, team as Team)
+    }
     await record(user, {
       action: 'team.delete',
       entity: 'team',

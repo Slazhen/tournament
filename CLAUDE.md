@@ -130,8 +130,66 @@ applies to spending an invitation: `consumeInvite` deletes conditionally and
 treats only a successful delete as having spent it, or "works once" holds only
 for people who are not in a hurry.
 
+**A manager link is granted by ownership and honoured by identity.** An
+organizer may take their own club under management — `POST
+/admin/teams/:id/managers/me`, which is the invitation they used to have to
+write to themselves — and from then on `managesTeam` lets them in because their
+id sits in `managerUserIds`, not because they own the club. So the link has to
+be dropped when the club moves to another organizer, or the previous owner keeps
+editing a squad inside somebody else's league: `unlinkOwnerManagers` does it, and
+it runs before the move so that a failure leaves the move to be repeated. An
+invited coach has no `organizerId` and is never touched by it.
+
+**`/manager/overview` answers as the club, not as the account.** A competition
+the caller does not organize comes back projected — their own matches whole,
+everybody else's reduced to the score, `squads` cut to their own clubs — because
+a club playing in a rival's private league must not be a way to read that league.
+The projection is a whitelist at every level (`toClubTournament` in
+`routes/clubs.ts`): these records are schemaless and `PATCH` writes what it is
+given, so a field added later must not travel by default. The same route decides
+which clubs are the caller's from `managerUserIds`, not from the `teamIds` on
+their account: the two are written one after the other and can disagree.
+
+**A squad is only written one player at a time.** `PATCH /admin/teams/:id`
+cannot write `players` — the field is absent from `TEAM_FIELDS` on purpose, for
+the same reason `managerUserIds` is. The three player routes each touch one
+player under a condition (`addPlayer`, `updatePlayer`, `removePlayer` in
+`repos.ts`), and they are the only way in.
+
 Writes that reach the database are recorded by `lib/audit.ts`. A failed audit
 write never fails the request that caused it.
+
+## Statistics, and the data behind them
+
+Everything a visitor reads about a player is derived, never stored: there is no
+per-player total anywhere in the database. `src/utils/matches.ts` is the only
+place that derives it, and the tournament, team and player pages all read it, so
+the three of them cannot disagree.
+
+Two different sources, filled in by different people at different times:
+
+- **Goals and assists** come from `match.goals`. An own goal is left out of the
+  scorer's tally.
+- **Appearances** come from `match.lineups[side].starting`, plus anyone credited
+  with a goal or an assist in that match. There is nothing else that records
+  that a player was on the pitch — a competition whose lineups nobody fills in
+  has no appearances to show, and inferring them from the squad list would
+  credit a match to everyone who was injured that week.
+
+`allMatches()` in the same file is what every one of these reads. A tournament's
+knockout rounds live inside `format.customPlayoffConfig.playoffRounds`, not in
+`matches`, so anything that reads `tournament.matches` directly stops at the
+league phase — that is what hid every playoff goal from the scorer list and made
+a link to a playoff match answer "Match not found".
+
+**Player ids from before the API exist in old goal records.** The browser-side
+app generated nine-character ids (`n1m0kxpe8`); the API generates 32 hex
+characters. Goals recorded in the first era point at players whose records never
+made it into DynamoDB — the Homebush 2025 season has 59 such goals against five
+ids that exist in no club. Nothing can resolve them to a name, so a table built
+by walking the clubs' squads showed nothing at all. Statistics are therefore
+derived from the goals and matched to a squad for the name, never the other way
+round: a row whose player cannot be found still counts, under "Former player".
 
 ## Conventions
 

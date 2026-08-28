@@ -1,5 +1,5 @@
 import { badRequest, forbidden, notFound } from '../lib/http.js'
-import { assertCanAccessOrganizer, assertManagesTeam, isSuperAdmin } from '../lib/auth.js'
+import { assertCanAccessOrganizer, assertManagesTeam, isSuperAdmin, managesTeam } from '../lib/auth.js'
 import { assertPasswordStrength, generateId, generateSalt, hashPassword } from '../lib/passwords.js'
 import { createSession } from '../lib/sessions.js'
 import { ddb, PutCommand } from '../lib/ddb.js'
@@ -33,6 +33,182 @@ import type { RequestContext } from '../context.js'
  * addresses to collect in advance, and no stranger able to claim a club by
  * guessing its name.
  */
+/**
+ * A match as somebody else's club may see it.
+ *
+ * The date, the sides and the score: enough to work out the table the club is
+ * standing in, and nothing of what happened in a match the club did not play —
+ * the scorers, the cards, the statistics, the referee, the notes.
+ *
+ * A named list rather than a deletion of the fields that are sensitive today.
+ * The records are schemaless and `PATCH /admin/tournaments/:id` writes what it
+ * is given, so a field nobody has invented yet would otherwise be visible the
+ * day it is written.
+ */
+const CARRIED_MATCH_FIELDS = [
+  'id',
+  // A playoff bracket names its fixture `matchId` and records a `winner`.
+  'matchId',
+  'winner',
+  'homeTeamId',
+  'awayTeamId',
+  'dateISO',
+  'time',
+  'homeGoals',
+  'awayGoals',
+  'round',
+  'isPlayoff',
+  'playoffRound',
+  'playoffMatch',
+  'isElimination',
+  'division',
+  'groupIndex',
+  'status',
+]
+
+/**
+ * The competition itself, by the same rule and for the same reason.
+ *
+ * Everything here is either public on the competition's own page or needed to
+ * draw the club's season: the format decides how the table is worked out, the
+ * season fields name it, `squads` is filtered below.
+ */
+const CARRIED_TOURNAMENT_FIELDS = [
+  'id',
+  'name',
+  'organizerId',
+  'createdAtISO',
+  'teamIds',
+  'seriesId',
+  'seriesName',
+  'seasonLabel',
+  'championTeamId',
+  'logo',
+  'backgroundImage',
+  'location',
+  'socialMedia',
+  'visibility',
+  'squadsLocked',
+]
+
+/**
+ * A playoff round, and a bracket, by the same rule as everything else here.
+ *
+ * These are the objects an organiser edits by hand, so they are the likeliest
+ * to grow a field meant for them and not for the clubs.
+ */
+const CARRIED_ROUND_FIELDS = [
+  'id',
+  'roundNumber',
+  'round',
+  'name',
+  'description',
+  'quantityOfGames',
+  'isElimination',
+  'byeTeam',
+]
+
+function summariseMatch(match: unknown): unknown {
+  // A hole in the list. Two other readers of this array defend against one, so
+  // they happen, and one of them would otherwise fail every manager's overview.
+  if (!match || typeof match !== 'object') return match
+
+  const source = match as Record<string, unknown>
+  const summary: Record<string, unknown> = {}
+  for (const field of CARRIED_MATCH_FIELDS) {
+    if (source[field] !== undefined) summary[field] = source[field]
+  }
+  return summary
+}
+
+function isOwnMatch(match: unknown, mine: Set<string>): boolean {
+  if (!match || typeof match !== 'object') return false
+  const { homeTeamId, awayTeamId } = match as { homeTeamId?: string; awayTeamId?: string }
+  return mine.has(homeTeamId as string) || mine.has(awayTeamId as string)
+}
+
+function summariseRound(round: unknown, mine: Set<string>): unknown {
+  if (!round || typeof round !== 'object') return round
+
+  const source = round as Record<string, unknown>
+  const summary: Record<string, unknown> = { matches: projectMatches(source.matches, mine) }
+  for (const field of CARRIED_ROUND_FIELDS) {
+    if (source[field] !== undefined) summary[field] = source[field]
+  }
+  return summary
+}
+
+const projectMatches = (list: unknown, mine: Set<string>): unknown[] =>
+  (Array.isArray(list) ? list : []).map((match) =>
+    isOwnMatch(match, mine) ? match : summariseMatch(match),
+  )
+
+/**
+ * A competition as a club playing in it may see it.
+ *
+ * The club's own matches in full, because that is the club's own record of its
+ * season; everybody else's reduced to the score. Squads are cut down to the
+ * clubs the caller runs, since who a rival has registered is that club's
+ * business.
+ *
+ * Applied only to competitions the caller does not organize: their own they
+ * already hold every field of through /admin, and an organizer who also runs a
+ * club should not lose sight of their own competition by taking one on.
+ */
+export function toClubTournament(
+  tournament: Record<string, any>,
+  myTeamIds: string[],
+): Record<string, any> {
+  const mine = new Set(myTeamIds)
+
+  const visible: Record<string, any> = {}
+  for (const field of CARRIED_TOURNAMENT_FIELDS) {
+    if (tournament[field] !== undefined) visible[field] = tournament[field]
+  }
+
+  visible.matches = projectMatches(tournament.matches, mine)
+
+  // Playoff fixtures of a hand-built format are not in `matches` at all: they
+  // live inside the format, and the client concatenates the two to get the
+  // season. Projecting only `matches` handed a visiting club the whole bracket.
+  const format = tournament.format as Record<string, any> | undefined
+  if (format) {
+    const config = format.customPlayoffConfig as Record<string, any> | undefined
+    visible.format = config
+      ? {
+          ...format,
+          // The spread carries `preset` with it. Rebuilding this object without
+          // it silently turns a progressive-elimination season into a generic
+          // one, which is the trap CLAUDE.md names.
+          customPlayoffConfig: {
+            ...config,
+            playoffRounds: Array.isArray(config.playoffRounds)
+              ? config.playoffRounds.map((round: Record<string, any>) =>
+                  summariseRound(round, mine),
+                )
+              : config.playoffRounds,
+          },
+        }
+      : format
+  }
+
+  if (Array.isArray(tournament.playoffBrackets)) {
+    visible.playoffBrackets = tournament.playoffBrackets.map((bracket: Record<string, any>) =>
+      summariseRound(bracket, mine),
+    )
+  }
+
+  if (tournament.squads && typeof tournament.squads === 'object') {
+    visible.squads = Object.fromEntries(
+      Object.entries(tournament.squads as Record<string, string[]>).filter(([teamId]) =>
+        mine.has(teamId),
+      ),
+    )
+  }
+
+  return visible
+}
+
 export function registerClubRoutes(router: Router<RequestContext>): void {
   /* ---------------- invitations ---------------- */
 
@@ -215,10 +391,21 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
    */
   router.get('/manager/overview', async (ctx) => {
     const user = await ctx.user()
-    const teamIds = user.teamIds ?? []
+    const claimed = user.teamIds ?? []
+    if (claimed.length === 0) return { teams: [], tournaments: [], entries: [] }
+
+    // The account's list of clubs and the club's list of managers are two
+    // records, written one after the other: a removal that failed halfway, or a
+    // club deleted around the same moment, leaves the account claiming a club
+    // it no longer runs. Everything below — the club in full, and which matches
+    // count as this caller's own — is decided from the club record, which is
+    // where permission is decided everywhere else.
+    const myTeams = (await teams.getMany(claimed)).filter((team) =>
+      managesTeam(user, team as Team),
+    )
+    const teamIds = myTeams.map((team) => team.id)
     if (teamIds.length === 0) return { teams: [], tournaments: [], entries: [] }
 
-    const myTeams = await teams.getMany(teamIds)
     const entries = (await Promise.all(teamIds.map((id) => entriesForTeam(id)))).flat()
 
     // Every public tournament these clubs appear in, plus the ones they have
@@ -239,7 +426,18 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const opponents = await teams.getMany([...referenced])
     const teamNames = Object.fromEntries(opponents.map((team) => [team.id, team.name]))
 
-    return { teams: myTeams, tournaments: relevant, entries, teamNames }
+    // An organizer may run a club as well as a competition, and their club may
+    // play in somebody else's league. This route answers as the club, so a
+    // competition that is not theirs comes back as a participant sees it —
+    // otherwise entering a club in a rival's competition was a way to read that
+    // competition whole, private ones included.
+    const visible = relevant.map((tournament) =>
+      user.organizerId && tournament.organizerId === user.organizerId
+        ? tournament
+        : toClubTournament(tournament, teamIds),
+    )
+
+    return { teams: myTeams, tournaments: visible, entries, teamNames }
   })
 
   /** Applying to a competition. The organizer still has to say yes. */

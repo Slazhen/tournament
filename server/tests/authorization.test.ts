@@ -9,6 +9,7 @@ import {
 import { toPublicUser, type AuthUser } from '../src/lib/types.js'
 import { buildUpdate } from '../src/lib/ddb.js'
 import { corsHeaders, parseJsonBody, HttpError } from '../src/lib/http.js'
+import { toClubTournament } from '../src/routes/clubs.js'
 
 const organizerUser: AuthUser = {
   id: 'u-1',
@@ -182,5 +183,119 @@ describe('request bodies', () => {
 
   it('decodes a base64 body', () => {
     expect(parseJsonBody(Buffer.from('{"a":2}').toString('base64'), true)).toEqual({ a: 2 })
+  })
+})
+
+describe('a competition as a visiting club sees it', () => {
+  const tournament = {
+    id: 't-1',
+    organizerId: 'org-2',
+    teamIds: ['team-mine', 'team-a', 'team-b'],
+    visibility: 'private',
+    squads: { 'team-mine': ['p-1'], 'team-a': ['p-9'] },
+    matches: [
+      {
+        id: 'm-1',
+        homeTeamId: 'team-mine',
+        awayTeamId: 'team-a',
+        homeGoals: 2,
+        awayGoals: 1,
+        goals: [{ id: 'g-1', team: 'home', playerId: 'p-1', minute: 12, type: 'goal' }],
+      },
+      {
+        id: 'm-2',
+        homeTeamId: 'team-a',
+        awayTeamId: 'team-b',
+        dateISO: '2026-03-01T10:00:00.000Z',
+        homeGoals: 0,
+        awayGoals: 3,
+        referee: 'A. Referee',
+        goals: [{ id: 'g-2', team: 'away', playerId: 'p-9', minute: 4, type: 'goal' }],
+        statistics: { home: { corners: 1 }, away: { corners: 7 } },
+      },
+    ],
+  }
+
+  const seen = toClubTournament(tournament, ['team-mine'])
+
+  it('keeps the club\'s own match whole', () => {
+    expect(seen.matches[0]).toEqual(tournament.matches[0])
+  })
+
+  it('reduces everybody else\'s match to the score', () => {
+    expect(seen.matches[1]).toEqual({
+      id: 'm-2',
+      homeTeamId: 'team-a',
+      awayTeamId: 'team-b',
+      dateISO: '2026-03-01T10:00:00.000Z',
+      homeGoals: 0,
+      awayGoals: 3,
+    })
+  })
+
+  it('leaves the table computable', () => {
+    expect(seen.matches).toHaveLength(tournament.matches.length)
+    expect(seen.teamIds).toEqual(tournament.teamIds)
+  })
+
+  it("does not carry another club's registered squad", () => {
+    expect(seen.squads).toEqual({ 'team-mine': ['p-1'] })
+  })
+})
+
+describe('a hand-built playoff, as a visiting club sees it', () => {
+  const tournament = {
+    id: 't-2',
+    organizerId: 'org-2',
+    teamIds: ['team-mine', 'team-a', 'team-b'],
+    matches: [],
+    // Not a real field. Records here are schemaless, and this stands in for the
+    // one somebody adds next: it must not travel by default.
+    internalNotes: 'do not show this to the clubs',
+    format: {
+      rounds: 1,
+      mode: 'league_custom_playoff',
+      customPlayoffConfig: {
+        playoffTeams: 4,
+        enableBye: true,
+        preset: 'progressive_elimination',
+        playoffRounds: [
+          {
+            roundNumber: 1,
+            name: 'Week 1',
+            quantityOfGames: 2,
+            matches: [
+              { id: 'p-1', homeTeamId: 'team-mine', awayTeamId: 'team-a', notes: 'ours' },
+              { id: 'p-2', homeTeamId: 'team-a', awayTeamId: 'team-b', notes: 'theirs' },
+            ],
+          },
+        ],
+      },
+    },
+  }
+
+  const seen = toClubTournament(tournament, ['team-mine'])
+  const round = seen.format.customPlayoffConfig.playoffRounds[0]
+
+  it('summarises a playoff match the club is not in', () => {
+    expect(round.matches[1].notes).toBeUndefined()
+    expect(round.matches[1].homeTeamId).toBe('team-a')
+  })
+
+  it("leaves the club's own playoff match whole", () => {
+    expect(round.matches[0].notes).toBe('ours')
+  })
+
+  it('keeps the preset the format depends on', () => {
+    expect(seen.format.customPlayoffConfig.preset).toBe('progressive_elimination')
+  })
+
+  it('does not carry a field it was never taught about', () => {
+    expect(seen.internalNotes).toBeUndefined()
+  })
+
+  it('survives a hole in the fixture list', () => {
+    const holed = toClubTournament({ ...tournament, matches: [null, undefined] }, ['team-mine'])
+    expect(holed.matches).toHaveLength(2)
   })
 })

@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import {
   IconBall,
 } from '../components/icons'
+import { landingPathFor } from '../lib/auth'
 
 export default function AdminLoginPage() {
   const [loginCredential, setLoginCredential] = useState('')
@@ -19,9 +20,9 @@ export default function AdminLoginPage() {
     setIsLoading(true)
 
     try {
-      const success = await login(loginCredential, password)
-      if (success) {
-        navigate('/admin')
+      const account = await login(loginCredential, password)
+      if (account) {
+        navigate(landingPathFor(account))
       } else {
         setError('That email and password do not match an account')
       }

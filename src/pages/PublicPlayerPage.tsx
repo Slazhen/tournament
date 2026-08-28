@@ -9,6 +9,8 @@ import {
   IconTrophy,
   IconGlobe,
 } from '../components/icons'
+import PublicHeader from '../components/PublicHeader'
+import { allMatches, isPlayed, recordOf } from '../utils/matches'
 
 export default function PublicPlayerPage() {
   const { playerId } = useParams()
@@ -71,40 +73,42 @@ export default function PublicPlayerPage() {
     t.teamIds.includes(currentTeam.id)
   )
 
-  // Calculate player statistics
-  const playerStats = {
-    totalGames: 0,
-    wins: 0,
-    draws: 0,
-    losses: 0,
-    goalsFor: 0,
-    goalsAgainst: 0
-  }
+  const fixtures = playerTournaments.flatMap((tournament) => allMatches(tournament))
 
-  playerTournaments.forEach(tournament => {
-    tournament.matches.forEach(match => {
-      if (match.homeTeamId === currentTeam.id || match.awayTeamId === currentTeam.id) {
-        if (match.homeGoals != null && match.awayGoals != null) {
-          playerStats.totalGames++
-          const isHome = match.homeTeamId === currentTeam.id
-          const teamGoals = isHome ? match.homeGoals : match.awayGoals
-          const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-          
-          playerStats.goalsFor += teamGoals
-          playerStats.goalsAgainst += opponentGoals
-          
-          if (teamGoals > opponentGoals) playerStats.wins++
-          else if (teamGoals < opponentGoals) playerStats.losses++
-          else playerStats.draws++
-        }
-      }
-    })
+  // This player's own record. What used to sit under "Player Statistics" was
+  // the club's: games, wins and goals for the whole team, printed on a page
+  // about one person, so a substitute who never played read as having played
+  // every match and scored every goal.
+  const record = recordOf(fixtures, player.id)
+
+  // The club's record over the same matches, kept as its own thing.
+  const clubStats = { totalGames: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 }
+
+  fixtures.forEach(match => {
+    if (match.homeTeamId !== currentTeam.id && match.awayTeamId !== currentTeam.id) return
+    if (!isPlayed(match)) return
+
+    clubStats.totalGames++
+    const isHome = match.homeTeamId === currentTeam.id
+    const teamGoals = (isHome ? match.homeGoals : match.awayGoals) as number
+    const opponentGoals = (isHome ? match.awayGoals : match.homeGoals) as number
+
+    clubStats.goalsFor += teamGoals
+    clubStats.goalsAgainst += opponentGoals
+
+    if (teamGoals > opponentGoals) clubStats.wins++
+    else if (teamGoals < opponentGoals) clubStats.losses++
+    else clubStats.draws++
   })
 
   const fullName = `${player.firstName} ${player.lastName}`
 
   return (
     <div className="grid gap-6 place-items-center">
+      <div className="w-full">
+        <PublicHeader />
+      </div>
+
       {/* Header */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         {/* Player Info Header */}
@@ -216,31 +220,54 @@ export default function PublicPlayerPage() {
 
       {/* Player Statistics */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
-        <h2 className="text-xl font-semibold mb-4 text-center">Player Statistics</h2>
+        <h2 className="text-xl font-semibold mb-1 text-center">Player Statistics</h2>
+        <p className="text-xs opacity-60 text-center mb-4">
+          Appearances come from the lineup recorded for each match; goals and assists
+          from the goals recorded in it.
+        </p>
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="p-4 glass rounded-lg">
+            <div className="text-2xl font-bold text-blue-400">{record.played}</div>
+            <div className="text-sm opacity-70">Played</div>
+          </div>
+          <div className="p-4 glass rounded-lg">
+            <div className="text-2xl font-bold text-purple-400">{record.goals}</div>
+            <div className="text-sm opacity-70">Goals</div>
+          </div>
+          <div className="p-4 glass rounded-lg">
+            <div className="text-2xl font-bold text-indigo-400">{record.assists}</div>
+            <div className="text-sm opacity-70">Assists</div>
+          </div>
+        </div>
+      </section>
+
+      {/* The club's record over the same competitions. */}
+      <section className="glass rounded-xl p-6 w-full max-w-6xl">
+        <h2 className="text-xl font-semibold mb-4 text-center">{currentTeam.name}</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-center">
           <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-blue-400">{playerStats.totalGames}</div>
+            <div className="text-2xl font-bold text-blue-400">{clubStats.totalGames}</div>
             <div className="text-sm opacity-70">Games</div>
           </div>
           <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-green-400">{playerStats.wins}</div>
+            <div className="text-2xl font-bold text-green-400">{clubStats.wins}</div>
             <div className="text-sm opacity-70">Wins</div>
           </div>
           <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-yellow-400">{playerStats.draws}</div>
+            <div className="text-2xl font-bold text-yellow-400">{clubStats.draws}</div>
             <div className="text-sm opacity-70">Draws</div>
           </div>
           <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-red-400">{playerStats.losses}</div>
+            <div className="text-2xl font-bold text-red-400">{clubStats.losses}</div>
             <div className="text-sm opacity-70">Losses</div>
           </div>
           <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-purple-400">{playerStats.goalsFor}</div>
-            <div className="text-sm opacity-70">Goals For</div>
+            <div className="text-2xl font-bold text-purple-400">{clubStats.goalsFor}</div>
+            <div className="text-sm opacity-70">GF</div>
           </div>
           <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-indigo-400">{playerStats.goalsAgainst}</div>
-            <div className="text-sm opacity-70">Goals Against</div>
+            <div className="text-2xl font-bold text-indigo-400">{clubStats.goalsAgainst}</div>
+            <div className="text-sm opacity-70">GA</div>
           </div>
         </div>
       </section>
@@ -284,11 +311,11 @@ export default function PublicPlayerPage() {
                           <div className="text-xs opacity-70">
                             {(() => {
                               // Calculate team position in tournament
-                              const teamMatches = tournament.matches.filter(m => 
+                              const teamMatches = allMatches(tournament).filter(m => 
                                 m.homeTeamId === currentTeam.id || m.awayTeamId === currentTeam.id
                               )
                               const completedMatches = teamMatches.filter(m => 
-                                m.homeGoals != null && m.awayGoals != null
+                                isPlayed(m)
                               )
                               if (completedMatches.length === 0) return 'No games played'
                               
@@ -298,7 +325,7 @@ export default function PublicPlayerPage() {
                                 const isHome = match.homeTeamId === currentTeam.id
                                 const teamGoals = isHome ? match.homeGoals : match.awayGoals
                                 const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals != null && opponentGoals != null) {
+                                if (typeof teamGoals === 'number' && typeof opponentGoals === 'number') {
                                   if (teamGoals > opponentGoals) points += 3
                                   else if (teamGoals === opponentGoals) points += 1
                                 }
@@ -326,7 +353,7 @@ export default function PublicPlayerPage() {
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="font-semibold">
-                        {tournament.matches.filter(m => 
+                        {allMatches(tournament).filter(m => 
                           m.homeTeamId === currentTeam.id || m.awayTeamId === currentTeam.id
                         ).length}
                       </span>
