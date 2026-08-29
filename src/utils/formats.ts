@@ -131,7 +131,10 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     id: 'league_custom_playoff',
     mode: 'league_custom_playoff',
     rounds: 1,
-    title: 'Custom',
+    // Named for what it produces rather than for the fact that it is
+    // configurable: this title is also the label in the Format column of the
+    // team and player pages, where "Custom" on its own says nothing.
+    title: 'League + custom playoffs',
     tagline: 'Build the finals yourself',
     icon: 'tools',
     points: ['League stage as usual', 'You define each playoff round by hand'],

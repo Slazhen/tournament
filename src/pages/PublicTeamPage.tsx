@@ -16,6 +16,7 @@ import MiniTable from '../components/MiniTable'
 import LastAndNextMatch from '../components/LastAndNextMatch'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
 import { headerColor, inkOn, shade } from '../utils/crest'
+import { formatOptionFor } from '../utils/formats'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
@@ -606,7 +607,7 @@ export default function PublicTeamPage() {
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="text-sm">
-                        {tournament.format?.mode === 'league_playoff' ? 'League + Playoffs' : 'League Only'}
+                        {formatOptionFor(tournament.format).title}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">

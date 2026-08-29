@@ -7,6 +7,7 @@ import YoutubeIcon from '../components/YoutubeIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
+import { formatOptionFor } from '../utils/formats'
 import { clubService, type ClubManager } from '../lib/data'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -856,7 +857,7 @@ export default function TeamPage() {
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="text-sm">
-                        {tournament.format?.mode === 'league_playoff' ? 'League + Playoffs' : 'League Only'}
+                        {formatOptionFor(tournament.format).title}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center text-sm opacity-70">

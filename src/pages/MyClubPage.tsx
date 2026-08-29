@@ -27,7 +27,9 @@ import {
   IconCalendar,
   IconChart,
   IconCheck,
+  IconClipboard,
   IconClose,
+  IconGlobe,
   IconLock,
   IconPencil,
   IconPlus,
@@ -853,7 +855,66 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
               />
             </div>
           </div>
+
+          <PublicPageLink team={team} />
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The address of the club's own public page, and a way to copy it.
+ *
+ * A manager fills in a crest, colours and a squad without ever seeing what any
+ * of it produces: the page is public and needs no sign-in, but nothing in this
+ * screen said it existed. It is also the link they are asked for — by players,
+ * by a league, by whoever runs their social accounts — so it is worth being
+ * able to take away, not only to open.
+ *
+ * The page is served by id rather than by a readable slug because that is the
+ * only public address a club has.
+ */
+function PublicPageLink({ team }: { team: Team }) {
+  const [copied, setCopied] = useState(false)
+  const url = `${window.location.origin}/public/teams/${team.id}`
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard access can be refused (an insecure origin, a browser
+      // setting). The address is on screen and selectable, so there is
+      // nothing to report — silently doing nothing is the honest outcome.
+    }
+  }
+
+  return (
+    <div>
+      <span className="text-sm text-gray-300">Public page</span>
+      <p className="text-xs text-gray-500 mt-0.5">
+        This is what everybody else sees. Anyone with the link can open it.
+      </p>
+      <div className="flex flex-wrap items-center gap-2 mt-2">
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg glass hover:bg-white/10 transition-colors text-sm"
+        >
+          <IconGlobe size={14} /> Open
+        </a>
+        <button
+          type="button"
+          onClick={copy}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg glass hover:bg-white/10 transition-colors text-sm"
+        >
+          {copied ? <IconCheck size={14} /> : <IconClipboard size={14} />}
+          {copied ? 'Copied' : 'Copy link'}
+        </button>
+        <span className="text-xs text-gray-400 break-all min-w-0">{url}</span>
       </div>
     </div>
   )

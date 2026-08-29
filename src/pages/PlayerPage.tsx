@@ -5,6 +5,7 @@ import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
+import { formatOptionFor } from '../utils/formats'
 import {
   IconArrowLeft,
   IconClipboard,
@@ -483,7 +484,7 @@ export default function PlayerPage() {
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="text-sm">
-                        {tournament.format?.mode === 'league_playoff' ? 'League + Playoffs' : 'League Only'}
+                        {formatOptionFor(tournament.format).title}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">

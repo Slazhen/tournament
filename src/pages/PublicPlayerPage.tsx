@@ -11,6 +11,7 @@ import {
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { allMatches, isPlayed, recordOf } from '../utils/matches'
+import { formatOptionFor } from '../utils/formats'
 
 export default function PublicPlayerPage() {
   const { playerId } = useParams()
@@ -372,7 +373,7 @@ export default function PublicPlayerPage() {
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className="text-sm">
-                        {tournament.format?.mode === 'league_playoff' ? 'League + Playoffs' : 'League Only'}
+                        {formatOptionFor(tournament.format).title}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
