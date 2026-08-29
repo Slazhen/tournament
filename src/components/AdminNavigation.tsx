@@ -11,6 +11,15 @@ const ORGANIZER_NAV_ITEMS = [
   { to: '/calendar', label: 'Calendar' },
 ]
 
+// The super admin's own sections. They used to sit in the account menu behind
+// the avatar, where nobody looked for them: the audit log was reachable only by
+// typing /changes. They are pages, not account actions, so they belong beside
+// the other tabs.
+const SUPER_ADMIN_NAV_ITEMS = [
+  { to: '/organizers', label: 'Organizers' },
+  { to: '/changes', label: 'Changes' },
+]
+
 const CLUB_NAV_ITEM = { to: '/my-club', label: 'My clubs' }
 
 /**
@@ -71,6 +80,7 @@ export default function AdminNavigation() {
 
   const navItems = [
     ...(canOrganize ? ORGANIZER_NAV_ITEMS : []),
+    ...(isSuperAdmin ? SUPER_ADMIN_NAV_ITEMS : []),
     ...(runsAClub ? [CLUB_NAV_ITEM] : []),
   ]
 
@@ -139,12 +149,6 @@ export default function AdminNavigation() {
               <div className="py-1 text-sm">
                 {!isSuperAdmin && currentOrganizer && (
                   <MenuItem onClick={() => setCurrentOrganizer('')}>Switch organizer</MenuItem>
-                )}
-                {isSuperAdmin && (
-                  <MenuItem onClick={() => navigate('/organizers')}>Organizers</MenuItem>
-                )}
-                {isSuperAdmin && (
-                  <MenuItem onClick={() => navigate('/changes')}>Changes</MenuItem>
                 )}
                 <MenuItem onClick={() => navigate('/')}>Public site</MenuItem>
               </div>
