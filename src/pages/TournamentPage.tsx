@@ -22,6 +22,7 @@ import {
   IconPlus,
   IconTrash,
   IconKnockout,
+  IconRepeat,
 } from '../components/icons'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -30,7 +31,8 @@ import VisibilityToggle from '../components/VisibilityToggle'
 import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
 import MatchDateTime from '../components/MatchDateTime'
-import { applyDateToRound } from '../utils/matchdates'
+import { applyDateToRound, applyTimePatternToRounds } from '../utils/matchdates'
+import { localDatePart, localTimePart } from '../utils/datetime'
 import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, getSeasonUrl, publicSeasonUrl } from '../utils/seasons'
@@ -92,6 +94,12 @@ export default function TournamentPage() {
     return undefined
   }, [id, orgSlug, tournamentSlug, tournaments, allOrganizers, currentOrganizer])
   
+  // The kick-off pattern of the first round, offered to the rest of them.
+  const [timePatternOpen, setTimePatternOpen] = useState(false)
+  const [timePatternStartDate, setTimePatternStartDate] = useState('')
+  const [timePatternIntervalDays, setTimePatternIntervalDays] = useState(7)
+  const [timePatternMoveRounds, setTimePatternMoveRounds] = useState(false)
+
   // State for new round configuration
   const [showNewRoundForm, setShowNewRoundForm] = useState(false)
   const [newRoundConfig, setNewRoundConfig] = useState({
@@ -304,6 +312,41 @@ export default function TournamentPage() {
     if (!source) return
     const matches = applyDateToRound(tournament.matches, source.id)
     updateTournament(tournament.id, { matches })
+  }
+
+  /**
+   * The first round's kick-off times, repeated in every other round. Rounds that
+   * are moved as well take their day from the first round plus the interval; the
+   * rest keep the day they already have.
+   */
+  function applyTimePattern() {
+    if (!tournament) return
+    const matches = applyTimePatternToRounds(
+      tournament.matches,
+      rounds,
+      timePatternMoveRounds && timePatternStartDate
+        ? { startDate: timePatternStartDate, intervalDays: timePatternIntervalDays }
+        : {},
+    )
+    updateTournament(tournament.id, { matches })
+    setTimePatternOpen(false)
+  }
+
+  /** Fills the panel from what is already on the fixtures before it is shown. */
+  function openTimePattern() {
+    if (!tournament) return
+    const firstRound = rounds[0]
+    const firstDate = firstRound?.matchIds
+      .map((id) => tournament.matches.find((m) => m.id === id)?.dateISO)
+      .find(Boolean)
+    setTimePatternStartDate(localDatePart(firstDate))
+    setTimePatternIntervalDays(7)
+    // A round with no date at all cannot hold a time, so the dates are offered by
+    // default exactly when leaving them alone would skip part of the season.
+    setTimePatternMoveRounds(
+      rounds.some((r) => !r.matchIds.some((id) => tournament.matches.find((m) => m.id === id)?.dateISO)),
+    )
+    setTimePatternOpen(true)
   }
 
   const handleCompleteRound = () => {
@@ -1650,7 +1693,83 @@ export default function TournamentPage() {
                     <IconCalendar size={14} /> Same date for the round
                   </button>
                 )}
+              {/* One pitch, one clock: the first round is the template the rest follow. */}
+              {r.round === rounds[0]?.round &&
+                rounds.length > 1 &&
+                r.matchIds.some((id) => tournament.matches.find((m) => m.id === id)?.dateISO) && (
+                  <button
+                    type="button"
+                    onClick={() => (timePatternOpen ? setTimePatternOpen(false) : openTimePattern())}
+                    className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
+                    title="Repeat this round's kick-off times in every other round"
+                  >
+                    <IconRepeat size={14} /> Same times for every round
+                  </button>
+                )}
             </div>
+
+            {r.round === rounds[0]?.round && timePatternOpen && (
+              <div className="mb-4 p-3 rounded-lg border border-white/15 bg-white/5 grid gap-3">
+                <p className="text-xs opacity-80">
+                  Every round gets this round's kick-off times, fixture by fixture: the first match of
+                  each round at {localTimePart(tournament.matches.find((m) => m.id === r.matchIds[0])?.dateISO, 'the first time here')}, and so on down the list.
+                  Times already set in the other rounds are replaced.
+                </p>
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={timePatternMoveRounds}
+                    onChange={(e) => setTimePatternMoveRounds(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <span>Set the dates as well</span>
+                </label>
+                {timePatternMoveRounds && (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs opacity-70">First round</label>
+                      <CustomDatePicker
+                        value={timePatternStartDate}
+                        onChange={(date) => setTimePatternStartDate(date)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs opacity-70">Days between rounds</label>
+                      <input
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={timePatternIntervalDays}
+                        onChange={(e) => setTimePatternIntervalDays(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-24 px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+                {!timePatternMoveRounds && (
+                  <p className="text-xs opacity-70">
+                    Each round keeps its own day. A round with no date yet is left empty, since a time
+                    cannot be stored without one.
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={applyTimePattern}
+                    disabled={timePatternMoveRounds && !timePatternStartDate}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-500/20 hover:bg-blue-500/30 disabled:opacity-40 transition-all text-blue-400 text-xs"
+                  >
+                    <IconCheck size={14} /> Apply to every round
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimePatternOpen(false)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md glass text-xs hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="grid gap-3">
               {r.matchIds.map((mid) => {
                 const m = tournament.matches.find((x) => x.id === mid)!
