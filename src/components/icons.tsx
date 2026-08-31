@@ -99,6 +99,16 @@ export function IconStadium(props: IconProps) {
   )
 }
 
+export function IconWhistle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12.6 9.4h8a1.4 1.4 0 0 1 1.4 1.4v1a1.4 1.4 0 0 1-1.4 1.4h-2.4" />
+      <circle cx="8" cy="14" r="6" />
+      <circle cx="8" cy="11.3" r="1.1" />
+    </Svg>
+  )
+}
+
 export function IconLock(props: IconProps) {
   return (
     <Svg {...props}>

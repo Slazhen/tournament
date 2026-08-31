@@ -309,6 +309,26 @@ columns, because the player was booked and the side finished a man down.
 Bookings feed nothing else: `playerRecords` does not read them, so a card cannot
 move an appearance or a table position.
 
+**The table is derived in one place too.** `src/utils/standings.ts` holds the
+tally, the group split and the elimination set; the season page and the match
+page both read it. They used to be about to hold a copy each, which is two
+answers to "who is third" waiting to disagree. A grouped competition has no one
+table, so `leagueTable` is not asked for one — `groupTables` returns a table per
+group and the season page draws them separately. `tableForMatch` is the match
+page's view of it: the group a fixture belongs to where there is one, nothing at
+all for a straight knockout, where every club has played the same single game
+and the bracket is the standing.
+
+**The public match page is five tabs, and every one of them is always there.**
+`PublicMatchPage.tsx`: Events, Video, Line-ups, Stats, Table, with the tab in
+`?tab=` so a link opens where it was sent. A tab that appears only when its data
+exists teaches a visitor nothing about what is missing and moves the tabs beside
+it from match to match, so an empty one says what is not filled in yet. The
+scoreboard above them is the public club header applied twice
+(`components/MatchScoreboard.tsx`), each half painted in that club's crest
+colour — both gradients run dark towards the seam so the score is readable
+whatever the two clubs wear.
+
 `allMatches()` in the same file is what every one of these reads. A tournament's
 knockout rounds live inside `format.customPlayoffConfig.playoffRounds`, not in
 `matches`, so anything that reads `tournament.matches` directly stops at the

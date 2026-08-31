@@ -11,6 +11,11 @@ import InstagramIcon from '../components/InstagramIcon'
 import LocationIcon from '../components/LocationIcon'
 import { teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import { allMatches, playerRecords } from '../utils/matches'
+import {
+  eliminatedTeams as eliminatedTeamsOf,
+  groupTables as groupTablesOf,
+  leagueTable,
+} from '../utils/standings'
 import { hasSquadEntry, registeredPlayers } from '../utils/squads'
 import {
   IconTrophy,
@@ -288,173 +293,30 @@ export default function PublicTournamentPage() {
   }
 
 
+  /**
+   * The tables, worked out in `utils/standings.ts` rather than here.
+   *
+   * The same arithmetic is now drawn beside a single match, and two copies of
+   * it would be two answers to "who is third" waiting to disagree — the mistake
+   * the card totals were making while they were stored beside the events they
+   * come from.
+   *
+   * A grouped competition has no one table, so `table` comes back empty for
+   * one and each group is drawn from `groupTables` instead. Nobody is
+   * eliminated in a group stage either: the knockout that decides it has not
+   * been played yet.
+   */
   const calculateTable = () => {
     if (!tournament) return { table: [], eliminatedTeams: new Set<string>(), groupTables: {} }
-    
-    // Check if this is a groups_with_divisions format - EXACTLY like admin page
-    if (tournament.format?.mode === 'groups_with_divisions' && tournament.format?.groupsWithDivisionsConfig) {
-      let groups = tournament.format.groupsWithDivisionsConfig.groups
-      
-      // If groups aren't stored, reconstruct them from matches
-      if (!groups || groups.length === 0) {
-        const config = tournament.format.groupsWithDivisionsConfig
-        const numberOfGroups = config.numberOfGroups || 4
-        const teamsPerGroup = config.teamsPerGroup || 4
-        
-        // Reconstruct groups from match groupIndex
-        const reconstructedGroups: Record<number, Set<string>> = {}
-        tournament.matches.forEach((m: any) => {
-          if (!m.isPlayoff && m.groupIndex) {
-            if (!reconstructedGroups[m.groupIndex]) {
-              reconstructedGroups[m.groupIndex] = new Set()
-            }
-            reconstructedGroups[m.groupIndex].add(m.homeTeamId)
-            reconstructedGroups[m.groupIndex].add(m.awayTeamId)
-          }
-        })
-        
-        // Convert to array format
-        groups = []
-        for (let i = 1; i <= numberOfGroups; i++) {
-          if (reconstructedGroups[i]) {
-            groups.push(Array.from(reconstructedGroups[i]))
-          } else {
-            // Fallback: distribute teams evenly
-            const startIdx = (i - 1) * teamsPerGroup
-            const endIdx = Math.min(startIdx + teamsPerGroup, tournament.teamIds.length)
-            groups.push(tournament.teamIds.slice(startIdx, endIdx))
-          }
-        }
-      }
-      
-      if (groups && groups.length > 0) {
-        const groupTables: Record<number, any[]> = {}
-      
-        // Calculate standings for each group separately - EXACTLY like admin page
-        groups.forEach((groupTeams: string[], groupIndex: number) => {
-          const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
-          
-          // Initialize stats for teams in this group
-          groupTeams.forEach((tid: string) => {
-            stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
-          })
-          
-          // Count group matches (matches with this groupIndex)
-          // Match by groupIndex first (most reliable), with fallback to team matching
-          const groupMatches = tournament.matches.filter((m: any) => {
-            if (m.isPlayoff) return false
-            
-            // Primary check: match by groupIndex (1-based: 1, 2, 3, 4 for groups A, B, C, D)
-            if (m.groupIndex === groupIndex + 1) {
-              return true // Trust groupIndex if it's set
-            }
-            
-            // Fallback: if groupIndex is missing or doesn't match, check by teams
-            // This handles cases where groupIndex might not be set correctly
-            if (!m.groupIndex && groupTeams.includes(m.homeTeamId) && groupTeams.includes(m.awayTeamId)) {
-              return true
-            }
-            
-            return false
-          })
-          
-          for (const m of groupMatches) {
-            if (!m || (m as any).homeGoals == null || (m as any).awayGoals == null) continue
-            const a = stats[(m as any).homeTeamId]
-            const b = stats[(m as any).awayTeamId]
-            if (!a || !b) continue
-            
-            a.p++; b.p++
-            a.gf += (m as any).homeGoals; a.ga += (m as any).awayGoals
-            b.gf += (m as any).awayGoals; b.ga += (m as any).homeGoals
-            if ((m as any).homeGoals > (m as any).awayGoals) { a.w++; b.l++; a.pts += 3 }
-            else if ((m as any).homeGoals < (m as any).awayGoals) { b.w++; a.l++; b.pts += 3 }
-            else { a.d++; b.d++; a.pts++; b.pts++ }
-          }
-          
-          const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
-            .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
-          
-          groupTables[groupIndex + 1] = table
-        })
-      
-        return { table: [], eliminatedTeams: new Set<string>(), groupTables }
-      }
+
+    const groupTables = groupTablesOf(tournament)
+    const grouped = Object.keys(groupTables).length > 0
+
+    return {
+      table: grouped ? [] : leagueTable(tournament),
+      eliminatedTeams: grouped ? new Set<string>() : eliminatedTeamsOf(tournament),
+      groupTables,
     }
-    
-    // Regular league/playoff table calculation
-    const stats: Record<string, { p: number; w: number; d: number; l: number; gf: number; ga: number; pts: number }> = {}
-    const eliminatedTeams = new Set<string>()
-    
-    // Initialize stats ONLY for teams in this tournament
-    tournament.teamIds.forEach((tid: string) => {
-      if (tid) {
-        stats[tid] = { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
-      }
-    })
-
-    // Process all matches (including custom playoff matches)
-    const played = allMatches(tournament)
-    played.forEach((match: any) => {
-      // Only process matches that have been played (both scores are valid numbers)
-      const hasValidScores = typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number' &&
-                           !isNaN(match.homeGoals) && !isNaN(match.awayGoals) &&
-                           match.homeGoals >= 0 && match.awayGoals >= 0
-      
-      if (hasValidScores) {
-        const homeTeam = stats[match.homeTeamId]
-        const awayTeam = stats[match.awayTeamId]
-        
-        if (homeTeam && awayTeam) {
-          homeTeam.p++
-          awayTeam.p++
-          homeTeam.gf += match.homeGoals
-          homeTeam.ga += match.awayGoals
-          awayTeam.gf += match.awayGoals
-          awayTeam.ga += match.homeGoals
-
-          if (match.homeGoals > match.awayGoals) {
-            homeTeam.w++
-            awayTeam.l++
-            homeTeam.pts += 3
-          } else if (match.homeGoals < match.awayGoals) {
-            awayTeam.w++
-            homeTeam.l++
-            awayTeam.pts += 3
-          } else {
-            homeTeam.d++
-            awayTeam.d++
-            homeTeam.pts++
-            awayTeam.pts++
-          }
-        }
-      }
-    })
-    
-    // Who has been knocked out.
-    //
-    // This only ran for league_playoff and swiss_elimination, so a tournament
-    // whose knockout games are hand-built rounds — the format this league
-    // actually uses — never showed anyone as eliminated.
-    const knockoutModes = ['league_playoff', 'swiss_elimination']
-    played.forEach((match: any) => {
-      const decidesElimination =
-        match.isElimination === true ||
-        (match.isPlayoff && knockoutModes.includes(tournament.format?.mode))
-      if (!decidesElimination) return
-
-      const { homeTeamId, awayTeamId, homeGoals, awayGoals } = match
-      if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) return
-      if (typeof homeGoals !== 'number' || typeof awayGoals !== 'number') return
-
-      if (homeGoals > awayGoals) eliminatedTeams.add(awayTeamId)
-      else if (homeGoals < awayGoals) eliminatedTeams.add(homeTeamId)
-    })
-    
-    const table = Object.entries(stats).map(([id, s]) => ({ id, ...s }))
-      .sort((x: any, y: any) => y.pts - x.pts || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf)
-    
-    return { table, eliminatedTeams, groupTables: {} }
   }
 
   // Calculate table directly without useMemo to avoid infinite loops
