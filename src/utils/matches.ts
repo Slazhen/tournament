@@ -33,6 +33,21 @@ export function allMatches(tournament: Tournament | null | undefined): Match[] {
 export const isPlayed = (match: Pick<Match, 'homeGoals' | 'awayGoals'>): boolean =>
   typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'
 
+/**
+ * What a fixture's round is called.
+ *
+ * League rounds are stored from zero — `generateRoundRobinSchedule` counts from
+ * zero and every generator since has followed it — while a playoff round is
+ * stored from one. The fixture list adds the one and the two match screens did
+ * not, so a game the season page called Round 2 called itself Round 1 once it
+ * was opened. Both screens read the name from here now, because two places to
+ * write it is two places to get the offset wrong.
+ */
+export function roundLabel(match: Pick<Match, 'round' | 'isPlayoff' | 'playoffRound'>): string {
+  if (match.isPlayoff) return `Playoff round ${match.playoffRound ?? 1}`
+  return `Round ${(match.round ?? 0) + 1}`
+}
+
 export type PlayerRecord = {
   playerId: string
   /** The club the goals were scored for, so a name can be resolved against it. */

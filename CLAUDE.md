@@ -455,6 +455,13 @@ Useful scripts, run with your own AWS credentials:
   `repos.js` above the DynamoDB call, and `smoke-init` only proves the bundle
   loads — so `server/tests/expressions.test.ts` reads every literal `…Expression`
   in `server/src` and fails on a bare reserved word.
+- **A league round is stored from zero, a playoff round from one.**
+  `generateRoundRobinSchedule` numbers its rounds from zero and every generator
+  since has followed it; `roundNumber` on a hand-built playoff round is
+  `existingRounds.length + 1`. The fixture list adds the one, so anything that
+  prints `match.round` raw is a round behind what the same fixture is called on
+  the season page. `roundLabel` in `src/utils/matches.ts` is the only place that
+  knows which of the two it is holding.
 - **Both halves of `lineups` are optional**, and `src/types.ts` says so. The two
   sides are written separately, so a reader that dereferences `lineups.away`
   because `lineups` exists will throw on a match only one manager has named.

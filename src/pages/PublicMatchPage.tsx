@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
 import { findTournamentBySlug } from '../utils/urls'
-import { allMatches, cardLabel, cardTotals, isPlayed, NO_STAT } from '../utils/matches'
+import { allMatches, cardLabel, cardTotals, isPlayed, NO_STAT, roundLabel } from '../utils/matches'
 import { tableForMatch } from '../utils/standings'
 import type { Tournament, Team, Match, Organizer, Player } from '../types'
 import { getSeasonUrl, seasonLabel, seriesName } from '../utils/seasons'
@@ -238,9 +238,7 @@ export default function PublicMatchPage() {
             {seriesName(tournament)} {seasonLabel(tournament)}
           </Link>
           <span className="opacity-40">•</span>
-          <span>
-            {match.isPlayoff ? `Playoff round ${match.playoffRound ?? 1}` : `Round ${match.round ?? 1}`}
-          </span>
+          <span>{roundLabel(match)}</span>
           {match.isElimination && (
             <span className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide font-medium px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-400/20">
               <IconKnockout size={13} /> Elimination

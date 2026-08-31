@@ -17,7 +17,7 @@ import {
 } from '../components/icons'
 import { playersForPicking, registeredPlayers } from '../utils/squads'
 import { youtubeEmbedUrl } from '../utils/video'
-import { cardLabel, cardTotals, statValue } from '../utils/matches'
+import { cardLabel, cardTotals, roundLabel, statValue } from '../utils/matches'
 import type { CardType } from '../utils/matches'
 
 export default function MatchPage() {
@@ -221,8 +221,7 @@ export default function MatchPage() {
         {/* Match Header */}
         <div className="text-center mb-6">
           <div className="text-sm opacity-70 mb-2">
-            {tournament.name} • Round {match.round || 1}
-            {match.isPlayoff && ` • Playoff Round ${match.playoffRound}`}
+            {tournament.name} • {roundLabel(match)}
           </div>
           
           {/* Teams and Score */}
