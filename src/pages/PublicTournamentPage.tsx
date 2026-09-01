@@ -16,14 +16,16 @@ import {
   groupTables as groupTablesOf,
   leagueTable,
 } from '../utils/standings'
-import { hasSquadEntry, registeredPlayers } from '../utils/squads'
-import {
-  IconTrophy,
-  IconUsers,
-} from '../components/icons'
+import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 
 const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
+
+const STATS_TABS = [
+  { id: 'scorers', label: 'Top Scorers' },
+  { id: 'assists', label: 'Top Assists' },
+  { id: 'combined', label: 'Goals + Assists' },
+] as const
 
 /**
  * What to show for the venue.
@@ -94,7 +96,11 @@ export default function PublicTournamentPage() {
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
-  const [playerStatsFilter, setPlayerStatsFilter] = useState<'all' | 'scorers' | 'assists'>('scorers')
+  const [playerStatsFilter, setPlayerStatsFilter] = useState<'scorers' | 'assists' | 'combined'>('scorers')
+  // Ten rows is the ranking anyone came for; the rest is one press away. It
+  // used to be reachable only through an "All players" tab that also listed
+  // everybody with nothing to their name.
+  const [showAllStats, setShowAllStats] = useState(false)
   // The single full tournament being viewed (loaded via GetItem, not a full-table scan)
   const [tournament, setTournament] = useState<any>(null)
   // Only the teams this tournament references, fetched by key (BatchGetItem).
@@ -491,20 +497,12 @@ export default function PublicTournamentPage() {
     tournament.format?.mode === 'league_custom_playoff' &&
     (tournament.format?.customPlayoffConfig?.playoffRounds?.length ?? 0) > 0
 
-  // The clubs in this competition, each with the players registered for it —
-  // which is not the same as the players the club has. A club in two
-  // competitions may field two different squads, and the club's own page cannot
-  // say which is which because it belongs to no competition.
-  const squads = (tournament.teamIds || [])
-    .map((teamId: string) => teams.find((team: any) => team.id === teamId))
-    .filter(Boolean)
-    .map((team: any) => ({
-      team,
-      players: registeredPlayers(tournament, team),
-      entered: hasSquadEntry(tournament, team.id),
-    }))
-    .filter((row: any) => row.players.length > 0 || row.entered)
-    .sort((a: any, b: any) => String(a.team.name).localeCompare(String(b.team.name)))
+  // Switching tab starts the new ranking at its top ten rather than inheriting
+  // however far the previous one was expanded.
+  const selectStatsTab = (tab: 'scorers' | 'assists' | 'combined') => {
+    setPlayerStatsFilter(tab)
+    setShowAllStats(false)
+  }
 
   // A plain array, not useMemo: this sits after the loading and not-found
   // early returns, where an extra hook would change the hook order.
@@ -512,7 +510,6 @@ export default function PublicTournamentPage() {
     { id: 'standings', label: 'Table' },
     ...(hasPlayoffBracket ? [{ id: 'playoffs', label: 'Playoffs' }] : []),
     { id: 'fixtures', label: 'Fixtures' },
-    ...(squads.length > 0 ? [{ id: 'squads', label: 'Squads' }] : []),
     { id: 'stats', label: 'Stats' },
   ]
 
@@ -1198,72 +1195,6 @@ export default function PublicTournamentPage() {
           })()}
         </div>
 
-        {/* Squads */}
-        {squads.length > 0 && (
-          <div id="squads" className="mb-12 scroll-mt-20">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-                Squads
-              </h2>
-              <p className="text-sm text-gray-300">
-                Who each club has registered for this competition.
-              </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {squads.map(({ team, players }: any) => (
-                <div
-                  key={team.id}
-                  className="glass rounded-2xl p-4 sm:p-5 border border-white/20 shadow-xl"
-                >
-                  <Link
-                    to={`/public/teams/${team.id}`}
-                    className="flex items-center gap-3 mb-3 hover:opacity-80 transition-opacity"
-                  >
-                    {team.logo ? (
-                      <img
-                        src={team.logo}
-                        alt=""
-                        className="w-9 h-9 rounded-lg object-cover shrink-0"
-                      />
-                    ) : (
-                      <span className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                        <IconUsers size={16} />
-                      </span>
-                    )}
-                    <span className="min-w-0">
-                      <span className="block font-semibold text-white truncate">{team.name}</span>
-                      <span className="block text-xs text-gray-400">
-                        {players.length} {players.length === 1 ? 'player' : 'players'}
-                      </span>
-                    </span>
-                  </Link>
-
-                  {players.length === 0 ? (
-                    <p className="text-sm text-gray-400">No squad registered yet.</p>
-                  ) : (
-                    <ul className="space-y-0.5">
-                      {players.map((player: any) => (
-                        <li key={player.id} className="text-sm text-gray-200 truncate">
-                          {player.number ? (
-                            <span className="opacity-50 mr-2 tabular-nums">{player.number}</span>
-                          ) : null}
-                          <Link
-                            to={`/public/players/${player.id}`}
-                            className="hover:text-white transition-colors"
-                          >
-                            {player.firstName} {player.lastName}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Statistics */}
         <div id="stats" className="mb-12 scroll-mt-20">
           <div className="text-center mb-8">
@@ -1275,37 +1206,20 @@ export default function PublicTournamentPage() {
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                 <h3 className="text-xl sm:text-2xl font-bold text-white">Player Performance</h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setPlayerStatsFilter('all')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                      playerStatsFilter === 'all'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
-                    }`}
-                  >
-                    All Players
-                  </button>
-                  <button
-                    onClick={() => setPlayerStatsFilter('scorers')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                      playerStatsFilter === 'scorers'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
-                    }`}
-                  >
-                    Top Scorers
-                  </button>
-                  <button
-                    onClick={() => setPlayerStatsFilter('assists')}
-                    className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                      playerStatsFilter === 'assists'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
-                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
-                    }`}
-                  >
-                    Top Assists
-                  </button>
+                <div className="flex flex-wrap gap-2">
+                  {STATS_TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => selectStatsTab(tab.id)}
+                      className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                        playerStatsFilter === tab.id
+                          ? 'bg-blue-500/20 text-blue-400 border border-blue-400/30'
+                          : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
               </div>
               
@@ -1331,20 +1245,24 @@ export default function PublicTournamentPage() {
                   rows = named
                     .filter((row) => row.record.goals > 0)
                     .sort((a, b) => b.record.goals - a.record.goals || b.record.assists - a.record.assists)
-                    .slice(0, 10)
                 } else if (playerStatsFilter === 'assists') {
                   rows = named
                     .filter((row) => row.record.assists > 0)
                     .sort((a, b) => b.record.assists - a.record.assists || b.record.goals - a.record.goals)
-                    .slice(0, 10)
                 } else {
-                  rows = [...named].sort(
-                    (a, b) =>
-                      b.record.goals - a.record.goals ||
-                      b.record.assists - a.record.assists ||
-                      b.record.played - a.record.played,
-                  )
+                  rows = named
+                    .filter((row) => row.record.goals + row.record.assists > 0)
+                    .sort(
+                      (a, b) =>
+                        b.record.goals +
+                          b.record.assists -
+                          (a.record.goals + a.record.assists) ||
+                        b.record.goals - a.record.goals,
+                    )
                 }
+
+                const ranked = rows.length
+                const visible = showAllStats ? rows : rows.slice(0, 10)
 
                 // An empty table used to be the whole answer, which reads as a
                 // broken page rather than as a competition whose goalscorers
@@ -1359,6 +1277,7 @@ export default function PublicTournamentPage() {
                 }
 
                 return (
+                  <>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs sm:text-base">
                       <thead>
@@ -1368,10 +1287,13 @@ export default function PublicTournamentPage() {
                           <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">P</th>
                           <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Goals</th>
                           <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Assists</th>
+                          {playerStatsFilter === 'combined' && (
+                            <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">G+A</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.map(({ record, team, player }) => (
+                        {visible.map(({ record, team, player }) => (
                           <tr
                             key={record.playerId}
                             className="border-b border-white/10 hover:bg-white/5 transition-colors"
@@ -1448,11 +1370,29 @@ export default function PublicTournamentPage() {
                             <td className="py-2 px-1 sm:px-6 text-center text-white font-medium">
                               {record.assists}
                             </td>
+                            {playerStatsFilter === 'combined' && (
+                              <td className="py-2 px-1 sm:px-6 text-center">
+                                <span className="text-white font-bold text-xs sm:text-base">
+                                  {record.goals + record.assists}
+                                </span>
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
+                  {ranked > 10 && (
+                    <div className="text-center mt-4">
+                      <button
+                        onClick={() => setShowAllStats(!showAllStats)}
+                        className="px-4 py-2 rounded-lg text-xs sm:text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20 transition-all"
+                      >
+                        {showAllStats ? 'Show top 10' : `Show all ${ranked}`}
+                      </button>
+                    </div>
+                  )}
+                  </>
                 )
               })()}
             </div>
