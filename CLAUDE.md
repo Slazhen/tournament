@@ -409,6 +409,24 @@ Two different sources, filled in by different people at different times:
   has no appearances to show, and inferring them from the squad list would
   credit a match to everyone who was injured that week.
 
+**An own goal counts for one side and is scored by a player of the other.**
+`goal.team` is the side the goal counted for — the score is worked out from that
+field and nothing else — so for an own goal the scorer named on it plays for the
+opposite squad. `scorerSide` in `src/utils/matches.ts` is the single place that
+flip lives: the organiser's scorer picker offers the other team's players, the
+public timeline resolves the name against that squad while still drawing the
+event on the bank of the side that got the goal, and `playerRecords` credits the
+appearance to the scorer's own club. The picker used to offer only the team the
+goal counted for, so the player who actually put it in could not be named at all;
+organisers left the field empty, and the public match page — which hides goals
+with nobody named, because a half-filled row is a row still being typed — then
+dropped the event entirely. Own goals are the exception to that filter now, and
+show as "Own goal" with no name. An own goal has no assist: the field is not
+offered for one, and a value left on an older record is ignored rather than
+credited. Goals recorded before this rule store a scorer from the side the goal
+counted for, so the name lookup falls back to the other squad rather than
+printing "Unknown player" over a player who is in the match.
+
 **A card is an event, and the totals are counted from it.** `match.cards` holds
 one row per booking — player, side, minute, and `yellow`, `second_yellow` or
 `red` — and the Yellow Cards and Red Cards rows of the match statistics table

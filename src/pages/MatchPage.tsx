@@ -17,7 +17,7 @@ import {
 } from '../components/icons'
 import { playersForPicking, registeredPlayers } from '../utils/squads'
 import { youtubeEmbedUrl } from '../utils/video'
-import { cardLabel, cardTotals, findMatch, roundLabel, statValue } from '../utils/matches'
+import { cardLabel, cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
 import type { CardType } from '../utils/matches'
 
 /**
@@ -141,9 +141,19 @@ export default function MatchPage() {
       return
     }
 
-    const goals = match.goals?.map(g => 
-      g.id === goalId ? { ...g, ...updates } : g
-    ) || []
+    const goals = match.goals?.map(g => {
+      if (g.id !== goalId) return g
+      const merged = { ...g, ...updates }
+      // An own goal is put in by a player of the other side, so switching a
+      // goal into or out of that type leaves a scorer who plays for the wrong
+      // club — and an assist, which an own goal does not have.
+      if (updates.type !== undefined && updates.type !== g.type) {
+        const crossesSides = updates.type === 'own_goal' || g.type === 'own_goal'
+        if (crossesSides) merged.playerId = ''
+        if (updates.type === 'own_goal') merged.assistPlayerId = undefined
+      }
+      return merged
+    }) || []
     updateMatch({ goals })
   }
 
@@ -453,7 +463,7 @@ export default function MatchPage() {
                           {goal.minute}'
                         </span>
                         <span className={`font-semibold ${goal.team === 'home' ? 'text-blue-400' : 'text-red-400'}`}>
-                          {getPlayerName(goal.playerId, goal.team === 'home' ? homeTeam : awayTeam)}
+                          {getPlayerName(goal.playerId, scorerSide(goal) === 'home' ? homeTeam : awayTeam)}
                         </span>
                         <span className="text-sm opacity-70">
                           {goal.type === 'penalty' ? '(Penalty)' : goal.type === 'own_goal' ? '(Own Goal)' : ''}
@@ -631,6 +641,13 @@ export default function MatchPage() {
                   .map(goal => {
                     const team = goal.team === 'home' ? homeTeam : awayTeam
                     const isHomeTeam = goal.team === 'home'
+                    // Who is offered as the scorer: the other squad for an own
+                    // goal. Without this the only names on the list were the
+                    // team the goal counted for, so the player who actually put
+                    // it in could not be named at all and the field was left
+                    // empty — and the public page then had nothing to show.
+                    const scorerTeam = scorerSide(goal) === 'home' ? homeTeam : awayTeam
+                    const isOwnGoal = goal.type === 'own_goal'
                     return (
                       <div key={goal.id} className="glass rounded-xl p-6">
                         <div className="flex items-center justify-between mb-4">
@@ -677,7 +694,9 @@ export default function MatchPage() {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium mb-2">Scorer</label>
+                            <label className="block text-sm font-medium mb-2">
+                              {isOwnGoal ? `Own goal by (${scorerTeam?.name ?? 'other team'})` : 'Scorer'}
+                            </label>
                             <select
                               value={goal.playerId || ''}
                               onChange={(e) => updateGoal(goal.id, { playerId: e.target.value })}
@@ -687,15 +706,17 @@ export default function MatchPage() {
                                   : 'focus:border-red-400/50 focus:ring-red-400/20'
                               }`}
                             >
-                              <option value="">Select Scorer</option>
-                              {playersForPicking(tournament, team, goal.playerId).map(player => (
+                              <option value="">{isOwnGoal ? 'Select Player' : 'Select Scorer'}</option>
+                              {playersForPicking(tournament, scorerTeam, goal.playerId).map(player => (
                                 <option key={player.id} value={player.id}>
                                   {player.firstName} {player.lastName}
                                 </option>
                               ))}
                             </select>
                           </div>
-                          <div>
+                          {/* An own goal has no assist, so the field is not
+                              offered for one. */}
+                          <div className={isOwnGoal ? 'hidden' : ''}>
                             <label className="block text-sm font-medium mb-2">Assist Provider</label>
                             <select
                               value={goal.assistPlayerId || ''}

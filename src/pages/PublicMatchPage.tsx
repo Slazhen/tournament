@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
 import { findTournamentBySlug } from '../utils/urls'
-import { allMatches, cardLabel, cardTotals, isPlayed, NO_STAT, roundLabel } from '../utils/matches'
+import { allMatches, cardLabel, cardTotals, isPlayed, NO_STAT, roundLabel, scorerSide } from '../utils/matches'
 import { publicTeamUrl } from '../utils/teams'
 import { tableForMatch } from '../utils/standings'
 import type { Tournament, Team, Match, Organizer, Player } from '../types'
@@ -325,8 +325,13 @@ function SectionTitle({ children }: { children: ReactNode }) {
   return <h2 className="text-xs uppercase tracking-widest text-gray-400 mb-3">{children}</h2>
 }
 
-const playerName = (team: Team | null, playerId: string): string => {
-  const player = team?.players?.find((one) => one?.id === playerId)
+const playerName = (team: Team | null, playerId: string, fallback?: Team | null): string => {
+  const find = (squad: Team | null | undefined) => squad?.players?.find((one) => one?.id === playerId)
+  // The fallback is for own goals recorded before the form offered the other
+  // squad: the scorer stored on them plays for the side the goal counted for,
+  // and looking only where the rule now says would print "Unknown player" over
+  // a name that is right there in the match.
+  const player = find(team) ?? find(fallback)
   return player ? `${player.firstName} ${player.lastName}` : 'Unknown player'
 }
 
@@ -352,7 +357,10 @@ function EventsPanel({
   // holding.
   const events = [
     ...(match.goals ?? [])
-      .filter((goal) => Boolean(goal?.playerId))
+      // A goal with nobody named is a half-filled row the organiser is still
+      // working on — except an own goal, which changed the score and belongs in
+      // the story whether or not anyone was named for it.
+      .filter((goal) => Boolean(goal?.playerId) || goal?.type === 'own_goal')
       .map((goal) => ({ kind: 'goal' as const, id: goal.id, minute: goal.minute ?? 0, goal })),
     ...(match.cards ?? [])
       .filter((card) => Boolean(card?.playerId))
@@ -386,8 +394,15 @@ function EventsPanel({
           <div aria-hidden className="absolute inset-y-0 left-1/2 w-px bg-white/10" />
           <ul className="relative grid gap-2">
             {events.map((event) => {
+              // Which bank the event sits on is the side it counted for, so an
+              // own goal appears beside the team it gave the goal to. Who put
+              // it in is a player of the other side, which is the squad the
+              // name is resolved against.
               const side = event.kind === 'goal' ? event.goal.team : event.card.team
               const team = teamOf(side === 'away' ? 'away' : 'home')
+              const other = teamOf(side === 'away' ? 'home' : 'away')
+              const namedBy =
+                event.kind === 'goal' && scorerSide(event.goal) !== side ? other : team
 
               return (
                 <li
@@ -395,12 +410,18 @@ function EventsPanel({
                   className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4"
                 >
                   <div className={side === 'home' ? 'text-right' : ''}>
-                    {side === 'home' && <EventLine event={event} team={team} align="end" />}
+                    {side === 'home' && (
+                      <EventLine event={event} team={namedBy} other={team} align="end" />
+                    )}
                   </div>
                   <span className="shrink-0 text-xs font-mono tabular-nums px-2 py-1 rounded-full bg-white/10 text-gray-200">
                     {event.minute}'
                   </span>
-                  <div>{side !== 'home' && <EventLine event={event} team={team} align="start" />}</div>
+                  <div>
+                    {side !== 'home' && (
+                      <EventLine event={event} team={namedBy} other={team} align="start" />
+                    )}
+                  </div>
                 </li>
               )
             })}
@@ -418,10 +439,14 @@ type TimelineEvent =
 function EventLine({
   event,
   team,
+  other,
   align,
 }: {
   event: TimelineEvent
+  /** The squad the player named in this event turns out for. */
   team: Team | null
+  /** The other squad in the match, searched when the stored side is the old one. */
+  other?: Team | null
   align: 'start' | 'end'
 }) {
   const rowClass = `flex items-center gap-2 flex-wrap ${align === 'end' ? 'justify-end' : ''}`
@@ -448,17 +473,28 @@ function EventLine({
   const note =
     goal.type === 'penalty' ? 'penalty' : goal.type === 'own_goal' ? 'own goal' : undefined
 
+  // An own goal nobody was named for still reads as one: the label carries the
+  // whole event, and there is no player page to link to.
+  const scorer = goal.playerId ? (
+    <Link
+      to={`/public/players/${goal.playerId}`}
+      className="text-sm font-semibold hover:opacity-80 transition-opacity"
+    >
+      {playerName(team, goal.playerId, other)}
+    </Link>
+  ) : (
+    <span className="text-sm font-semibold">Own goal</span>
+  )
+  const detail = goal.playerId ? (
+    <GoalDetail goal={goal} team={team} other={other} note={note} />
+  ) : null
+
   return (
     <div className={rowClass}>
-      {align === 'end' && <GoalDetail goal={goal} team={team} note={note} />}
+      {align === 'end' && detail}
       <IconBall size={14} className="opacity-70" />
-      <Link
-        to={`/public/players/${goal.playerId}`}
-        className="text-sm font-semibold hover:opacity-80 transition-opacity"
-      >
-        {playerName(team, goal.playerId)}
-      </Link>
-      {align === 'start' && <GoalDetail goal={goal} team={team} note={note} />}
+      {scorer}
+      {align === 'start' && detail}
     </div>
   )
 }
@@ -466,18 +502,23 @@ function EventLine({
 function GoalDetail({
   goal,
   team,
+  other,
   note,
 }: {
   goal: NonNullable<Match['goals']>[number]
   team: Team | null
+  other?: Team | null
   note?: string
 }) {
-  if (!note && !goal.assistPlayerId) return null
+  // An own goal has no assist; anything stored in that field on one is left
+  // over from before the form stopped offering it.
+  const assistPlayerId = goal.type === 'own_goal' ? undefined : goal.assistPlayerId
+  if (!note && !assistPlayerId) return null
   return (
     <span className="text-xs text-gray-400">
       {note}
-      {note && goal.assistPlayerId ? ', ' : ''}
-      {goal.assistPlayerId ? `assist ${playerName(team, goal.assistPlayerId)}` : ''}
+      {note && assistPlayerId ? ', ' : ''}
+      {assistPlayerId ? `assist ${playerName(team, assistPlayerId, other)}` : ''}
     </span>
   )
 }

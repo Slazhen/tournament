@@ -114,6 +114,20 @@ export function roundLabel(match: Pick<Match, 'round' | 'isPlayoff' | 'playoffRo
   return `Round ${(match.round ?? 0) + 1}`
 }
 
+/**
+ * Which side the player who put the ball in the net turns out for.
+ *
+ * `goal.team` is the side the goal counts for, because that is what the score
+ * is worked out from. An own goal is the one case where the scorer plays for
+ * the other side, and every screen that resolves a name against a squad has to
+ * flip it — so the flip lives here rather than in each of them.
+ */
+export const scorerSide = (goal: {
+  team: 'home' | 'away'
+  type?: 'goal' | 'penalty' | 'own_goal'
+}): 'home' | 'away' =>
+  goal.type === 'own_goal' ? (goal.team === 'home' ? 'away' : 'home') : goal.team
+
 export type PlayerRecord = {
   playerId: string
   /** The club the goals were scored for, so a name can be resolved against it. */
@@ -171,7 +185,10 @@ export function playerRecords(matches: Match[]): Map<string, PlayerRecord> {
     )
 
     for (const goal of match.goals ?? []) {
-      const teamId = sideTeamId(goal.team)
+      // The scorer's own club, which for an own goal is not the club the goal
+      // counted for: crediting the appearance to the other side put a player in
+      // a squad they have never played for.
+      const teamId = sideTeamId(scorerSide(goal))
 
       if (goal.playerId) {
         const record = of(goal.playerId, teamId)
@@ -182,8 +199,11 @@ export function playerRecords(matches: Match[]): Map<string, PlayerRecord> {
         }
       }
 
-      if (goal.assistPlayerId) {
-        const record = of(goal.assistPlayerId, teamId)
+      // An own goal has no assist. Anything stored in that field is left over
+      // from before the form stopped offering one, and crediting it would hand
+      // somebody an assist for a goal against their own club.
+      if (goal.assistPlayerId && goal.type !== 'own_goal') {
+        const record = of(goal.assistPlayerId, sideTeamId(goal.team))
         record.assists++
         if (!appeared.has(goal.assistPlayerId)) {
           record.played++
