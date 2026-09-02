@@ -7,6 +7,7 @@ import YoutubeIcon from '../components/YoutubeIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
+import { registeredPlayers } from '../utils/squads'
 import { formatOptionFor } from '../utils/formats'
 import { clubService, type ClubManager } from '../lib/data'
 import { useAuth } from '../contexts/AuthContext'
@@ -22,7 +23,7 @@ import {
 
 export default function TeamPage() {
   const { teamId } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto, loadTeams, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto, loadTeams, setSquad, superAdmin } = useAppStore()
 
   // Whether this organiser also runs the club is asked of the session rather
   // than of the club record: the answer decides both the button below and the
@@ -56,6 +57,10 @@ export default function TeamPage() {
   // The add-player form. Players used to be created the instant the button was
   // pressed, appearing as "New Player" with a number nobody chose.
   const [isAddingPlayer, setIsAddingPlayer] = useState(false)
+  // The one box being written, so that box alone can say it is busy. The tick
+  // itself is drawn from the record and only moves once the server has agreed.
+  const [savingEntry, setSavingEntry] = useState<string | null>(null)
+  const [entryFailed, setEntryFailed] = useState<string | null>(null)
   const [draftPlayer, setDraftPlayer] = useState({ firstName: '', lastName: '', number: '', position: 'Forward' })
   // Hooks must run on every render (before any early return) to keep hook order stable.
   const logoFileRef = useRef<HTMLInputElement>(null)
@@ -211,6 +216,55 @@ export default function TeamPage() {
   const teamTournaments = tournaments.filter(t => 
     t.teamIds.includes(teamId!)
   )
+
+  // Records from the browser-side era have a null sitting in `players`, and
+  // this screen reads the stored squad rather than a public projection, so it
+  // has to drop them itself — one hole is a blank screen for the whole club.
+  const squad = (team.players ?? []).filter((player) => player != null)
+
+  // Who this club has entered in each of them, worked out once rather than per
+  // cell. An ordinary competition the club has never been entered in reads as
+  // its whole squad, which is what it means — see utils/squads.ts.
+  const enteredByTournament = new Map(
+    teamTournaments.map((tournament) => [
+      tournament.id,
+      new Set(
+        registeredPlayers(tournament, team)
+          .filter((player) => player != null)
+          .map((player) => player.id),
+      ),
+    ]),
+  )
+
+  /**
+   * Entering or withdrawing one player from one competition.
+   *
+   * The whole list is sent, because that is what an entry is: the competition
+   * stores who is registered, not a diff. It is taken from the club's own squad
+   * order so the stored list reads the way the screen does.
+   */
+  const toggleEntry = async (tournamentId: string, playerId: string) => {
+    const entered = enteredByTournament.get(tournamentId)
+    if (!entered || !team) return
+
+    const next = new Set(entered)
+    if (next.has(playerId)) next.delete(playerId)
+    else next.add(playerId)
+
+    setEntryFailed(null)
+    setSavingEntry(`${tournamentId}:${playerId}`)
+    try {
+      await setSquad(
+        tournamentId,
+        team.id,
+        squad.filter((player) => next.has(player.id)).map((player) => player.id),
+      )
+    } catch {
+      setEntryFailed('That could not be saved, so nothing was changed. Try again.')
+    } finally {
+      setSavingEntry(null)
+    }
+  }
 
   // Matches this team is actually scheduled in, across every tournament.
   const teamMatchCount = teamTournaments.reduce(
@@ -738,6 +792,15 @@ export default function TeamPage() {
           )}
         </div>
 
+        {teamTournaments.length > 0 && (
+          <p className="text-sm opacity-70 mb-4">
+            A tick enters that player in that competition. Entries stay yours whoever runs the
+            club, and closing squads is a deadline for its manager rather than for you.
+          </p>
+        )}
+
+        {entryFailed && <p className="text-sm text-red-300 mb-3">{entryFailed}</p>}
+
         {clubIsMineToEdit && isAddingPlayer && (
           <form
             onSubmit={(event) => {
@@ -808,13 +871,27 @@ export default function TeamPage() {
                   <th className="py-3 px-4 text-left">Player</th>
                   <th className="py-3 px-4 text-left">Position</th>
                   <th className="py-3 px-4 text-left">Number</th>
+                  {teamTournaments.map((tournament) => (
+                    <th key={tournament.id} className="py-3 px-4 text-center">
+                      <span
+                        className="block truncate max-w-[10rem] mx-auto"
+                        title={tournament.name}
+                      >
+                        {tournament.name}
+                      </span>
+                      <span className="block text-xs font-normal opacity-60">
+                        {enteredByTournament.get(tournament.id)?.size ?? 0} of {squad.length}{' '}
+                        entered
+                      </span>
+                    </th>
+                  ))}
                   <th className="py-3 px-4 text-left">Joined</th>
                   <th className="py-3 px-4 text-center">Public</th>
                   <th className="py-3 px-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                                        {team.players.map((player) => (
+                                        {squad.map((player) => (
                   <tr key={player.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
@@ -872,6 +949,20 @@ export default function TeamPage() {
                         <span className="opacity-80">{player.number ?? '\u2014'}</span>
                       )}
                     </td>
+                    {teamTournaments.map((tournament) => (
+                      <td key={tournament.id} className="py-3 px-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            enteredByTournament.get(tournament.id)?.has(player.id) ?? false
+                          }
+                          disabled={savingEntry === `${tournament.id}:${player.id}`}
+                          onChange={() => void toggleEntry(tournament.id, player.id)}
+                          className="w-4 h-4 rounded border border-white/20 cursor-pointer disabled:opacity-40 disabled:cursor-wait"
+                          title={`Entered in ${tournament.name}`}
+                        />
+                      </td>
+                    ))}
                     <td className="py-3 px-4 text-sm opacity-70">
                       {new Date(player.createdAtISO).toLocaleDateString()}
                     </td>

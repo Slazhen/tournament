@@ -101,6 +101,13 @@ type AppStore = {
     teamId: string,
     playerIds: string[],
   ) => Promise<void>
+
+  /**
+   * Who one club has entered in one competition. Throws like `setLineup` and
+   * for the same reason: the box is drawn from the record, so a save that did
+   * not happen has to leave the record alone rather than lie about it.
+   */
+  setSquad: (tournamentId: string, teamId: string, playerIds: string[]) => Promise<void>
   
   updateSettings: (updates: Partial<AppStore['settings']>) => void
   
@@ -699,6 +706,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
             return { ...match, lineups }
           }),
         }
+      }),
+    }))
+  },
+
+  setSquad: async (tournamentId: string, teamId: string, playerIds: string[]) => {
+    const { playerIds: saved, all } = await tournamentService.saveSquad(
+      tournamentId,
+      teamId,
+      playerIds,
+    )
+
+    set(state => ({
+      tournaments: state.tournaments.map(tournament => {
+        if (tournament.id !== tournamentId) return tournament
+        const squads = { ...(tournament.squads ?? {}) }
+        // What the server stored, not what was asked for. In an ordinary
+        // competition a whole squad is stored as no entry at all, so that a
+        // player signed next week joins automatically; keeping the list here
+        // would show the same ticks over a different meaning.
+        if (all && tournament.squadsStrict !== true) delete squads[teamId]
+        else squads[teamId] = saved
+        return { ...tournament, squads }
       }),
     }))
   },

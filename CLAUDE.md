@@ -172,6 +172,16 @@ same reason: most clubs have no manager, and a competition whose entries only a
 coach can fill in is one the organiser cannot run. The organiser's route ignores
 `squadsLocked`, which is the deadline they set for the managers.
 
+The organiser writes an entry from two screens, because the question is asked
+from both ends: the competition's settings, club by club, and the club's own
+page, which carries a column per competition the club plays in and a tick per
+player. Both land on that one route, and both are shown for a club whose
+manager has taken it on — the entry belongs to the competition, and that is
+exactly what the organiser keeps. The tick is drawn from the record and moves
+only once the server has agreed (`setSquad` in `src/store.ts`, the same
+arrangement as `setLineup`), so a save that failed cannot leave a screen
+claiming somebody is registered.
+
 A club's own player screen, `/my-club/players/:id`, reads `/manager/overview`
 rather than a route of its own: the squad is already in that answer, and a
 second endpoint would be a second permission check to get wrong. The
