@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
 import { findTournamentBySlug } from '../utils/urls'
 import { allMatches, cardLabel, cardTotals, isPlayed, NO_STAT, roundLabel } from '../utils/matches'
+import { publicTeamUrl } from '../utils/teams'
 import { tableForMatch } from '../utils/standings'
 import type { Tournament, Team, Match, Organizer, Player } from '../types'
 import { getSeasonUrl, seasonLabel, seriesName } from '../utils/seasons'
@@ -246,7 +247,13 @@ export default function PublicMatchPage() {
           )}
         </div>
 
-        <MatchScoreboard match={match} homeTeam={homeTeam} awayTeam={awayTeam} status={status} />
+        <MatchScoreboard
+          match={match}
+          homeTeam={homeTeam}
+          awayTeam={awayTeam}
+          status={status}
+          tournamentId={tournament.id}
+        />
 
         {/* Kick-off, ground and referee. One line under the plate rather than a
             panel of their own: three short facts do not need a heading each. */}
@@ -300,6 +307,7 @@ export default function PublicMatchPage() {
               teams={teams}
               highlight={[match.homeTeamId, match.awayTeamId]}
               seasonHref={seasonHref}
+              tournamentId={tournament.id}
             />
           )}
         </div>
@@ -737,11 +745,14 @@ function TablePanel({
   teams,
   highlight,
   seasonHref,
+  tournamentId,
 }: {
   table: ReturnType<typeof tableForMatch>
   teams: Team[]
   highlight: string[]
   seasonHref: string
+  /** Carried into the club links so the club page opens this competition's squad. */
+  tournamentId: string
 }) {
   if (!table || table.rows.length === 0) {
     return <Nothing>This competition has no league table.</Nothing>
@@ -791,7 +802,7 @@ function TablePanel({
                       )}
                       {team ? (
                         <Link
-                          to={`/public/teams/${team.id}`}
+                          to={publicTeamUrl(team.id, tournamentId)}
                           className={`truncate hover:opacity-80 transition-opacity ${isPlaying ? 'font-semibold' : ''}`}
                         >
                           {team.name}

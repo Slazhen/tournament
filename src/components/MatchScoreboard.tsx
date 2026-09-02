@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { Match, Team } from '../types'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { isPlayed } from '../utils/matches'
+import { publicTeamUrl } from '../utils/teams'
 
 /**
  * The two clubs and the score, as one plate split down the middle.
@@ -22,11 +23,14 @@ export default function MatchScoreboard({
   homeTeam,
   awayTeam,
   status,
+  tournamentId,
 }: {
   match: Match
   homeTeam: Team
   awayTeam: Team
   status: 'scheduled' | 'live' | 'finished'
+  /** Carried into the club links so the club page opens this competition's squad. */
+  tournamentId?: string
 }) {
   const played = isPlayed(match)
 
@@ -50,7 +54,7 @@ export default function MatchScoreboard({
       />
 
       <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-1 sm:gap-4 px-3 py-6 sm:px-8 sm:py-9">
-        <ClubMark team={homeTeam} align="end" />
+        <ClubMark team={homeTeam} align="end" tournamentId={tournamentId} />
 
         <div className="text-center px-1 sm:px-4">
           <div className="text-4xl sm:text-6xl font-bold tabular-nums text-white drop-shadow-lg leading-none">
@@ -69,7 +73,7 @@ export default function MatchScoreboard({
           </div>
         </div>
 
-        <ClubMark team={awayTeam} align="start" />
+        <ClubMark team={awayTeam} align="start" tournamentId={tournamentId} />
       </div>
     </section>
   )
@@ -111,7 +115,15 @@ function Half({ team, side }: { team: Team; side: 'home' | 'away' }) {
 }
 
 /** The badge and the name, on the side of the seam their club is painted on. */
-function ClubMark({ team, align }: { team: Team; align: 'start' | 'end' }) {
+function ClubMark({
+  team,
+  align,
+  tournamentId,
+}: {
+  team: Team
+  align: 'start' | 'end'
+  tournamentId?: string
+}) {
   const ink = inkOn(shade(headerColor(team), -0.08))
 
   return (
@@ -138,7 +150,7 @@ function ClubMark({ team, align }: { team: Team; align: 'start' | 'end' }) {
       </div>
 
       <Link
-        to={`/public/teams/${team.id}`}
+        to={publicTeamUrl(team.id, tournamentId)}
         className={`text-sm sm:text-2xl font-bold leading-tight drop-shadow-lg hover:opacity-80 transition-opacity text-center ${
           align === 'end' ? 'sm:text-right' : 'sm:text-left'
         }`}

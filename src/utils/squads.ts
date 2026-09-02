@@ -70,3 +70,26 @@ export function playersForPicking(
 
   return extras.length === 0 ? registered : [...registered, ...extras]
 }
+
+/**
+ * The squad as one competition knew it: who is registered, plus anyone who
+ * actually played for the club in it.
+ *
+ * The union is not decoration. An entry can be narrowed while a season is under
+ * way — a player released in April is off the April list and still scored in
+ * March — so the entry alone would drop a name the same page's own scorer table
+ * still carries, and a visitor would be left looking for a player who is
+ * demonstrably there. It is the rule the teamsheet already follows, for the
+ * same reason: `nameableInMatch` on the server, `playersForPicking` here.
+ *
+ * `appeared` is worked out from the matches of that competition and nothing
+ * else, so a player who only ever turned out for the club elsewhere does not
+ * join this list.
+ */
+export function squadInTournament(
+  tournament: SquadRules | null | undefined,
+  team: Pick<Team, 'id' | 'players'> | null | undefined,
+  appeared: string[],
+): Player[] {
+  return playersForPicking(tournament, team, ...appeared)
+}

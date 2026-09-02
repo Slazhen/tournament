@@ -335,6 +335,23 @@ knockout rounds live inside `format.customPlayoffConfig.playoffRounds`, not in
 league phase — that is what hid every playoff goal from the scorer list and made
 a link to a playoff match answer "Match not found".
 
+**The public club page shows one squad per competition.** `PublicTeamPage` has a
+tab for the club as a whole and one for each competition it plays in, kept in
+`?tab=<tournamentId>`, and the links that lead there carry it — `publicTeamUrl`
+in `src/utils/teams.ts`, used by the tables, the fixture list, the champion line
+and the match scoreboard. A name clicked in a league table is a question about
+that league's squad, not about everybody the club has ever signed.
+
+What that tab lists is the entry plus anyone who actually played in that
+competition (`squadInTournament`), for the same reason `nameableInMatch` unions
+the two on the server: an entry narrowed in April would otherwise drop a player
+the same page's own scorer table still credits with a March goal. Appearances,
+goals and assists are recounted over that competition's matches alone, because a
+squad shown for one season beside totals from every season reads as a claim
+about that season and is not. A club absent from `squads` in an open competition
+has everybody registered, so the tab says so rather than showing a list that
+looks like a selection nobody made.
+
 **Player ids from before the API exist in old goal records.** The browser-side
 app generated nine-character ids (`n1m0kxpe8`); the API generates 32 hex
 characters. Goals recorded in the first era point at players whose records never

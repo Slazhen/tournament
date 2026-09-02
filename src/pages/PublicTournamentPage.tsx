@@ -11,6 +11,7 @@ import InstagramIcon from '../components/InstagramIcon'
 import LocationIcon from '../components/LocationIcon'
 import { teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import { allMatches, playerRecords } from '../utils/matches'
+import { publicTeamUrl } from '../utils/teams'
 import {
   eliminatedTeams as eliminatedTeamsOf,
   groupTables as groupTablesOf,
@@ -409,7 +410,7 @@ export default function PublicTournamentPage() {
             )}
             <div>
               <Link 
-                to={`/public/teams/${match.homeTeamId}`}
+                to={publicTeamUrl(match.homeTeamId, tournament?.id)}
                 className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300"
               >
                 {homeTeam?.name || 'Unknown Team'}
@@ -461,7 +462,7 @@ export default function PublicTournamentPage() {
           <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
             <div className="text-right">
               <Link 
-                to={`/public/teams/${match.awayTeamId}`}
+                to={publicTeamUrl(match.awayTeamId, tournament?.id)}
                 className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300"
               >
                 {awayTeam?.name || 'Unknown Team'}
@@ -585,7 +586,7 @@ export default function PublicTournamentPage() {
                     Champions {thisSeason}
                   </div>
                   <Link
-                    to={`/public/teams/${champion.id}`}
+                    to={publicTeamUrl(champion.id, tournament?.id)}
                     className="text-lg sm:text-xl font-bold hover:text-amber-200 transition-colors"
                   >
                     {champion.name}
@@ -743,7 +744,7 @@ export default function PublicTournamentPage() {
                                   <td className="py-2 px-1 sm:px-6 text-white font-bold text-xs sm:text-lg">{index + 1}</td>
                                   <td className="py-2 px-1 sm:px-6">
                                     <Link 
-                                      to={`/public/teams/${row.id}`}
+                                      to={publicTeamUrl(row.id, tournament?.id)}
                                       className="group flex items-center gap-1 sm:gap-4 hover:text-blue-300 transition-colors duration-300"
                                     >
                                       {team?.logo ? (
@@ -838,7 +839,7 @@ export default function PublicTournamentPage() {
                           </td>
                           <td className="py-2 px-1 sm:px-6">
                             <Link 
-                              to={`/public/teams/${row.id}`}
+                              to={publicTeamUrl(row.id, tournament?.id)}
                               className="group flex items-center gap-1 sm:gap-4 hover:text-blue-300 transition-colors duration-300"
                             >
                               {team?.logo ? (

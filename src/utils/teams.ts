@@ -76,3 +76,18 @@ export function parseBulkNames(input: string, teams: Team[]): BulkNames {
 
   return { toCreate, duplicates, repeated }
 }
+
+/**
+ * The public address of a club, carrying the competition it was reached from.
+ *
+ * The club page shows one squad tab per competition and a tab for the whole
+ * club, and which of them opens is decided by the link rather than by the page:
+ * somebody clicking a name in a league table is asking about that league's
+ * squad, not about everybody the club has ever signed. A link without the
+ * parameter still opens the full squad, so nothing that shares one has to know
+ * about this.
+ */
+export function publicTeamUrl(teamId: string, fromTournamentId?: string): string {
+  const base = `/public/teams/${teamId}`
+  return fromTournamentId ? `${base}?tab=${fromTournamentId}` : base
+}

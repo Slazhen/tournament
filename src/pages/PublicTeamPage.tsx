@@ -1,10 +1,11 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { publicPages } from '../lib/data'
 import type { TeamContext } from '../lib/data'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
 import YoutubeIcon from '../components/YoutubeIcon'
 import { useState, useEffect } from 'react'
+import type { ReactNode } from 'react'
 import {
   IconTrophy,
   IconUser,
@@ -15,11 +16,13 @@ import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
 import LastAndNextMatch from '../components/LastAndNextMatch'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
+import { hasSquadEntry, squadInTournament } from '../utils/squads'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { formatOptionFor } from '../utils/formats'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
@@ -80,10 +83,59 @@ export default function PublicTeamPage() {
     t.teamIds.includes(teamId!)
   )
 
-  // What each of this club's players has done, across every competition the
-  // club plays in. Appearances come from the lineups, goals and assists from
-  // the goal events — see utils/matches.
-  const records = playerRecords(teamTournaments.flatMap((tournament) => allMatches(tournament)))
+  // Which squad this page is showing: the whole club, or one competition.
+  //
+  // The tab lives in the URL because the link is usually what decides it — a
+  // name clicked in a league table is a question about that league's squad, not
+  // about everybody the club has ever signed — and because a visitor who then
+  // passes the address on passes what they were looking at. An id that names no
+  // competition this club plays in falls back to the whole club rather than to
+  // an empty tab.
+  const requestedTab = searchParams.get('tab')
+  const selectedTournament = teamTournaments.find((one) => one.id === requestedTab) ?? null
+
+  // Newest first, which is the season anybody arriving without a link means.
+  const squadTabs = [...teamTournaments].sort((a, b) =>
+    String(b.createdAtISO ?? '').localeCompare(String(a.createdAtISO ?? '')),
+  )
+
+  const selectTab = (tournamentId: string | null) => {
+    const next = new URLSearchParams(searchParams)
+    if (tournamentId) next.set('tab', tournamentId)
+    else next.delete('tab')
+    // Replaced rather than pushed: a visitor stepping between tabs and then
+    // pressing back means the page they came from, not the tab before this one.
+    setSearchParams(next, { replace: true })
+  }
+
+  // What each of this club's players has done — across every competition the
+  // club plays in, or inside the one on screen. The two disagree on purpose:
+  // a squad shown for one season beside totals from every season reads as one
+  // claim about that season and is not.
+  const scopedMatches = selectedTournament
+    ? allMatches(selectedTournament)
+    : teamTournaments.flatMap((tournament) => allMatches(tournament))
+
+  // Appearances come from the lineups, goals and assists from the goal events —
+  // see utils/matches.
+  const records = playerRecords(scopedMatches)
+
+  // Everyone those records credit to this club, which is what turns an entry
+  // narrowed mid-season back into the squad that actually played.
+  const appeared = [...records.values()]
+    .filter((record) => record.teamId === team.id)
+    .map((record) => record.playerId)
+
+  const squad = selectedTournament
+    ? squadInTournament(selectedTournament, team, appeared)
+    : (team.players ?? [])
+
+  // Absent is not empty. In an ordinary competition a club that never opened
+  // the squad screen has its whole squad registered, and a list that looks
+  // identical to the club's own would otherwise read as a selection somebody
+  // made.
+  const everyoneRegistered =
+    selectedTournament !== null && !hasSquadEntry(selectedTournament, team.id)
 
   // The context carries every club those competitions mention, which is what a
   // table needs to name the rows above and below this one.
@@ -303,12 +355,36 @@ export default function PublicTeamPage() {
       {/* Players Section - Only show if players exist */}
       {team.players && team.players.length > 0 && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
-          <h2 className="text-xl font-semibold mb-1 text-center">Players ({team.players.length})</h2>
+          <h2 className="text-xl font-semibold mb-1 text-center">Players ({squad.length})</h2>
+
+          {squadTabs.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-2 mt-3 mb-3">
+              <SquadTab active={!selectedTournament} onClick={() => selectTab(null)}>
+                All players
+              </SquadTab>
+              {squadTabs.map((tournament) => (
+                <SquadTab
+                  key={tournament.id}
+                  active={selectedTournament?.id === tournament.id}
+                  onClick={() => selectTab(tournament.id)}
+                >
+                  {tournament.name}
+                </SquadTab>
+              ))}
+            </div>
+          )}
+
           <p className="text-xs opacity-60 text-center mb-4">
+            {selectedTournament
+              ? `Registered for ${selectedTournament.name}, with what each of them did in it. `
+              : 'Everyone at the club, with what each of them has done across its competitions. '}
             Appearances come from the lineup recorded for each match; goals and assists
             from the goals recorded in it.
+            {everyoneRegistered
+              ? ' This club did not submit a separate squad here, so every player is registered for it.'
+              : ''}
           </p>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -323,7 +399,14 @@ export default function PublicTeamPage() {
                 </tr>
               </thead>
               <tbody>
-                {team.players.map((player) => {
+                {squad.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center opacity-70 text-sm">
+                      Nobody from this club is registered for this competition.
+                    </td>
+                  </tr>
+                )}
+                {squad.map((player) => {
                   const record = records.get(player.id)
                   return (
                   <tr key={player.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
@@ -679,5 +762,38 @@ export default function PublicTeamPage() {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * One squad tab.
+ *
+ * A button rather than a link: the choice is a view of this page, and a
+ * competition already has its own address elsewhere on it. The active one is
+ * marked by contrast rather than by colour alone, because the page is painted
+ * in whatever the club wears.
+ */
+function SquadTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`px-3 py-1.5 rounded-full text-xs sm:text-sm transition-colors border ${
+        active
+          ? 'bg-white/20 border-white/30 font-semibold'
+          : 'bg-white/5 border-white/10 opacity-70 hover:opacity-100 hover:bg-white/10'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
