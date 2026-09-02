@@ -51,7 +51,8 @@ export function assertCanAccessOrganizer(user: AuthUser, organizerId: string | u
 
 /**
  * A club is run by its managers, and by the organizer whose competition it was
- * created in until somebody claims it.
+ * created in until somebody claims it — see `isClaimedTeam` below for where
+ * that second half stops.
  *
  * This is the second question the API has to answer now — "is this your team"
  * as well as "is this your organizer" — and it lives here rather than in the
@@ -61,12 +62,41 @@ export function managesTeam(user: AuthUser, team: { id: string; managerUserIds?:
   return Array.isArray(team.managerUserIds) && team.managerUserIds.includes(user.id)
 }
 
+/**
+ * Whether anybody has taken this club on.
+ *
+ * This is where the organizer's standing over a club ends. Most clubs have no
+ * manager and never will, and a competition whose squads only a coach can fill
+ * in is one the organizer cannot run — so an unclaimed club is theirs to edit,
+ * squad and all. A claimed one is not: the invitation offers the coach "the
+ * squad, the crest and entering competitions", and a promise the person who
+ * issued it can overwrite at will is not one.
+ *
+ * What the organizer keeps is the competition, which was never the club's:
+ * who is entered in it (`PUT /admin/tournaments/:t/squads/:teamId`), who played
+ * (`.../matches/:m/lineup`), and whether the club is in it at all. Those are
+ * guarded by `assertCanAccessOrganizer` and are deliberately untouched here.
+ */
+export function isClaimedTeam(team: { managerUserIds?: string[] }): boolean {
+  return Array.isArray(team.managerUserIds) && team.managerUserIds.length > 0
+}
+
 export function assertManagesTeam(
   user: AuthUser,
   team: { id: string; organizerId?: string; managerUserIds?: string[] },
 ): void {
   if (isSuperAdmin(user)) return
   if (managesTeam(user, team)) return
-  if (user.role === 'organizer' && user.organizerId && user.organizerId === team.organizerId) return
+  if (user.role === 'organizer' && user.organizerId && user.organizerId === team.organizerId) {
+    // Owning the competition a club plays in is standing in for a manager it
+    // does not have, not authority over one it does. An organizer who needs
+    // the club back has to take its manager off it first — a deliberate act,
+    // on its own screen, recorded in the audit log — rather than editing
+    // around them.
+    if (!isClaimedTeam(team)) return
+    throw forbidden(
+      'This club is run by its own manager. You can still enter it in your competitions and name its teamsheets.',
+    )
+  }
   throw forbidden('This club belongs to someone else')
 }

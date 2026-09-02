@@ -22,7 +22,7 @@ import {
 
 export default function TeamPage() {
   const { teamId } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto, loadTeams, superAdmin } = useAppStore()
 
   // Whether this organiser also runs the club is asked of the session rather
   // than of the club record: the answer decides both the button below and the
@@ -105,6 +105,16 @@ export default function TeamPage() {
   const team = teams.find(t => t.id === teamId)
 
   const iRunThisClub = managers.some((manager) => manager.id === user?.id)
+
+  // What this screen may offer. A club with a manager is that manager's to
+  // edit — the squad, the crest, the name — and the API refuses the
+  // organiser's writes to it, so the controls come off rather than saving into
+  // a refusal. Until the answer has arrived, or where it could not be read,
+  // nothing is offered: a field that appears and then disappears under the
+  // cursor is worse than one that arrives a moment late.
+  const clubIsMineToEdit =
+    superAdmin || iRunThisClub || (managersLoaded && !managersFailed && managers.length === 0)
+  const runByItsManager = managersLoaded && !managersFailed && !iRunThisClub && managers.length > 0
   
   // Redirect if no organizer is selected. The super admin has none and needs
   // none: the club in front of them names the organizer it belongs to.
@@ -279,29 +289,38 @@ export default function TeamPage() {
                       {!manager.isActive && (
                         <span className="text-xs text-amber-300">account disabled</span>
                       )}
-                      {manager.id === user?.id && (
-                        <button
-                          type="button"
-                          disabled={isChangingSelf}
-                          onClick={async () => {
-                            setIsChangingSelf(true)
-                            try {
-                              await clubService.removeManager(team.id, manager.id)
-                              await loadManagers(team.id)
-                              // The session carries the clubs this account
-                              // runs, and the My club tab is drawn from it.
-                              await refresh()
-                            } catch {
-                              alert('That could not be changed.')
-                            } finally {
-                              setIsChangingSelf(false)
-                            }
-                          }}
-                          className="text-xs opacity-70 hover:opacity-100 underline disabled:opacity-40"
-                        >
-                          Stop managing
-                        </button>
-                      )}
+                      {/* Taking somebody off the club, their own name
+                          included. The route has always allowed the organiser
+                          this and only the self case was on screen, which left
+                          the one thing the API now tells them to do — remove
+                          the manager before running the club themselves — with
+                          nothing to press. A club whose manager's account has
+                          been deleted is the same problem: the id is what makes
+                          the club claimed, and this is what takes it off. */}
+                      <button
+                        type="button"
+                        disabled={isChangingSelf}
+                        onClick={async () => {
+                          setIsChangingSelf(true)
+                          try {
+                            await clubService.removeManager(team.id, manager.id)
+                            await loadManagers(team.id)
+                            // The club record carries the list too, and the
+                            // other screens read it to decide what to offer.
+                            await loadTeams()
+                            // The session carries the clubs this account
+                            // runs, and the My club tab is drawn from it.
+                            await refresh()
+                          } catch {
+                            alert('That could not be changed.')
+                          } finally {
+                            setIsChangingSelf(false)
+                          }
+                        }}
+                        className="text-xs opacity-70 hover:opacity-100 underline disabled:opacity-40"
+                      >
+                        {manager.id === user?.id ? 'Stop managing' : 'Remove'}
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -311,7 +330,10 @@ export default function TeamPage() {
                   club, so the only thing this would add is their own email
                   address in somebody else's list of managers. If they are
                   somehow linked, the button below still lets them out. */}
-              {managersLoaded && !managersFailed && !iRunThisClub && !superAdmin && (
+              {/* Only a club nobody runs. On a claimed one the API refuses
+                  this, so that the rule about who may edit a club cannot be
+                  stepped around by joining its managers. */}
+              {managersLoaded && !managersFailed && managers.length === 0 && !superAdmin && (
                 <div className="mt-3">
                   <button
                     type="button"
@@ -321,6 +343,7 @@ export default function TeamPage() {
                       try {
                         await clubService.manageSelf(team.id)
                         await loadManagers(team.id)
+                        await loadTeams()
                         await refresh()
                       } catch {
                         alert('This club could not be added to your account.')
@@ -339,6 +362,14 @@ export default function TeamPage() {
                 </div>
               )}
             </div>
+
+            {runByItsManager && !superAdmin && (
+              <p className="mt-3 text-sm opacity-70">
+                {team.name} is run by its manager, so its squad and its own details are theirs
+                to edit. You still choose who is registered for each of your competitions, name
+                the teamsheets, and decide whether the club plays at all.
+              </p>
+            )}
 
             {/* Handing the club to the person who actually runs it. */}
             <div className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl text-left">
@@ -417,32 +448,40 @@ export default function TeamPage() {
                 <IconTrophy size={22} />
               </div>
             )}
-            <input
-              ref={logoFileRef}
-              type="file"
-              accept="image/*"
-              onChange={handleLogoUpload}
-              className="hidden"
-            />
-            <button
-              onClick={() => logoFileRef.current?.click()}
-              className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center text-white text-xs transition-all"
-              title="Change logo"
-            >
-              {team.logo ? 'Change' : 'Add'}
-            </button>
+            {clubIsMineToEdit && (
+              <>
+                <input
+                  ref={logoFileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => logoFileRef.current?.click()}
+                  className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center text-white text-xs transition-all"
+                  title="Change logo"
+                >
+                  {team.logo ? 'Change' : 'Add'}
+                </button>
+              </>
+            )}
           </div>
           
           {/* Team Details */}
           <div className="flex-1">
             <div className="mb-4">
-              <InlineInput
-                type="text"
-                value={team.name}
-                onCommit={(value) => updateTeam(team.id, { name: value })}
-                className="text-3xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all"
-                placeholder="Team Name"
-              />
+              {clubIsMineToEdit ? (
+                <InlineInput
+                  type="text"
+                  value={team.name}
+                  onCommit={(value) => updateTeam(team.id, { name: value })}
+                  className="text-3xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all"
+                  placeholder="Team Name"
+                />
+              ) : (
+                <h1 className="text-3xl font-bold">{team.name}</h1>
+              )}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
@@ -452,20 +491,29 @@ export default function TeamPage() {
               <div>
                 <span className="opacity-70">Colors:</span>
                 <div className="flex items-center gap-2">
-                  {team.colors?.map((color, index) => (
-                    <input
-                      key={index}
-                      type="color"
-                      value={color}
-                      onChange={(e) => {
-                        const newColors = [...(team.colors || ['#3B82F6'])]
-                        newColors[index] = e.target.value
-                        updateTeam(team.id, { colors: newColors })
-                      }}
-                      className="w-6 h-6 rounded border border-white/20"
-                    />
-                  ))}
-                  {(!team.colors || team.colors.length < 2) && (
+                  {team.colors?.map((color, index) =>
+                    clubIsMineToEdit ? (
+                      <input
+                        key={index}
+                        type="color"
+                        value={color}
+                        onChange={(e) => {
+                          const newColors = [...(team.colors || ['#3B82F6'])]
+                          newColors[index] = e.target.value
+                          updateTeam(team.id, { colors: newColors })
+                        }}
+                        className="w-6 h-6 rounded border border-white/20"
+                      />
+                    ) : (
+                      <span
+                        key={index}
+                        className="w-6 h-6 rounded border border-white/20 inline-block"
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ),
+                  )}
+                  {clubIsMineToEdit && (!team.colors || team.colors.length < 2) && (
                     <button
                       onClick={() => {
                         const newColors = [...(team.colors || ['#3B82F6']), '#EF4444']
@@ -477,7 +525,7 @@ export default function TeamPage() {
                       +
                     </button>
                   )}
-                  {team.colors && team.colors.length > 1 && (
+                  {clubIsMineToEdit && team.colors && team.colors.length > 1 && (
                     <button
                       onClick={() => {
                         const newColors = team.colors.slice(0, -1)
@@ -494,12 +542,20 @@ export default function TeamPage() {
               <div>
                 <span className="opacity-70">Established:</span>
                 <div className="flex items-center gap-2">
-                  <CustomDatePicker
-                    value={team.establishedDate ? team.establishedDate.split('T')[0] : ''}
-                    onChange={(date) => updateTeam(team.id, { establishedDate: date })}
-                    className="text-xs"
-                    placeholder="Select Date"
-                  />
+                  {clubIsMineToEdit ? (
+                    <CustomDatePicker
+                      value={team.establishedDate ? team.establishedDate.split('T')[0] : ''}
+                      onChange={(date) => updateTeam(team.id, { establishedDate: date })}
+                      className="text-xs"
+                      placeholder="Select Date"
+                    />
+                  ) : (
+                    <span className="text-xs opacity-80">
+                      {team.establishedDate
+                        ? new Date(team.establishedDate).toLocaleDateString()
+                        : 'Not said'}
+                    </span>
+                  )}
                 </div>
               </div>
               <div>
@@ -511,19 +567,25 @@ export default function TeamPage() {
                     does not publish ages does not publish any of them. The date
                     of birth itself is never public either way. */}
                 <span className="opacity-70">Ages public:</span>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={team.hidePlayerAges !== true}
-                    onChange={(event) =>
-                      updateTeam(team.id, { hidePlayerAges: !event.target.checked })
-                    }
-                    className="w-4 h-4 rounded border border-white/20"
-                  />
-                  <span className="text-xs">
+                {clubIsMineToEdit ? (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={team.hidePlayerAges !== true}
+                      onChange={(event) =>
+                        updateTeam(team.id, { hidePlayerAges: !event.target.checked })
+                      }
+                      className="w-4 h-4 rounded border border-white/20"
+                    />
+                    <span className="text-xs">
+                      {team.hidePlayerAges === true ? 'Hidden' : 'Shown'}
+                    </span>
+                  </label>
+                ) : (
+                  <span className="text-xs opacity-80">
                     {team.hidePlayerAges === true ? 'Hidden' : 'Shown'}
                   </span>
-                </label>
+                )}
               </div>
             </div>
           </div>
@@ -543,20 +605,24 @@ export default function TeamPage() {
                 Photo
               </div>
             )}
-            <input
-              ref={photoFileRef}
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoUpload}
-              className="hidden"
-            />
-            <button
-              onClick={() => photoFileRef.current?.click()}
-              className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center text-white text-xs transition-all"
-              title="Change photo"
-            >
-              {team.photo ? 'Change' : 'Add'}
-            </button>
+            {clubIsMineToEdit && (
+              <>
+                <input
+                  ref={photoFileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => photoFileRef.current?.click()}
+                  className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center text-white text-xs transition-all"
+                  title="Change photo"
+                >
+                  {team.photo ? 'Change' : 'Add'}
+                </button>
+              </>
+            )}
           </div>
         </div>
         
@@ -566,45 +632,57 @@ export default function TeamPage() {
         <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
           <div className="flex items-center gap-2">
             <InstagramIcon size={16} />
-            <InlineInput
-              type="url"
-              placeholder="Instagram profile..."
-              value={team.socialMedia?.instagram || ''}
-              onCommit={(value) =>
-                updateTeam(team.id, {
-                  socialMedia: { ...team.socialMedia, instagram: value || undefined },
-                })
-              }
-              className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
-            />
+            {clubIsMineToEdit ? (
+              <InlineInput
+                type="url"
+                placeholder="Instagram profile..."
+                value={team.socialMedia?.instagram || ''}
+                onCommit={(value) =>
+                  updateTeam(team.id, {
+                    socialMedia: { ...team.socialMedia, instagram: value || undefined },
+                  })
+                }
+                className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
+              />
+            ) : (
+              <ClubLinkText value={team.socialMedia?.instagram || ''} />
+            )}
           </div>
           <div className="flex items-center gap-2">
             <FacebookIcon size={16} />
-            <InlineInput
-              type="url"
-              placeholder="Facebook page..."
-              value={team.socialMedia?.facebook || ''}
-              onCommit={(value) =>
-                updateTeam(team.id, {
-                  socialMedia: { ...team.socialMedia, facebook: value || undefined },
-                })
-              }
-              className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
-            />
+            {clubIsMineToEdit ? (
+              <InlineInput
+                type="url"
+                placeholder="Facebook page..."
+                value={team.socialMedia?.facebook || ''}
+                onCommit={(value) =>
+                  updateTeam(team.id, {
+                    socialMedia: { ...team.socialMedia, facebook: value || undefined },
+                  })
+                }
+                className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
+              />
+            ) : (
+              <ClubLinkText value={team.socialMedia?.facebook || ''} />
+            )}
           </div>
           <div className="flex items-center gap-2">
             <YoutubeIcon size={16} />
-            <InlineInput
-              type="url"
-              placeholder="YouTube channel..."
-              value={team.socialMedia?.youtube || ''}
-              onCommit={(value) =>
-                updateTeam(team.id, {
-                  socialMedia: { ...team.socialMedia, youtube: value || undefined },
-                })
-              }
-              className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
-            />
+            {clubIsMineToEdit ? (
+              <InlineInput
+                type="url"
+                placeholder="YouTube channel..."
+                value={team.socialMedia?.youtube || ''}
+                onCommit={(value) =>
+                  updateTeam(team.id, {
+                    socialMedia: { ...team.socialMedia, youtube: value || undefined },
+                  })
+                }
+                className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[220px]"
+              />
+            ) : (
+              <ClubLinkText value={team.socialMedia?.youtube || ''} />
+            )}
           </div>
         </div>
       </section>
@@ -648,15 +726,19 @@ export default function TeamPage() {
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Players ({team.players?.length || 0})</h2>
-          <button
-            onClick={() => setIsAddingPlayer((open) => !open)}
-            className="px-4 py-2 rounded-md glass hover:bg-white/10 transition-all"
-          >
-            {isAddingPlayer ? 'Cancel' : 'Add Player'}
-          </button>
+          {clubIsMineToEdit ? (
+            <button
+              onClick={() => setIsAddingPlayer((open) => !open)}
+              className="px-4 py-2 rounded-md glass hover:bg-white/10 transition-all"
+            >
+              {isAddingPlayer ? 'Cancel' : 'Add Player'}
+            </button>
+          ) : (
+            <span className="text-sm opacity-70">The club's manager keeps this squad</span>
+          )}
         </div>
 
-        {isAddingPlayer && (
+        {clubIsMineToEdit && isAddingPlayer && (
           <form
             onSubmit={(event) => {
               event.preventDefault()
@@ -713,7 +795,11 @@ export default function TeamPage() {
         )}
         
         {(!team.players || team.players.length === 0) ? (
-          <p className="text-center opacity-70">No players yet. Add your first player!</p>
+          <p className="text-center opacity-70">
+            {clubIsMineToEdit
+              ? 'No players yet. Add your first player!'
+              : 'This club has not entered any players yet.'}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -761,22 +847,30 @@ export default function TeamPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <InlineInput
-                        type="text"
-                        value={player.position || ''}
-                        onCommit={(value) => updatePlayer(player.id, { position: value })}
-                        className="w-full px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                        placeholder="Position"
-                      />
+                      {clubIsMineToEdit ? (
+                        <InlineInput
+                          type="text"
+                          value={player.position || ''}
+                          onCommit={(value) => updatePlayer(player.id, { position: value })}
+                          className="w-full px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                          placeholder="Position"
+                        />
+                      ) : (
+                        <span className="opacity-80">{player.position || '\u2014'}</span>
+                      )}
                     </td>
                     <td className="py-3 px-4">
-                      <InlineInput
-                        type="number"
-                        value={player.number || ''}
-                        onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : null })}
-                        className="w-full px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
-                        placeholder="#"
-                      />
+                      {clubIsMineToEdit ? (
+                        <InlineInput
+                          type="number"
+                          value={player.number || ''}
+                          onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : null })}
+                          className="w-full px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                          placeholder="#"
+                        />
+                      ) : (
+                        <span className="opacity-80">{player.number ?? '\u2014'}</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-sm opacity-70">
                       {new Date(player.createdAtISO).toLocaleDateString()}
@@ -791,12 +885,14 @@ export default function TeamPage() {
                       </Link>
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => removePlayer(player.id)}
-                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all text-red-400 hover:text-red-300"
-                      >
-                        <IconTrash size={14} /> Remove
-                      </button>
+                      {clubIsMineToEdit && (
+                        <button
+                          onClick={() => removePlayer(player.id)}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all text-red-400 hover:text-red-300"
+                        >
+                          <IconTrash size={14} /> Remove
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -888,5 +984,24 @@ export default function TeamPage() {
         )}
       </section>
     </div>
+  )
+}
+
+/**
+ * A club's link where the reader may not edit it: the address itself when
+ * there is one, and a plain word when there is not — an empty box that cannot
+ * be typed into reads as something broken.
+ */
+function ClubLinkText({ value }: { value: string }) {
+  if (!value) return <span className="text-sm opacity-50">Not set</span>
+  return (
+    <a
+      href={value}
+      target="_blank"
+      rel="noreferrer"
+      className="text-sm underline opacity-80 hover:opacity-100 break-all"
+    >
+      {value}
+    </a>
   )
 }

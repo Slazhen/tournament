@@ -133,6 +133,36 @@ hand-roll the comparison.
 - `assertManagesTeam(user, team)` — anything a club owns: its name, crest,
   colours, squad, images.
 
+`assertManagesTeam` is two rules and not one. A club's own managers are always
+in. The organizer who owns the club is in **only while nobody has taken it
+on** — `isClaimedTeam` is where that line sits. Most clubs have no manager and
+never will, and a competition whose squads only a coach can fill in is one the
+organizer cannot run; but the invitation offers the coach "the squad, the crest
+and entering competitions", and a promise the person who issued it can
+overwrite is not one. What the organizer keeps on a claimed club is everything
+the *competition* owns: entering it (`PUT /admin/tournaments/:t/squads/:teamId`),
+the teamsheet, the result, removing it from the season, deleting the club, and
+who its managers are. What they lose is the club record and the squad.
+
+Three things had to move with that line, each of them a way round it or a way
+to get stuck behind it. `POST /admin/teams/:id/managers/me` refuses a club that
+already has a manager, and so does the signed-in branch of `POST /auth/claim`
+when the claimer is the club's own organizer — otherwise the organizer writes
+themselves an invitation, opens it, and is a manager of a club that was no
+longer theirs to edit. `POST /admin/teams` picks its body from `TEAM_FIELDS`
+the way the `PATCH` does, because a create that could name `managerUserIds` was
+a club its own creator could neither edit nor unlink. And deleting an account
+unlinks the clubs it ran, because an id is the whole record of the link: a club
+whose only manager has been deleted is one that manager cannot sign in to and
+the organizer is refused — which is also why the club screen now removes any
+manager, not only the reader themselves.
+
+Two things a competition's organizer used to be able to do for a club that now
+has a manager have no admin route to replace them: applying it to *another*
+organizer's competition (`POST /manager/entries` is the club's own act) and
+uploading its crest or squad photo. Both are deliberate; neither is missed by
+anything on screen today.
+
 Entering a club in a competition is not on either list alone, because the record
 written is the competition's and the players named are the club's. It has two
 routes, `PUT /manager/tournaments/:t/squad` guarded by `assertManagesTeam` and

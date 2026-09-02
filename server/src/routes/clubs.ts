@@ -1,5 +1,11 @@
 import { badRequest, forbidden, notFound } from '../lib/http.js'
-import { assertCanAccessOrganizer, assertManagesTeam, isSuperAdmin, managesTeam } from '../lib/auth.js'
+import {
+  assertCanAccessOrganizer,
+  assertManagesTeam,
+  isClaimedTeam,
+  isSuperAdmin,
+  managesTeam,
+} from '../lib/auth.js'
 import { assertPasswordStrength, generateId, generateSalt, hashPassword } from '../lib/passwords.js'
 import { createSession } from '../lib/sessions.js'
 import { ddb, PutCommand } from '../lib/ddb.js'
@@ -319,6 +325,21 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const authorization = ctx.headers['authorization']
     if (authorization) {
       const user = await ctx.user()
+      // An invitation is not a way back into a club somebody already runs. The
+      // organizer who owns the club is the one who issues these links, so
+      // without this they could write one to themselves, open it, and become a
+      // manager of a club that is no longer theirs to edit — the same write
+      // `POST /admin/teams/:id/managers/me` refuses, three clicks further
+      // round. Taking a club back means removing its manager first, where the
+      // manager can see it happen. Refused before the token is spent, so a
+      // link meant for a coach is still there for them.
+      if (
+        isClaimedTeam(team as Team) &&
+        user.organizerId &&
+        user.organizerId === team.organizerId
+      ) {
+        throw forbidden('This club already has a manager. Remove them first to run it yourself.')
+      }
       if (!(await consumeInvite(token))) {
         throw badRequest('This invitation has expired or has already been used')
       }

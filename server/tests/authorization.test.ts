@@ -95,9 +95,38 @@ describe('who runs a club', () => {
     expect(() => assertManagesTeam(manager, unclaimedClub)).toThrow(HttpError)
   })
 
-  it("lets the organizer run their own clubs, claimed or not", () => {
-    expect(() => assertManagesTeam(organizerUser, myClub)).not.toThrow()
+  it('lets the organizer run a club nobody has claimed', () => {
     expect(() => assertManagesTeam(organizerUser, unclaimedClub)).not.toThrow()
+  })
+
+  it('keeps the organizer out of a club that has a manager', () => {
+    // The club record decides this, not the competition it plays in: an
+    // invitation that hands the coach the squad and the crest is not kept if
+    // the organizer can still write both. What the organizer keeps is the
+    // entry and the teamsheet, which `assertCanAccessOrganizer` guards.
+    expect(() => assertManagesTeam(organizerUser, myClub)).toThrow(HttpError)
+  })
+
+  it('lets an organizer who runs the club themselves back in', () => {
+    const mine = { ...unclaimedClub, managerUserIds: [organizerUser.id] }
+    expect(() => assertManagesTeam(organizerUser, mine)).not.toThrow()
+  })
+
+  it('reads an empty manager list as a club nobody runs', () => {
+    expect(() =>
+      assertManagesTeam(organizerUser, { ...unclaimedClub, managerUserIds: [] }),
+    ).not.toThrow()
+  })
+
+  it('counts a manager whose account has gone as a manager', () => {
+    // The id is the whole record of the link, so a club whose only manager was
+    // deleted would otherwise be editable by nobody: the manager cannot sign in
+    // and the organizer is refused. Deleting an account unlinks its clubs for
+    // that reason, and the organizer's club screen can take a leftover id off
+    // by hand — but the rule here stays "an id means a manager".
+    expect(() =>
+      assertManagesTeam(organizerUser, { ...unclaimedClub, managerUserIds: ['u-gone'] }),
+    ).toThrow(HttpError)
   })
 
   it("keeps an organizer out of another organizer's club", () => {

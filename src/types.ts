@@ -86,6 +86,16 @@ export type Team = {
    * before the flag existed.
    */
   hidePlayerAges?: boolean
+  /**
+   * Who runs this club, if anybody has taken it on.
+   *
+   * On the organizer's own copy of the record and stripped from every public
+   * projection, because it is a list of accounts. The admin screens read it to
+   * know what they may offer: a club with a manager is that manager's to edit,
+   * and the API refuses the organizer's writes to it, so the editing controls
+   * come off rather than saving into a refusal.
+   */
+  managerUserIds?: string[]
 }
 
 export type Match = {

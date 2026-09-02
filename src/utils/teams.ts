@@ -91,3 +91,28 @@ export function publicTeamUrl(teamId: string, fromTournamentId?: string): string
   const base = `/public/teams/${teamId}`
   return fromTournamentId ? `${base}?tab=${fromTournamentId}` : base
 }
+
+/**
+ * Whether the person reading may edit this club's own record — its name, its
+ * crest, its colours and its squad.
+ *
+ * The same rule the API applies in `assertManagesTeam`, so that a control is
+ * offered only where the write behind it will be accepted: a club nobody has
+ * taken on belongs to the organizer who created it, and one that has a manager
+ * belongs to them. It says nothing about the competition — entering the club,
+ * naming its teamsheet and removing it from a season are the organizer's
+ * whoever runs the club.
+ *
+ * A public copy of the record carries no `managerUserIds` at all and so reads
+ * as unclaimed here; the public pages offer no editing either way.
+ */
+export function canEditClub(
+  team: Pick<Team, 'managerUserIds'>,
+  userId: string | undefined,
+  superAdmin: boolean,
+): boolean {
+  if (superAdmin) return true
+  const managers = team.managerUserIds ?? []
+  if (userId && managers.includes(userId)) return true
+  return managers.length === 0
+}

@@ -1,10 +1,11 @@
 import { ddb, PutCommand, DeleteCommand, UpdateCommand, scanAll } from '../lib/ddb.js'
 import { TABLES } from '../lib/env.js'
-import { badRequest, notFound } from '../lib/http.js'
+import { badRequest, forbidden, notFound } from '../lib/http.js'
 import {
   assertCanAccessOrganizer,
   assertManagesTeam,
   assertSuperAdmin,
+  isClaimedTeam,
   isSuperAdmin,
 } from '../lib/auth.js'
 import {
@@ -471,7 +472,19 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const user = await ctx.user()
     const organizerId = resolveOrganizerId(user, ctx.body.organizerId)
     const name = requireString(ctx.body.name, 'name')
-    const team = await teams.create({ ...ctx.body, name, organizerId })
+    // The same whitelist the PATCH uses, rather than the body whole. It was
+    // merely untidy while an organizer could edit any club they owned; now
+    // that a manager's presence closes a club to them, a `managerUserIds` in
+    // the create body makes a club its own creator cannot edit, and an id
+    // naming no account cannot be taken off the list afterwards.
+    const team = await teams.create({
+      ...pick(ctx.body, TEAM_FIELDS),
+      name,
+      organizerId,
+      // Every screen reads this as a list. A club stored without the key is
+      // one whose card throws on the way in.
+      players: [],
+    })
     await record(user, {
       action: 'team.create',
       entity: 'team',
@@ -618,11 +631,22 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
    * It is the organizer's own test, not the club's: whoever owns the club may
    * take it on, and nobody else. A club manager pressing this on somebody
    * else's club is exactly the write `PATCH` refuses to make.
+   *
+   * Only a club nobody runs, though. A claimed club is its manager's to edit,
+   * and without this line that rule would be one click away from being undone:
+   * the organizer joins the club's managers, `managesTeam` lets them in, and
+   * the audit log records it as the ordinary thing an owner does. Taking the
+   * club back means removing its manager first, which the manager can see.
    */
   router.post('/admin/teams/:id/managers/me', async (ctx, params) => {
     const user = await ctx.user()
     const team = await teams.getOrThrow(params.id!)
     assertCanAccessOrganizer(user, team.organizerId)
+    // Not the super admin, who may touch anything and is only ever kept out of
+    // a club by accident.
+    if (!isSuperAdmin(user) && isClaimedTeam(team as Team)) {
+      throw forbidden('This club already has a manager. Remove them first to run it yourself.')
+    }
 
     await linkManagerToTeam(user, team as Team)
     await record(user, {
@@ -1150,6 +1174,16 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     if (!target) throw notFound('Account not found')
 
     await deleteAllUserSessions(target.id)
+    // Whoever this account ran clubs for stops running them. The id is what
+    // makes a club claimed, and a claimed club is closed to its organizer, so
+    // an account deleted while still linked left a club nobody at all could
+    // edit — its manager cannot sign in and its organizer is refused. Before
+    // the delete rather than after: a failure here leaves an account to be
+    // deleted again, which is recoverable, instead of that club.
+    for (const teamId of target.teamIds ?? []) {
+      const team = await teams.get(teamId)
+      if (team) await unlinkManagerFromTeam(target.id, team as Team)
+    }
     await ddb.send(new DeleteCommand({ TableName: TABLES.AUTH_USERS, Key: { id: target.id } }))
     await record(actor, {
       action: 'account.delete',

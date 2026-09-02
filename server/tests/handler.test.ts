@@ -102,6 +102,7 @@ vi.mock('../src/repos.js', async (importOriginal) => {
       getOrThrow: vi.fn(async (id: string) => {
         if (id === 'team-other') return otherTeam
         if (id === 'team-own') return ownTeam
+        if (id === 'team-public') return publicTeam
         throw new (await import('../src/lib/http.js')).HttpError(404, 'Team not found')
       }),
       update: vi.fn(async () => undefined),
@@ -282,6 +283,68 @@ describe('authorization', () => {
 
     expect(response.statusCode).toBe(403)
     expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
+  })
+
+  // A club with a manager is that manager's, and the organizer who owns the
+  // competition it plays in is no longer one of its editors. `team-public` is
+  // owned by org-1 — the same organizer as the token below — and run by u-9.
+  it('refuses the organizer the club record of a club that has a manager', async () => {
+    const response = await request('PATCH', '/admin/teams/team-public', {
+      token: 'good-token',
+      body: { name: 'Renamed over their manager' },
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect(repos.teams.update).not.toHaveBeenCalled()
+  })
+
+  it('refuses the organizer a player of a club that has a manager', async () => {
+    const response = await request('PATCH', '/admin/teams/team-public/players/p-open', {
+      token: 'good-token',
+      body: { lastName: 'Renamed' },
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
+  })
+
+  it('refuses to add a player to a club that has a manager', async () => {
+    const response = await request('POST', '/admin/teams/team-public/players', {
+      token: 'good-token',
+      body: { firstName: 'Signed', lastName: 'By the organizer' },
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect(repos.teams.addPlayer).not.toHaveBeenCalled()
+  })
+
+  it('refuses to remove a player from a club that has a manager', async () => {
+    const response = await request('DELETE', '/admin/teams/team-public/players/p-open', {
+      token: 'good-token',
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect(repos.teams.removePlayer).not.toHaveBeenCalled()
+  })
+
+  // Without this the rule above is one click from being undone: the organizer
+  // joins the club's managers and is let straight back in.
+  it('refuses to take a club that already has a manager under own management', async () => {
+    const response = await request('POST', '/admin/teams/team-public/managers/me', {
+      token: 'good-token',
+    })
+
+    expect(response.statusCode).toBe(403)
+  })
+
+  it('still lets the organizer edit a club nobody runs', async () => {
+    const response = await request('PATCH', '/admin/teams/team-own', {
+      token: 'good-token',
+      body: { name: 'FC Volna Reserves' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(repos.teams.update).toHaveBeenCalled()
   })
 
   it('refuses super-admin-only routes to an organizer', async () => {

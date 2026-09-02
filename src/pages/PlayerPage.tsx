@@ -6,6 +6,8 @@ import InstagramIcon from '../components/InstagramIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { formatOptionFor } from '../utils/formats'
+import { canEditClub } from '../utils/teams'
+import { useAuth } from '../contexts/AuthContext'
 import {
   IconArrowLeft,
   IconClipboard,
@@ -24,6 +26,7 @@ export default function PlayerPage() {
   
   // Hooks must run on every render (before any early return) to keep hook order stable.
   const photoFileRef = useRef<HTMLInputElement>(null)
+  const { user } = useAuth()
 
   // Find the player across all teams
   let player: any = null
@@ -68,6 +71,11 @@ export default function PlayerPage() {
       </div>
     )
   }
+
+  // A player belongs to the club, so who may edit one is the club's question.
+  // Once somebody runs the club, the squad is theirs and the API refuses the
+  // organiser's writes to it — this screen offers what will be accepted.
+  const clubIsMineToEdit = canEditClub(currentTeam, user?.id, superAdmin)
 
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -172,131 +180,184 @@ export default function PlayerPage() {
                 <IconUser size={26} />
               </div>
             )}
-            <input
-              ref={photoFileRef}
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoUpload}
-              className="hidden"
-            />
-            <button
-              onClick={() => photoFileRef.current?.click()}
-              className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center text-white text-sm transition-all"
-              title="Change photo"
-            >
-              {player.photo ? 'Change' : 'Add'}
-            </button>
+            {clubIsMineToEdit && (
+              <>
+                <input
+                  ref={photoFileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => photoFileRef.current?.click()}
+                  className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 rounded-lg flex items-center justify-center text-white text-sm transition-all"
+                  title="Change photo"
+                >
+                  {player.photo ? 'Change' : 'Add'}
+                </button>
+              </>
+            )}
           </div>
           
           {/* Player Details */}
           <div className="flex-1">
             <div className="mb-4">
-              <InlineInput
-                type="text"
-                value={player.firstName}
-                onCommit={(value) => updatePlayer(player.id, { firstName: value })}
-                className="text-2xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all mr-2"
-                placeholder="First Name"
-              />
-              <InlineInput
-                type="text"
-                value={player.lastName}
-                onCommit={(value) => updatePlayer(player.id, { lastName: value })}
-                className="text-2xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all"
-                placeholder="Last Name"
-              />
+              {clubIsMineToEdit ? (
+                <>
+                  <InlineInput
+                    type="text"
+                    value={player.firstName}
+                    onCommit={(value) => updatePlayer(player.id, { firstName: value })}
+                    className="text-2xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all mr-2"
+                    placeholder="First Name"
+                  />
+                  <InlineInput
+                    type="text"
+                    value={player.lastName}
+                    onCommit={(value) => updatePlayer(player.id, { lastName: value })}
+                    className="text-2xl font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-white/40 focus:outline-none transition-all"
+                    placeholder="Last Name"
+                  />
+                </>
+              ) : (
+                <h1 className="text-2xl font-bold">{fullName.trim() || 'Unnamed player'}</h1>
+              )}
             </div>
+            {!clubIsMineToEdit && (
+              <p className="text-sm opacity-70 mb-4">
+                {currentTeam.name} is run by its manager, so this player is theirs to edit. You
+                still choose whether he is registered for your competitions and name him on a
+                teamsheet.
+              </p>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="opacity-70">Number:</span>
                 <div className="flex items-center gap-2">
-                  <InlineInput
-                    type="number"
-                    value={player.number || ''}
-                    // `null`, not undefined: JSON drops undefined, so clearing
-                    // the number used to leave the old one in place.
-                    onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : null })}
-                    className="w-16 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
-                    placeholder="#"
-                  />
+                  {clubIsMineToEdit ? (
+                    <InlineInput
+                      type="number"
+                      value={player.number || ''}
+                      // `null`, not undefined: JSON drops undefined, so clearing
+                      // the number used to leave the old one in place.
+                      onCommit={(value) => updatePlayer(player.id, { number: value ? Number(value) : null })}
+                      className="w-16 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
+                      placeholder="#"
+                    />
+                  ) : (
+                    <span className="font-semibold">{player.number ?? '\u2014'}</span>
+                  )}
                 </div>
               </div>
               <div>
                 <span className="opacity-70">Position:</span>
                 <div className="flex items-center gap-2">
-                  <InlineInput
-                    type="text"
-                    value={player.position || ''}
-                    onCommit={(value) => updatePlayer(player.id, { position: value })}
-                    className="px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
-                    placeholder="Position"
-                  />
+                  {clubIsMineToEdit ? (
+                    <InlineInput
+                      type="text"
+                      value={player.position || ''}
+                      onCommit={(value) => updatePlayer(player.id, { position: value })}
+                      className="px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
+                      placeholder="Position"
+                    />
+                  ) : (
+                    <span className="font-semibold">{player.position || '\u2014'}</span>
+                  )}
                 </div>
               </div>
               <div>
                 <span className="opacity-70">Height (cm):</span>
                 <div className="flex items-center gap-2">
-                  <InlineInput
-                    type="number"
-                    value={player.heightCm || ''}
-                    onCommit={(value) => updatePlayer(player.id, { heightCm: value ? Number(value) : null })}
-                    className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
-                    placeholder="cm"
-                  />
+                  {clubIsMineToEdit ? (
+                    <InlineInput
+                      type="number"
+                      value={player.heightCm || ''}
+                      onCommit={(value) => updatePlayer(player.id, { heightCm: value ? Number(value) : null })}
+                      className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
+                      placeholder="cm"
+                    />
+                  ) : (
+                    <span className="font-semibold">{player.heightCm ?? '\u2014'}</span>
+                  )}
                 </div>
               </div>
               <div>
                 <span className="opacity-70">Weight (kg):</span>
                 <div className="flex items-center gap-2">
-                  <InlineInput
-                    type="number"
-                    value={player.weightKg || ''}
-                    onCommit={(value) => updatePlayer(player.id, { weightKg: value ? Number(value) : null })}
-                    className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
-                    placeholder="kg"
-                  />
+                  {clubIsMineToEdit ? (
+                    <InlineInput
+                      type="number"
+                      value={player.weightKg || ''}
+                      onCommit={(value) => updatePlayer(player.id, { weightKg: value ? Number(value) : null })}
+                      className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-center"
+                      placeholder="kg"
+                    />
+                  ) : (
+                    <span className="font-semibold">{player.weightKg ?? '\u2014'}</span>
+                  )}
                 </div>
               </div>
               <div>
                 <span className="opacity-70">Stronger foot:</span>
                 <div className="flex items-center gap-2">
-                  <select
-                    value={player.preferredFoot || ''}
-                    onChange={(event) =>
-                      updatePlayer(player.id, { preferredFoot: event.target.value || null })
-                    }
-                    className="px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-xs"
-                  >
-                    <option value="" className="bg-gray-900">Not said</option>
-                    <option value="right" className="bg-gray-900">Right</option>
-                    <option value="left" className="bg-gray-900">Left</option>
-                    <option value="both" className="bg-gray-900">Both</option>
-                  </select>
+                  {clubIsMineToEdit ? (
+                    <select
+                      value={player.preferredFoot || ''}
+                      onChange={(event) =>
+                        updatePlayer(player.id, { preferredFoot: event.target.value || null })
+                      }
+                      className="px-2 py-1 rounded bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-xs"
+                    >
+                      <option value="" className="bg-gray-900">Not said</option>
+                      <option value="right" className="bg-gray-900">Right</option>
+                      <option value="left" className="bg-gray-900">Left</option>
+                      <option value="both" className="bg-gray-900">Both</option>
+                    </select>
+                  ) : (
+                    <span className="text-xs opacity-80 capitalize">
+                      {player.preferredFoot || 'Not said'}
+                    </span>
+                  )}
                 </div>
               </div>
               <div>
                 <span className="opacity-70">Date of Birth:</span>
                 <div className="flex items-center gap-2">
-                  <CustomDatePicker
-                    value={player.dateOfBirth ? player.dateOfBirth.split('T')[0] : ''}
-                    onChange={(date) => updatePlayer(player.id, { dateOfBirth: date })}
-                    className="text-xs"
-                    placeholder="Select Date"
-                  />
+                  {clubIsMineToEdit ? (
+                    <CustomDatePicker
+                      value={player.dateOfBirth ? player.dateOfBirth.split('T')[0] : ''}
+                      onChange={(date) => updatePlayer(player.id, { dateOfBirth: date })}
+                      className="text-xs"
+                      placeholder="Select Date"
+                    />
+                  ) : (
+                    <span className="text-xs opacity-80">
+                      {player.dateOfBirth
+                        ? new Date(player.dateOfBirth).toLocaleDateString()
+                        : 'Not said'}
+                    </span>
+                  )}
                 </div>
               </div>
               <div>
                 <span className="opacity-70">Public:</span>
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={player.isPublic}
-                      onChange={(e) => updatePlayer(player.id, { isPublic: e.target.checked })}
-                      className="w-4 h-4 rounded border border-white/20"
-                    />
-                    <span className="text-xs">{player.isPublic ? 'Visible' : 'Hidden'}</span>
-                  </label>
+                  {clubIsMineToEdit ? (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={player.isPublic}
+                        onChange={(e) => updatePlayer(player.id, { isPublic: e.target.checked })}
+                        className="w-4 h-4 rounded border border-white/20"
+                      />
+                      <span className="text-xs">{player.isPublic ? 'Visible' : 'Hidden'}</span>
+                    </label>
+                  ) : (
+                    <span className="text-xs opacity-80">
+                      {player.isPublic ? 'Visible' : 'Hidden'}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -333,33 +394,57 @@ export default function PlayerPage() {
         <div className="flex items-center justify-center gap-6 text-sm">
           <div className="flex items-center gap-2">
             <FacebookIcon size={16} />
-            <InlineInput
-              type="url"
-              placeholder="Facebook profile..."
-              value={player.socialMedia?.facebook || ''}
-              onCommit={(value) => updatePlayer(player.id, { 
-                socialMedia: { 
-                  ...player.socialMedia, 
-                  facebook: value || undefined 
-                } 
-              })}
-              className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
-            />
+            {clubIsMineToEdit ? (
+              <InlineInput
+                type="url"
+                placeholder="Facebook profile..."
+                value={player.socialMedia?.facebook || ''}
+                onCommit={(value) =>
+                  updatePlayer(player.id, {
+                    socialMedia: { ...player.socialMedia, facebook: value || undefined },
+                  })
+                }
+                className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
+              />
+            ) : player.socialMedia?.facebook ? (
+              <a
+                href={player.socialMedia.facebook}
+                target="_blank"
+                rel="noreferrer"
+                className="underline opacity-80 hover:opacity-100 break-all"
+              >
+                {player.socialMedia.facebook}
+              </a>
+            ) : (
+              <span className="opacity-50">Not set</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <InstagramIcon size={16} />
-            <InlineInput
-              type="url"
-              placeholder="Instagram profile..."
-              value={player.socialMedia?.instagram || ''}
-              onCommit={(value) => updatePlayer(player.id, { 
-                socialMedia: { 
-                  ...player.socialMedia, 
-                  instagram: value || undefined 
-                } 
-              })}
-              className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
-            />
+            {clubIsMineToEdit ? (
+              <InlineInput
+                type="url"
+                placeholder="Instagram profile..."
+                value={player.socialMedia?.instagram || ''}
+                onCommit={(value) =>
+                  updatePlayer(player.id, {
+                    socialMedia: { ...player.socialMedia, instagram: value || undefined },
+                  })
+                }
+                className="px-3 py-2 rounded bg-transparent border border-white/20 text-center min-w-[250px]"
+              />
+            ) : player.socialMedia?.instagram ? (
+              <a
+                href={player.socialMedia.instagram}
+                target="_blank"
+                rel="noreferrer"
+                className="underline opacity-80 hover:opacity-100 break-all"
+              >
+                {player.socialMedia.instagram}
+              </a>
+            ) : (
+              <span className="opacity-50">Not set</span>
+            )}
           </div>
         </div>
       </section>

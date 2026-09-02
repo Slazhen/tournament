@@ -2,7 +2,8 @@ import { useEffect, useState } from "react"
 import { useAppStore } from "../store"
 import { Link } from "react-router-dom"
 import LogoUploader from "../components/LogoUploader"
-import { checkTeamName, parseBulkNames } from "../utils/teams"
+import { canEditClub, checkTeamName, parseBulkNames } from "../utils/teams"
+import { useAuth } from "../contexts/AuthContext"
 
 /**
  * The clubs.
@@ -42,6 +43,8 @@ export default function TeamsPage() {
     superAdmin,
     currentOrganizerId,
   } = useAppStore()
+
+  const { user } = useAuth()
 
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -335,7 +338,12 @@ export default function TeamsPage() {
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {visibleTeams.map((team) => (
+          {visibleTeams.map((team) => {
+            // The crest, the colours and the squad photo belong to whoever runs
+            // the club. Once somebody does, this card shows them rather than
+            // offering to change them — the API refuses the write.
+            const editable = canEditClub(team, user?.id, superAdmin)
+            return (
             <div key={team.id} className="glass rounded-xl p-6">
               <div className="flex items-center gap-4 mb-4">
                 {team.logo ? (
@@ -366,38 +374,55 @@ export default function TeamsPage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Colors</label>
                   <div className="flex gap-2">
-                    {team.colors.map((color, index) => (
-                      <input
-                        key={index}
-                        type="color"
-                        value={color}
-                        onChange={(e) => handleColorChange(team.id, e.target.value)}
-                        className="w-8 h-8 rounded border border-white/20"
-                      />
-                    ))}
+                    {team.colors.map((color, index) =>
+                      editable ? (
+                        <input
+                          key={index}
+                          type="color"
+                          value={color}
+                          onChange={(e) => handleColorChange(team.id, e.target.value)}
+                          className="w-8 h-8 rounded border border-white/20"
+                        />
+                      ) : (
+                        <span
+                          key={index}
+                          className="w-8 h-8 rounded border border-white/20 inline-block"
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ),
+                    )}
                   </div>
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1">Logo</label>
-                  <LogoUploader
-                    onLogoUpload={(file) => uploadTeamLogo(team.id, file)}
-                    currentLogo={team.logo}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1">Photo</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handlePhotoUpload(team.id, file)
-                    }}
-                    className="w-full text-sm text-white/70 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-white/10 file:text-white hover:file:bg-white/20 file:cursor-pointer"
-                  />
-                </div>
+
+                {editable ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Logo</label>
+                      <LogoUploader
+                        onLogoUpload={(file) => uploadTeamLogo(team.id, file)}
+                        currentLogo={team.logo}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Photo</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handlePhotoUpload(team.id, file)
+                        }}
+                        className="w-full text-sm text-white/70 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-white/10 file:text-white hover:file:bg-white/20 file:cursor-pointer"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm opacity-70">
+                    Run by its own manager: the crest, the colours and the squad are theirs.
+                  </p>
+                )}
                 
                 <div className="flex gap-2">
                   <Link
@@ -415,7 +440,8 @@ export default function TeamsPage() {
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
