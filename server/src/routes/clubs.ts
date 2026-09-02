@@ -33,6 +33,7 @@ import {
   refusedByRegistration,
   sideOfTeam,
 } from '../lib/lineups.js'
+import { locateMatch } from '../lib/matches.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import type { Router } from '../lib/router.js'
@@ -635,12 +636,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     assertManagesTeam(user, team as Team)
 
     const tournament = await tournaments.getOrThrow(params.tournamentId!)
-    // Only the fixtures in `matches`. A hand-built playoff keeps its rounds
-    // inside the format, and nothing — not even the organiser's own match
-    // screen — edits those, so a teamsheet for one has nowhere to go yet.
-    const match = (Array.isArray(tournament.matches) ? tournament.matches : []).find(
-      (candidate) => (candidate as { id?: string } | null)?.id === params.matchId,
-    )
+    // Either home of a fixture. A hand-built playoff keeps its rounds inside
+    // the format rather than in `matches`, and a club naming its eleven for one
+    // of those is naming it for an ordinary match as far as this route cares.
+    const match = locateMatch(tournament, params.matchId!)?.match
     if (!match) throw notFound('Match not found in this tournament')
 
     const side = sideOfTeam(match, teamId)

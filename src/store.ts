@@ -1,12 +1,33 @@
 import { create } from 'zustand'
-import type { Team, Tournament, Match, Organizer, Player, PlayerUpdate, AppSettings } from './types'
+import type { Team, Tournament, Match, Organizer, Player, PlayerUpdate, AppSettings, CustomPlayoffRoundConfig } from './types'
 import { generateGroupsWithDivisionsSchedule } from './utils/tournament'
 import { advanceKnockoutWinners } from './utils/schedule'
+import { applyMatchUpdate } from './utils/matches'
 import { generateFixtures } from './utils/fixtures'
 import { applySchedule } from './utils/matchdates'
 import type { ScheduleOptions } from './utils/matchdates'
 import { organizerService, teamService, tournamentService, matchService, playerService, uploadImage } from './lib/data'
+import type { RoundExpectation } from './lib/data'
 import { readCrestAppearance } from './utils/crest'
+
+const playoffRoundsOf = (tournament: Tournament): CustomPlayoffRoundConfig[] =>
+  tournament.format?.customPlayoffConfig?.playoffRounds ?? []
+
+/** The same competition with a new list of hand-built playoff rounds. */
+const withPlayoffRounds = (
+  tournament: Tournament,
+  rounds: CustomPlayoffRoundConfig[],
+): Tournament => {
+  const config = tournament.format?.customPlayoffConfig
+  if (!tournament.format || !config) return tournament
+  return {
+    ...tournament,
+    format: {
+      ...tournament.format,
+      customPlayoffConfig: { ...config, playoffRounds: rounds },
+    },
+  }
+}
 
 /** Routes that render an organizer's own teams and tournaments. */
 const ADMIN_ROUTES = /^\/(admin|teams|tournaments|players|calendar)(\/|$)/
@@ -72,8 +93,19 @@ type AppStore = {
   updateTournament: (tournamentId: string, updates: Partial<Tournament>) => Promise<void>
   deleteTournament: (tournamentId: string) => Promise<void>
   
-  setScore: (matchId: string, homeGoals: number, awayGoals: number) => Promise<void>
-  setDate: (matchId: string, dateISO: string) => Promise<void>
+  /**
+   * A result, and whatever it decides.
+   *
+   * Written as one match, like every other edit to a fixture. In a knockout the
+   * result also names who plays next, so the affected ties are saved here too
+   * rather than being retyped by hand.
+   */
+  setScore: (
+    tournamentId: string,
+    matchId: string,
+    homeGoals: number | undefined,
+    awayGoals: number | undefined,
+  ) => Promise<void>
   /**
    * One match's own fields, written as that match.
    *
@@ -90,6 +122,27 @@ type AppStore = {
     tournamentId: string,
     matchId: string,
     updates: Partial<Match>,
+  ) => Promise<void>
+  /**
+   * The playoff rounds an organiser builds by hand.
+   *
+   * One round at a time, through routes of their own. Sending the whole
+   * `format` back — which is what these screens used to do, on every keystroke
+   * of a round's name — replaces the fixtures inside every round from the copy
+   * this browser is holding, and those fixtures now carry goals, cards and the
+   * teamsheets a club's own manager writes.
+   */
+  addPlayoffRound: (tournamentId: string, round: Partial<CustomPlayoffRoundConfig>) => Promise<void>
+  updatePlayoffRound: (
+    tournamentId: string,
+    index: number,
+    updates: { name?: string; description?: string; quantityOfGames?: number },
+    expected: RoundExpectation,
+  ) => Promise<void>
+  removePlayoffRound: (
+    tournamentId: string,
+    index: number,
+    expected: RoundExpectation,
   ) => Promise<void>
   /**
    * One club's teamsheet for one match. Throws rather than swallowing, so a
@@ -556,82 +609,37 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   // Match actions
-  setScore: async (matchId: string, homeGoals: number, awayGoals: number) => {
-    const { tournaments } = get()
-    
-    for (const tournament of tournaments) {
-      const match = tournament.matches.find(m => m.id === matchId)
-      if (match) {
-        try {
-          const success = await matchService.updateMatchInTournament(tournament.id, matchId, {
-            homeGoals,
-            awayGoals,
-          })
-          
-          if (success) {
-            const scored = tournament.matches.map(m =>
-              m.id === matchId ? { ...m, homeGoals, awayGoals } : m
-            )
+  setScore: async (
+    tournamentId: string,
+    matchId: string,
+    homeGoals: number | undefined,
+    awayGoals: number | undefined,
+  ) => {
+    const { tournaments, updateMatchFields } = get()
+    const tournament = tournaments.find((one) => one.id === tournamentId)
+    if (!tournament) return
 
-            // In a cup, a result decides who plays in the next round. Work that
-            // out here and save the affected fixture, so the bracket fills itself
-            // in instead of being retyped by hand.
-            const advanced = advanceKnockoutWinners(scored)
-            const movedOn = advanced.filter((m, index) =>
-              m.homeTeamId !== scored[index].homeTeamId || m.awayTeamId !== scored[index].awayTeamId
-            )
+    await updateMatchFields(tournamentId, matchId, { homeGoals, awayGoals })
 
-            for (const next of movedOn) {
-              await matchService.updateMatchInTournament(tournament.id, next.id, {
-                homeTeamId: next.homeTeamId,
-                awayTeamId: next.awayTeamId,
-              })
-            }
+    // In a cup the result decides who plays next. Work that out from the state
+    // the write above has already left behind, and save only the ties that
+    // actually moved — each as its own match, so nothing else is touched.
+    if (tournament.format?.mode !== 'knockout') return
 
-            set(state => ({
-              tournaments: state.tournaments.map(t =>
-                t.id === tournament.id ? { ...t, matches: advanced } : t
-              )
-            }))
-          }
-        } catch (error) {
-          console.error('Error updating match score:', error)
-        }
-        break
+    const saved = get().tournaments.find((one) => one.id === tournamentId)
+    if (!saved) return
+
+    const advanced = advanceKnockoutWinners(saved.matches)
+    for (let index = 0; index < advanced.length; index++) {
+      const next = advanced[index]
+      const previous = saved.matches[index]
+      if (next.homeTeamId === previous.homeTeamId && next.awayTeamId === previous.awayTeamId) {
+        continue
       }
-    }
-  },
-
-  setDate: async (matchId: string, dateISO: string) => {
-    const { tournaments } = get()
-    
-    for (const tournament of tournaments) {
-      const match = tournament.matches.find(m => m.id === matchId)
-      if (match) {
-        try {
-          const success = await matchService.updateMatchInTournament(tournament.id, matchId, {
-            dateISO,
-          })
-          
-          if (success) {
-            set(state => ({
-              tournaments: state.tournaments.map(t =>
-                t.id === tournament.id
-                  ? {
-                      ...t,
-                      matches: t.matches.map(m =>
-                        m.id === matchId ? { ...m, dateISO } : m
-                      )
-                    }
-                  : t
-              )
-            }))
-          }
-        } catch (error) {
-          console.error('Error updating match date:', error)
-        }
-        break
-      }
+      await updateMatchFields(tournamentId, next.id, {
+        homeTeamId: next.homeTeamId,
+        awayTeamId: next.awayTeamId,
+      })
     }
   },
 
@@ -649,12 +657,63 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set(state => ({
       tournaments: state.tournaments.map(tournament =>
         tournament.id === tournamentId
-          ? {
-              ...tournament,
-              matches: tournament.matches.map(match =>
-                match.id === matchId ? { ...match, ...updates } : match,
-              ),
-            }
+          ? applyMatchUpdate(tournament, matchId, match => ({ ...match, ...updates }))
+          : tournament,
+      ),
+    }))
+  },
+
+  addPlayoffRound: async (tournamentId: string, round: Partial<CustomPlayoffRoundConfig>) => {
+    const stored = await tournamentService.addPlayoffRound(tournamentId, round)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? withPlayoffRounds(tournament, [...playoffRoundsOf(tournament), stored])
+          : tournament,
+      ),
+    }))
+  },
+
+  updatePlayoffRound: async (
+    tournamentId: string,
+    index: number,
+    updates: { name?: string; description?: string; quantityOfGames?: number },
+    expected: RoundExpectation,
+  ) => {
+    const stored = await tournamentService.updatePlayoffRound(
+      tournamentId,
+      index,
+      updates,
+      expected,
+    )
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? withPlayoffRounds(
+              tournament,
+              // The server's answer, not the request: it works the fixtures out
+              // from the stored round, so a round that grew comes back with the
+              // new games already in it.
+              playoffRoundsOf(tournament).map((round, at) => (at === index ? stored : round)),
+            )
+          : tournament,
+      ),
+    }))
+  },
+
+  removePlayoffRound: async (
+    tournamentId: string,
+    index: number,
+    expected: RoundExpectation,
+  ) => {
+    await tournamentService.removePlayoffRound(tournamentId, index, expected)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? withPlayoffRounds(
+              tournament,
+              playoffRoundsOf(tournament).filter((_, at) => at !== index),
+            )
           : tournament,
       ),
     }))
@@ -684,28 +743,24 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set(state => ({
       tournaments: state.tournaments.map(tournament => {
         if (tournament.id !== tournamentId) return tournament
-        return {
-          ...tournament,
-          matches: tournament.matches.map(match => {
-            if (match.id !== matchId) return match
-            if (match.homeTeamId !== teamId && match.awayTeamId !== teamId) return match
-            const side = match.homeTeamId === teamId ? 'home' : 'away'
-            const lineups = {
-              home: {
-                starting: match.lineups?.home?.starting ?? [],
-                substitutes: match.lineups?.home?.substitutes ?? [],
-              },
-              away: {
-                starting: match.lineups?.away?.starting ?? [],
-                substitutes: match.lineups?.away?.substitutes ?? [],
-              },
-            }
-            // The server's answer, not the request: it drops anyone no longer
-            // registered, and the screen should show what was actually stored.
-            lineups[side] = { ...lineups[side], starting: saved }
-            return { ...match, lineups }
-          }),
-        }
+        return applyMatchUpdate(tournament, matchId, match => {
+          if (match.homeTeamId !== teamId && match.awayTeamId !== teamId) return match
+          const side = match.homeTeamId === teamId ? 'home' : 'away'
+          const lineups = {
+            home: {
+              starting: match.lineups?.home?.starting ?? [],
+              substitutes: match.lineups?.home?.substitutes ?? [],
+            },
+            away: {
+              starting: match.lineups?.away?.starting ?? [],
+              substitutes: match.lineups?.away?.substitutes ?? [],
+            },
+          }
+          // The server's answer, not the request: it drops anyone no longer
+          // registered, and the screen should show what was actually stored.
+          lineups[side] = { ...lineups[side], starting: saved }
+          return { ...match, lineups }
+        })
       }),
     }))
   },

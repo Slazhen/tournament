@@ -17,8 +17,26 @@ import {
 } from '../components/icons'
 import { playersForPicking, registeredPlayers } from '../utils/squads'
 import { youtubeEmbedUrl } from '../utils/video'
-import { cardLabel, cardTotals, roundLabel, statValue } from '../utils/matches'
+import { cardLabel, cardTotals, findMatch, roundLabel, statValue } from '../utils/matches'
 import type { CardType } from '../utils/matches'
+
+/**
+ * The team totals somebody types in, in the order the table shows them.
+ *
+ * Goals are not one of them: the score is edited on the scoreboard, and the
+ * cards are counted from the bookings.
+ */
+const STATISTIC_ROWS: Array<{
+  label: string
+  field: 'shots' | 'shotsOnTarget' | 'corners' | 'fouls' | 'possession'
+  suffix?: string
+}> = [
+  { label: 'Shots', field: 'shots' },
+  { label: 'Shots on Target', field: 'shotsOnTarget' },
+  { label: 'Corners', field: 'corners' },
+  { label: 'Fouls', field: 'fouls' },
+  { label: 'Possession', field: 'possession', suffix: '%' },
+]
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
@@ -45,7 +63,11 @@ export default function MatchPage() {
     }
     return undefined
   }, [tournamentId, orgSlug, tournamentSlug, tournaments, allOrganizers])
-  const match = tournament?.matches.find(m => m.id === matchId)
+  // Wherever the competition keeps it. A hand-built playoff round stores its
+  // fixtures inside the format rather than in `matches`, and this screen used
+  // to answer "Match not found" for every one of them — which is why their
+  // goals, cards and teamsheets had nowhere to be entered.
+  const match = findMatch(tournament, matchId)
   
   const homeTeam = teams.find(t => t.id === match?.homeTeamId)
   const awayTeam = teams.find(t => t.id === match?.awayTeamId)
@@ -95,6 +117,24 @@ export default function MatchPage() {
     })
   }
 
+  /**
+   * The score the recorded events add up to.
+   *
+   * The two used to be stored side by side and reconciled by hand, so a goal
+   * entered here left the season's table showing the old result until somebody
+   * remembered to retype it. Adding or removing an event now moves the score
+   * with it, in the same write.
+   *
+   * The score stays a field of its own, and is still editable on the scoreboard
+   * above: most matches in this app have a result and no events at all, and a
+   * score derived from an empty list would read 0-0 for every one of them. So
+   * this is applied only when the event list itself changes.
+   */
+  const scoreOf = (goals: NonNullable<typeof match.goals>) => ({
+    homeGoals: goals.filter(g => g.team === 'home').length,
+    awayGoals: goals.filter(g => g.team === 'away').length,
+  })
+
   const updateGoal = (goalId: string, updates: Partial<{ minute: number; playerId: string; assistPlayerId?: string; type: 'goal' | 'penalty' | 'own_goal' }>) => {
     if (!goalId) {
       // Don't create goals automatically - this should only happen when explicitly adding goals
@@ -118,7 +158,7 @@ export default function MatchPage() {
       goalNumber
     }
     const goals = [...(match.goals || []), newGoal]
-    updateMatch({ goals })
+    updateMatch({ goals, ...scoreOf(goals) })
   }
 
   const createCard = (team: 'home' | 'away') => {
@@ -142,19 +182,14 @@ export default function MatchPage() {
     updateMatch({ cards: (match.cards ?? []).filter((card) => card.id !== cardId) })
   }
 
+  /**
+   * One event gone, and the score with it. Written once: this was two calls,
+   * so the second could reach the API before the first and put the old score
+   * back beside the shorter list.
+   */
   const deleteGoal = (goalId: string) => {
     const goals = match.goals?.filter(g => g.id !== goalId) || []
-    updateMatch({ goals })
-  }
-
-  const removeGoal = (goalId: string) => {
-    const goals = match.goals?.filter(g => g.id !== goalId) || []
-    updateMatch({ goals })
-    
-    // Update score
-    const homeGoals = goals.filter(g => g.team === 'home').length
-    const awayGoals = goals.filter(g => g.team === 'away').length
-    updateMatch({ homeGoals, awayGoals })
+    updateMatch({ goals, ...scoreOf(goals) })
   }
 
   const getPlayerName = (playerId: string, team: typeof homeTeam) => {
@@ -242,9 +277,18 @@ export default function MatchPage() {
                 )}
               </div>
               <div className="text-lg font-semibold">{homeTeam.name}</div>
-              <div className="text-4xl font-bold text-blue-400">
-                {typeof match.homeGoals === 'number' ? match.homeGoals : '-'}
-              </div>
+              {/* The result is edited here, on the scoreboard, which is where
+                  anyone looks for it. It used to be reachable only as a row of
+                  the Statistics table, behind another tab. */}
+              <InlineInput
+                inputMode="numeric"
+                pattern="[0-9]*"
+                aria-label={`${homeTeam.name} score`}
+                placeholder="-"
+                value={typeof match.homeGoals === 'number' ? match.homeGoals : ''}
+                onCommit={(value) => updateMatch({ homeGoals: value === '' ? undefined : Number(value) })}
+                className="w-24 mx-auto block text-center text-4xl font-bold text-blue-400 bg-transparent rounded-md border border-white/10 hover:border-white/25 focus:border-white/40 focus:outline-none"
+              />
             </div>
             
             <div className="text-2xl font-bold opacity-50">vs</div>
@@ -265,9 +309,15 @@ export default function MatchPage() {
                 )}
               </div>
               <div className="text-lg font-semibold">{awayTeam.name}</div>
-              <div className="text-4xl font-bold text-red-400">
-                {typeof match.awayGoals === 'number' ? match.awayGoals : '-'}
-              </div>
+              <InlineInput
+                inputMode="numeric"
+                pattern="[0-9]*"
+                aria-label={`${awayTeam.name} score`}
+                placeholder="-"
+                value={typeof match.awayGoals === 'number' ? match.awayGoals : ''}
+                onCommit={(value) => updateMatch({ awayGoals: value === '' ? undefined : Number(value) })}
+                className="w-24 mx-auto block text-center text-4xl font-bold text-red-400 bg-transparent rounded-md border border-white/10 hover:border-white/25 focus:border-white/40 focus:outline-none"
+              />
             </div>
           </div>
 
@@ -415,7 +465,7 @@ export default function MatchPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => removeGoal(goal.id)}
+                        onClick={() => deleteGoal(goal.id)}
                         className="text-red-400 hover:text-red-300 text-sm"
                       >
                         Remove
@@ -441,66 +491,45 @@ export default function MatchPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    { label: 'Goals', home: 'goals', away: 'goals' },
-                    { label: 'Shots', home: 'shots', away: 'shots' },
-                    { label: 'Shots on Target', home: 'shotsOnTarget', away: 'shotsOnTarget' },
-                    { label: 'Corners', home: 'corners', away: 'corners' },
-                    { label: 'Fouls', home: 'fouls', away: 'fouls' },
-                    { label: 'Possession', home: 'possession', away: 'possession', suffix: '%' }
-                  ].map(stat => (
+                  {/* The score is not typed here. It sits on the scoreboard at
+                      the top of the page, where anyone looks for it, and a
+                      second field for the same number is a second answer
+                      waiting to disagree with the first. */}
+                  <tr className="border-b border-white/10">
+                    <td className="py-3 px-4 font-medium">Goals</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="text-blue-400 font-bold">{statValue(match.homeGoals)}</span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="text-red-400 font-bold">{statValue(match.awayGoals)}</span>
+                    </td>
+                  </tr>
+                  {STATISTIC_ROWS.map(stat => (
                     <tr key={stat.label} className="border-b border-white/10">
                       <td className="py-3 px-4 font-medium">{stat.label}</td>
-                      <td className="py-3 px-4 text-center">
-                        <input
-                          type="number"
-                          min="0"
-                          value={stat.label === 'Goals' 
-                            ? (match.homeGoals ?? '')
-                            : (match.statistics?.home[stat.home as keyof typeof match.statistics.home] ?? '')
-                          }
-                          onChange={(e) => {
-                            const value = e.target.value ? Number(e.target.value) : undefined
-                            if (stat.label === 'Goals') {
-                              updateMatch({ homeGoals: value })
-                            } else {
-                              updateMatch({
-                                statistics: {
-                                  home: { ...match.statistics?.home, [stat.home]: value },
-                                  away: { ...match.statistics?.away }
-                                }
-                              })
-                            }
-                          }}
-                          className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 text-center text-sm focus:border-white/40 focus:outline-none"
-                        />
-                        <span className="text-sm ml-1">{stat.suffix || ''}</span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <input
-                          type="number"
-                          min="0"
-                          value={stat.label === 'Goals' 
-                            ? (match.awayGoals ?? '')
-                            : (match.statistics?.away[stat.away as keyof typeof match.statistics.away] ?? '')
-                          }
-                          onChange={(e) => {
-                            const value = e.target.value ? Number(e.target.value) : undefined
-                            if (stat.label === 'Goals') {
-                              updateMatch({ awayGoals: value })
-                            } else {
-                              updateMatch({
-                                statistics: {
-                                  home: { ...match.statistics?.home },
-                                  away: { ...match.statistics?.away, [stat.away]: value }
-                                }
-                              })
-                            }
-                          }}
-                          className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 text-center text-sm focus:border-white/40 focus:outline-none"
-                        />
-                        <span className="text-sm ml-1">{stat.suffix || ''}</span>
-                      </td>
+                      {(['home', 'away'] as const).map(side => (
+                        <td key={side} className="py-3 px-4 text-center">
+                          {/* On blur, not on every keystroke: each save rewrites
+                              the whole statistics record, and typing "12" used
+                              to be two of them racing each other. */}
+                          <InlineInput
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            aria-label={`${stat.label}, ${side === 'home' ? homeTeam.name : awayTeam.name}`}
+                            value={match.statistics?.[side]?.[stat.field] ?? ''}
+                            onCommit={(entered) => {
+                              const statistics = {
+                                home: { ...match.statistics?.home },
+                                away: { ...match.statistics?.away },
+                              }
+                              statistics[side][stat.field] = entered === '' ? undefined : Number(entered)
+                              updateMatch({ statistics })
+                            }}
+                            className="w-20 px-2 py-1 rounded bg-transparent border border-white/20 text-center text-sm focus:border-white/40 focus:outline-none"
+                          />
+                          <span className="text-sm ml-1">{stat.suffix || ''}</span>
+                        </td>
+                      ))}
                     </tr>
                   ))}
                   {/* Not typed here. Both numbers are counted from the bookings

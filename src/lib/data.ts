@@ -1,5 +1,5 @@
 import { api, isSignedIn } from './api'
-import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate } from '../types'
+import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate, CustomPlayoffRoundConfig } from '../types'
 
 /**
  * Data access for the whole app.
@@ -14,6 +14,9 @@ import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate } from '.
  */
 
 const MAX_BATCH = 500
+
+/** Which hand-built playoff round the screen believed it was editing. */
+export type RoundExpectation = { roundNumber?: number; name?: string }
 
 export const organizerService = {
   /**
@@ -270,6 +273,57 @@ export const tournamentService = {
     return api.put(
       `/admin/tournaments/${encodeURIComponent(tournamentId)}/squads/${encodeURIComponent(teamId)}`,
       { playerIds },
+    )
+  },
+
+  /**
+   * The rounds an organiser builds by hand, written one at a time.
+   *
+   * Not through `update`, which replaces the whole `format`: these rounds hold
+   * the fixtures, and the fixtures hold goals, cards and teamsheets that other
+   * people write. Each of these answers with the round as it was stored, and
+   * the round number and the fixture ids come back assigned by the server.
+   */
+  async addPlayoffRound(
+    tournamentId: string,
+    round: Partial<CustomPlayoffRoundConfig>,
+  ): Promise<CustomPlayoffRoundConfig> {
+    return api.post<CustomPlayoffRoundConfig>(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/playoff-rounds`,
+      round,
+    )
+  },
+
+  /**
+   * An index is not an identity: a round deleted in another tab shifts every
+   * round after it up by one. So both of these say which round was on screen,
+   * and the server refuses when the round in that place is a different one.
+   */
+  async updatePlayoffRound(
+    tournamentId: string,
+    index: number,
+    updates: { name?: string; description?: string; quantityOfGames?: number },
+    expected: RoundExpectation,
+  ): Promise<CustomPlayoffRoundConfig> {
+    return api.patch<CustomPlayoffRoundConfig>(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/playoff-rounds/${index}`,
+      { ...updates, expectedRoundNumber: expected.roundNumber, expectedName: expected.name },
+    )
+  },
+
+  async removePlayoffRound(
+    tournamentId: string,
+    index: number,
+    expected: RoundExpectation,
+  ): Promise<void> {
+    // A DELETE carries no body, so the expectation travels in the query.
+    const query = new URLSearchParams()
+    if (typeof expected.roundNumber === 'number') {
+      query.set('expectedRoundNumber', String(expected.roundNumber))
+    }
+    if (expected.name !== undefined) query.set('expectedName', expected.name)
+    await api.delete(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/playoff-rounds/${index}?${query}`,
     )
   },
 

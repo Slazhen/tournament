@@ -12,7 +12,8 @@ import {
 import { TABLES } from './lib/env.js'
 import { cached, defaultTtl, invalidate, type ReadOptions } from './lib/cache.js'
 import { generateId } from './lib/passwords.js'
-import { notFound } from './lib/http.js'
+import { badRequest, notFound } from './lib/http.js'
+import { locateMatch } from './lib/matches.js'
 import type { Organizer, Team, Tournament } from './lib/types.js'
 
 /* ------------------------------------------------------------------ *
@@ -272,6 +273,88 @@ export function toSummary(tournament: Tournament): TournamentSummary {
 
 export const isPublic = (tournament: Tournament): boolean => tournament.visibility !== 'private'
 
+/**
+ * The document path of the rounds an organiser builds by hand, and its aliases.
+ *
+ * `format` and `matches` are DynamoDB reserved words. The rest is aliased with
+ * them because a path assembled in code is invisible to `expressions.test.ts`:
+ * an interpolation is a value as far as that check can tell.
+ */
+const ROUND_NAMES: Record<string, string> = {
+  '#format': 'format',
+  '#playoffConfig': 'customPlayoffConfig',
+  '#playoffRounds': 'playoffRounds',
+}
+const ROUNDS = '#format.#playoffConfig.#playoffRounds'
+
+/** Which round the caller believed they were editing. */
+export type RoundExpectation = { roundNumber?: number; name?: string }
+
+/** `format.customPlayoffConfig`, when the competition has one. */
+function playoffConfig(tournament: Tournament): Record<string, unknown> | undefined {
+  const format = tournament.format as Record<string, unknown> | undefined
+  const config = format?.customPlayoffConfig
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return undefined
+  return config as Record<string, unknown>
+}
+
+const roundMoved = () =>
+  notFound('This competition has changed since the page was loaded. Reload and try again.')
+
+/**
+ * What a write to one round asserts about the round it is writing to.
+ *
+ * The index came from a list the caller read a moment ago, and rounds move: a
+ * round deleted in another tab shifts every round after it up by one, so index
+ * 1 stops being the round the person clicked. The expectation therefore comes
+ * from the *request* — the number or the name that was on screen — and is
+ * checked twice: against the stored round here, and again in the condition of
+ * the write, which is what covers the gap between the two.
+ *
+ * A round from before `roundNumber` existed is identified by its name instead.
+ * Refusing when the caller offers neither is deliberate: without one, an index
+ * is a guess, and the guess deletes somebody's fixtures.
+ */
+function guardForRound(
+  round: Record<string, unknown>,
+  index: number,
+  expected: RoundExpectation,
+  names: Record<string, string>,
+  values: Record<string, unknown>,
+): string {
+  if (typeof expected.roundNumber === 'number') {
+    if (round.roundNumber !== expected.roundNumber) throw roundMoved()
+    names['#roundNumber'] = 'roundNumber'
+    values[':expectedRound'] = expected.roundNumber
+    return `${ROUNDS}[${index}].#roundNumber = :expectedRound`
+  }
+
+  if (typeof expected.name === 'string') {
+    if (round.name !== expected.name) throw roundMoved()
+    names['#roundName'] = 'name'
+    values[':expectedName'] = expected.name
+    return `${ROUNDS}[${index}].#roundName = :expectedName`
+  }
+
+  throw badRequest('Which round is being edited was not stated')
+}
+
+/**
+ * A write whose condition failing means the screen is out of date.
+ *
+ * Retrying against whatever is there now would be guessing at what the person
+ * meant — a round they were renaming may have been deleted — so the answer says
+ * what happened instead.
+ */
+async function conditionally(command: UpdateCommand): Promise<void> {
+  try {
+    await ddb.send(command)
+  } catch (error) {
+    if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+    throw roundMoved()
+  }
+}
+
 export const tournaments = {
   async listAll(read?: ReadOptions): Promise<Tournament[]> {
     return cached('tournaments:all', defaultTtl, () => scanAll<Tournament>(TABLES.TOURNAMENTS), read)
@@ -490,6 +573,11 @@ export const tournaments = {
    * match can still be lost. That window is one request rather than one open
    * browser tab, and the fields with two authors — the teamsheets — are kept
    * out of this route entirely and written by `setLineup`.
+   *
+   * `locateMatch` finds the fixture in either place a competition keeps one.
+   * A hand-built playoff round stores its matches inside the format, and until
+   * this route could reach them their scores were edited by rewriting the whole
+   * `format` object from the browser's copy.
    */
   async updateMatch(
     tournamentId: string,
@@ -497,28 +585,216 @@ export const tournaments = {
     updates: Record<string, unknown>,
   ): Promise<void> {
     const tournament = await this.getOrThrow(tournamentId)
-    const matches = Array.isArray(tournament.matches) ? [...tournament.matches] : []
-    const index = matches.findIndex(
-      (match) => (match as { id?: string } | null)?.id === matchId,
-    )
-    if (index === -1) throw notFound('Match not found in this tournament')
+    const located = locateMatch(tournament, matchId)
+    if (!located) throw notFound('Match not found in this tournament')
 
-    const updated = { ...(matches[index] as object), ...updates, id: matchId }
+    const updated = { ...located.match, ...updates, id: matchId }
 
     await ddb.send(
       new UpdateCommand({
         TableName: TABLES.TOURNAMENTS,
         Key: { id: tournamentId },
-        // `matches` is a DynamoDB reserved word, hence the alias.
-        UpdateExpression: `SET #matches[${index}] = :match`,
-        ConditionExpression: `#matches[${index}].#id = :matchId`,
-        ExpressionAttributeNames: { '#matches': 'matches', '#id': 'id' },
+        // The path is assembled by `locateMatch`, which aliases every segment
+        // of it: `matches` and `format` are both DynamoDB reserved words.
+        UpdateExpression: `SET ${located.path} = :match`,
+        ConditionExpression: `${located.path}.#id = :matchId`,
+        ExpressionAttributeNames: { ...located.names, '#id': 'id' },
         ExpressionAttributeValues: { ':match': updated, ':matchId': matchId },
       }),
     )
     invalidate('tournaments:')
   },
 
+
+  /**
+   * A round the organiser builds by hand, appended.
+   *
+   * The screen that adds one used to write `format` whole, from the copy the
+   * browser was holding — and the fixtures inside these rounds carry goals,
+   * cards and the teamsheets a club's own manager writes. That is exactly the
+   * write that used to undo a teamsheet through `matches`, one level deeper.
+   * Appending under a condition on the length leaves every existing round, and
+   * everything inside it, alone.
+   *
+   * The round's number and its fixtures' ids are assigned here rather than
+   * taken from the request. The browser derives both from a list it read
+   * earlier, and two fixtures with one id is a result saved onto the wrong
+   * match. The number is one past the highest in use rather than one past the
+   * length, because deleting a round does not renumber the ones after it.
+   */
+  async addPlayoffRound(
+    tournamentId: string,
+    round: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const config = playoffConfig(tournament)
+    if (!config) throw badRequest('This competition has no hand-built playoff rounds')
+
+    const existing = Array.isArray(config.playoffRounds) ? config.playoffRounds : []
+    if (existing.length >= 40) throw badRequest('This competition already has 40 playoff rounds')
+
+    const highest = existing.reduce<number>((top, one) => {
+      const number = (one as { roundNumber?: unknown } | null)?.roundNumber
+      return typeof number === 'number' && number > top ? number : top
+    }, 0)
+
+    const fixtures = Array.isArray(round.matches) ? round.matches : []
+    const stored = {
+      ...round,
+      roundNumber: highest + 1,
+      quantityOfGames: fixtures.length,
+      matches: fixtures.map((match) => ({ ...(match as object), id: generateId() })),
+    }
+
+    await conditionally(
+      new UpdateCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id: tournamentId },
+        UpdateExpression: `SET ${ROUNDS} = list_append(if_not_exists(${ROUNDS}, :none), :one)`,
+        // `attribute_not_exists` on a nested path is true when the parent map is
+        // missing too, and the SET would then fail with a ValidationException —
+        // a 500 rather than an answer. So the parent is asserted as well.
+        ConditionExpression: `attribute_exists(#format.#playoffConfig) AND (attribute_not_exists(${ROUNDS}) OR size(${ROUNDS}) = :count)`,
+        ExpressionAttributeNames: { ...ROUND_NAMES },
+        ExpressionAttributeValues: { ':none': [], ':one': [stored], ':count': existing.length },
+      }),
+    )
+
+    invalidate('tournaments:')
+    return stored
+  },
+
+  /**
+   * One round's own fields: what it is called, and how many games it holds.
+   *
+   * The fixture list is never written back whole. A round that grows has empty
+   * fixtures appended, a round that shrinks loses the ones at the end by index,
+   * and a round whose count has not changed does not touch `matches` at all —
+   * so a result or a teamsheet saved into this round while the screen was open
+   * survives a rename, and survives somebody re-entering the same number of
+   * games. Shrinking a round destroys the games at the end of it, which is what
+   * shrinking a round means.
+   */
+  async updatePlayoffRound(
+    tournamentId: string,
+    index: number,
+    updates: { name?: string; description?: string; quantityOfGames?: number },
+    expected: RoundExpectation,
+  ): Promise<Record<string, unknown>> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const config = playoffConfig(tournament)
+    const rounds = Array.isArray(config?.playoffRounds) ? config!.playoffRounds : []
+    const round = rounds[index] as Record<string, unknown> | undefined
+    if (!round) throw notFound('Round not found in this competition')
+
+    const at = `${ROUNDS}[${index}]`
+    const names: Record<string, string> = { ...ROUND_NAMES }
+    const values: Record<string, unknown> = {}
+    const sets: string[] = []
+    const removes: string[] = []
+    const conditions: string[] = [guardForRound(round, index, expected, names, values)]
+    const merged: Record<string, unknown> = { ...round }
+
+    if (typeof updates.name === 'string') {
+      names['#roundName'] = 'name'
+      values[':roundName'] = updates.name
+      sets.push(`${at}.#roundName = :roundName`)
+      merged.name = updates.name
+    }
+
+    if (typeof updates.description === 'string') {
+      names['#description'] = 'description'
+      values[':description'] = updates.description
+      sets.push(`${at}.#description = :description`)
+      merged.description = updates.description
+    }
+
+    if (typeof updates.quantityOfGames === 'number') {
+      const quantity = Math.max(1, Math.min(20, Math.round(updates.quantityOfGames)))
+      const fixtures = Array.isArray(round.matches) ? round.matches : []
+
+      names['#quantityOfGames'] = 'quantityOfGames'
+      values[':quantityOfGames'] = quantity
+      sets.push(`${at}.#quantityOfGames = :quantityOfGames`)
+      merged.quantityOfGames = quantity
+
+      if (quantity !== fixtures.length) {
+        names['#roundMatches'] = 'matches'
+        values[':storedGames'] = fixtures.length
+        conditions.push(
+          `(attribute_not_exists(${at}.#roundMatches) OR size(${at}.#roundMatches) = :storedGames)`,
+        )
+
+        if (quantity > fixtures.length) {
+          const added = Array.from({ length: quantity - fixtures.length }, () => ({
+            id: generateId(),
+            isElimination: false,
+          }))
+          values[':noGames'] = []
+          values[':addedGames'] = added
+          sets.push(
+            `${at}.#roundMatches = list_append(if_not_exists(${at}.#roundMatches, :noGames), :addedGames)`,
+          )
+          merged.matches = [...fixtures, ...added]
+        } else {
+          // Highest index first: removing from the front would shift the rest
+          // out from under the indexes named after it.
+          for (let position = fixtures.length - 1; position >= quantity; position--) {
+            removes.push(`${at}.#roundMatches[${position}]`)
+          }
+          merged.matches = fixtures.slice(0, quantity)
+        }
+      }
+    }
+
+    if (sets.length === 0 && removes.length === 0) throw badRequest('Nothing to change')
+
+    await conditionally(
+      new UpdateCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id: tournamentId },
+        UpdateExpression:
+          (sets.length > 0 ? `SET ${sets.join(', ')}` : '') +
+          (removes.length > 0 ? ` REMOVE ${removes.join(', ')}` : ''),
+        ConditionExpression: conditions.join(' AND '),
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+      }),
+    )
+
+    invalidate('tournaments:')
+    return merged
+  },
+
+  /** One round gone, by index, with the caller's idea of it checked first. */
+  async removePlayoffRound(
+    tournamentId: string,
+    index: number,
+    expected: RoundExpectation,
+  ): Promise<void> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const config = playoffConfig(tournament)
+    const rounds = Array.isArray(config?.playoffRounds) ? config!.playoffRounds : []
+    const round = rounds[index] as Record<string, unknown> | undefined
+    if (!round) throw notFound('Round not found in this competition')
+
+    const names: Record<string, string> = { ...ROUND_NAMES }
+    const values: Record<string, unknown> = {}
+    const guard = guardForRound(round, index, expected, names, values)
+
+    await conditionally(
+      new UpdateCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id: tournamentId },
+        UpdateExpression: `REMOVE ${ROUNDS}[${index}]`,
+        ConditionExpression: guard,
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+      }),
+    )
+
+    invalidate('tournaments:')
+  },
   /**
    * Who one club is naming for one match.
    *
@@ -536,8 +812,12 @@ export const tournaments = {
    * side of it. A knockout fixture is the case that makes it necessary: saving
    * a result in the previous round rewrites `homeTeamId` of an existing match,
    * so the id alone would have let a club's eleven land on the home teamsheet
-   * of a match they are no longer in. The index is checked the same way,
+   * of a match they are no longer in. The position is checked the same way,
    * because a regenerated fixture list reorders the array.
+   *
+   * The path comes from `locateMatch`, so a fixture in a hand-built playoff
+   * round — which lives inside the format, not in `matches` — takes a teamsheet
+   * like any other.
    */
   async setLineup(
     tournamentId: string,
@@ -547,20 +827,19 @@ export const tournaments = {
     starting: string[],
   ): Promise<void> {
     const tournament = await this.getOrThrow(tournamentId)
-    const matches = Array.isArray(tournament.matches) ? tournament.matches : []
-    const index = matches.findIndex((match) => (match as { id?: string } | null)?.id === matchId)
-    if (index === -1) throw notFound('Match not found in this tournament')
+    const located = locateMatch(tournament, matchId)
+    if (!located) throw notFound('Match not found in this tournament')
 
-    const existing = (matches[index] as { lineups?: Record<string, unknown> } | null)?.lineups
+    const existing = (located.match as { lineups?: Record<string, unknown> }).lineups
     const current = (existing?.[side] ?? {}) as { substitutes?: unknown }
 
     const names = {
-      '#matches': 'matches',
+      ...located.names,
       '#lineups': 'lineups',
       '#id': 'id',
       '#sideTeam': side === 'home' ? 'homeTeamId' : 'awayTeamId',
     }
-    const guard = `#matches[${index}].#id = :matchId AND #matches[${index}].#sideTeam = :teamId`
+    const guard = `${located.path}.#id = :matchId AND ${located.path}.#sideTeam = :teamId`
 
     try {
       // Two writes for the reason `setSquad` needs two: a nested path cannot be
@@ -577,7 +856,7 @@ export const tournaments = {
         new UpdateCommand({
           TableName: TABLES.TOURNAMENTS,
           Key: { id: tournamentId },
-          UpdateExpression: `SET #matches[${index}].#lineups = if_not_exists(#matches[${index}].#lineups, :both)`,
+          UpdateExpression: `SET ${located.path}.#lineups = if_not_exists(${located.path}.#lineups, :both)`,
           ConditionExpression: guard,
           ExpressionAttributeNames: names,
           ExpressionAttributeValues: {
@@ -598,7 +877,7 @@ export const tournaments = {
         new UpdateCommand({
           TableName: TABLES.TOURNAMENTS,
           Key: { id: tournamentId },
-          UpdateExpression: `SET #matches[${index}].#lineups.#side = :lineup`,
+          UpdateExpression: `SET ${located.path}.#lineups.#side = :lineup`,
           ConditionExpression: guard,
           ExpressionAttributeNames: { ...names, '#side': side },
           ExpressionAttributeValues: {

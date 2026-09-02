@@ -241,6 +241,50 @@ both undone by somebody correcting a spelling. `undefined` cannot travel through
 JSON, so a field emptied on that screen is sent as `null`, which is why a score
 is read with `typeof === 'number'` and never with `!== undefined`.
 
+The season page did the same thing for longer, and that is the bug the organiser
+reported as "updating the score destroys the match". Its score, date and playoff
+pairing fields wrote `matches` whole from the copy the page loaded, so typing a
+result overwrote every fixture in the season with an older version of itself —
+the goals and cards entered on the match screen, and the teamsheets a club's own
+manager had named, on matches nobody was editing. Every per-fixture edit on that
+page now goes through the match route (`saveMatch`/`setScore` in
+`TournamentPage.tsx`), and the bulk helpers — the same date for a round, the same
+times for every round — save only the fixtures whose kick-off actually moved, one
+request each. What legitimately still writes `matches` whole is a rebuild: the
+draw generators, and the repair tools behind the details block.
+
+**A fixture has two homes, and both are written one fixture at a time.** The
+draw and the generated brackets are in `matches`; a round the organiser builds
+by hand — every round of `progressive_elimination` — lives inside
+`format.customPlayoffConfig.playoffRounds`. `locateMatch` in
+`server/src/lib/matches.ts` finds a match in either and returns the document path
+to write it at, so the match `PATCH` and both lineup routes reach a playoff
+fixture; `allMatches` and `applyMatchUpdate` in `src/utils/matches.ts` are the
+same idea on the site. Before that they reached only `matches`, which is why the
+organiser's match screen answered "Match not found" for every playoff tie and
+their goals, cards and teamsheets had nowhere to be entered at all.
+
+Two homes for one kind of record is a design problem and this does not fix it —
+moving them is a migration of live data. What it does mean is that `format` now
+holds records other people write, so the rounds have their own routes
+(`POST`/`PATCH`/`DELETE /admin/tournaments/:id/playoff-rounds[/:index]`) and no
+screen sends a whole `format` back to rename a round. `PATCH
+/admin/tournaments/:id` still accepts `format`, because creating a competition
+and regenerating its draw legitimately replace it; anything routine that reaches
+for it is a bug.
+
+`locateMatch` refuses when two fixtures carry the same id rather than writing to
+the first. They exist: the ids of progressive rounds are built from the round
+number and the position in it, and deleting a round renumbers nothing.
+`server/scripts/find-duplicate-match-ids.mjs` finds them.
+
+**An index is not an identity.** A round is edited and deleted by its position
+in `playoffRounds`, and that position came from a list the browser read earlier —
+a round deleted in another tab shifts every round after it up by one. So the
+request carries `expectedRoundNumber` and `expectedName`, the server checks them
+against the round it finds there, and the write repeats the check as a condition.
+A guard built from the record the same request just read asserts nothing.
+
 **A manager link is granted by ownership and honoured by identity.** An
 organizer may take their own club under management — `POST
 /admin/teams/:id/managers/me`, which is the invitation they used to have to
@@ -375,6 +419,17 @@ second answer waiting to disagree with the first. A second yellow counts in both
 columns, because the player was booked and the side finished a man down.
 Bookings feed nothing else: `playerRecords` does not read them, so a card cannot
 move an appearance or a table position.
+
+**A goal moves the score; the score is still a field.** Adding or deleting a goal
+on the organiser's match screen recounts `homeGoals` and `awayGoals` from
+`match.goals` and saves both in the same request, because the two were stored
+side by side and reconciled by hand — a goal entered on that tab left the table
+showing the old result. The score is not derived, though, and is edited on the
+scoreboard at the top of that screen: most matches in this app have a result and
+no events at all, and a score counted from an empty list would read 0-0 for every
+one of them. The recount therefore happens only when the event list itself
+changes. The Statistics tab shows Goals as a number and no longer offers a second
+field for it.
 
 **The table is derived in one place too.** `src/utils/standings.ts` holds the
 tally, the group split and the elimination set; the season page and the match

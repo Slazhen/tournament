@@ -29,6 +29,72 @@ export function allMatches(tournament: Tournament | null | undefined): Match[] {
   return matches
 }
 
+/** The fixture with this id, wherever the competition keeps it. */
+export function findMatch(
+  tournament: Tournament | null | undefined,
+  matchId: string | undefined,
+): Match | undefined {
+  if (!matchId) return undefined
+  return allMatches(tournament).find((match) => match.id === matchId)
+}
+
+/**
+ * Applies a change to one fixture, wherever the competition keeps it.
+ *
+ * The store holds a season as the API returned it, so a screen showing a
+ * hand-built playoff match is showing a record inside `format`, not one in
+ * `matches`. A local update that looked only in `matches` left the screen
+ * showing the old score until the next reload, and — worse — the code that did
+ * the looking used to write the whole array or the whole format object back.
+ *
+ * The tournament is returned unchanged when it holds no such fixture, so a
+ * caller can use the result without checking.
+ */
+export function applyMatchUpdate(
+  tournament: Tournament,
+  matchId: string,
+  change: (match: Match) => Match,
+): Tournament {
+  const matches = tournament.matches ?? []
+  if (matches.some((match) => match.id === matchId)) {
+    return {
+      ...tournament,
+      matches: matches.map((match) => (match.id === matchId ? change(match) : match)),
+    }
+  }
+
+  const config = tournament.format?.customPlayoffConfig
+  const rounds = config?.playoffRounds
+  if (!config || !Array.isArray(rounds)) return tournament
+
+  let found = false
+  const updated = rounds.map((round) => {
+    const inRound = round.matches
+    if (!Array.isArray(inRound) || !inRound.some((match) => match.id === matchId)) return round
+    found = true
+    return {
+      ...round,
+      // A playoff fixture is a match with both clubs still optional, which is
+      // the one thing `Match` will not say. The change itself only ever touches
+      // fields the two shapes share.
+      matches: inRound.map((match) =>
+        match.id === matchId
+          ? { ...(change(match as Match) as typeof match), id: match.id }
+          : match,
+      ),
+    }
+  })
+  if (!found) return tournament
+
+  return {
+    ...tournament,
+    format: {
+      ...tournament.format!,
+      customPlayoffConfig: { ...config, playoffRounds: updated },
+    },
+  }
+}
+
 /** A score counts only when it is a number: `!== undefined` counts unplayed fixtures. */
 export const isPlayed = (match: Pick<Match, 'homeGoals' | 'awayGoals'>): boolean =>
   typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'

@@ -115,6 +115,15 @@ export type Match = {
   // Match details
   venue?: string
   referee?: string
+  /**
+   * Kick-off, kept apart from the day.
+   *
+   * Only hand-built playoff rounds carry it: those were built with a date
+   * picker and a time picker side by side, while every other fixture keeps both
+   * in `dateISO`. Nothing derives from it — it is what the organiser's playoff
+   * screen shows and writes.
+   */
+  time?: string
   status?: 'scheduled' | 'live' | 'finished' | 'postponed' | 'cancelled'
   // Statistics
   /**
@@ -240,14 +249,19 @@ export type CustomPlayoffRoundConfig = {
   matches: CustomPlayoffMatchConfig[] // Individual match configurations
 }
 
-export type CustomPlayoffMatchConfig = {
+/**
+ * A fixture in a hand-built playoff round.
+ *
+ * The same record as a `Match` in every way that matters — it carries goals,
+ * cards, statistics and teamsheets, because the organiser's match screen and
+ * the API's match routes reach these fixtures too — with two differences. The
+ * two clubs are chosen after the round is created, so neither side is known
+ * when it is first written; and the kick-off is kept as a separate `time`
+ * beside the date, which is how these rounds were built before `dateISO`
+ * carried both.
+ */
+export type CustomPlayoffMatchConfig = Partial<Omit<Match, 'id' | 'isElimination'>> & {
   id: string
-  homeTeamId?: string
-  awayTeamId?: string
-  homeGoals?: number
-  awayGoals?: number
-  dateISO?: string
-  time?: string
   isElimination: boolean // Mark individual matches as elimination
   notes?: string
 }

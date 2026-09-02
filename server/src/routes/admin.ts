@@ -30,6 +30,7 @@ import {
   refusedByRegistration,
   sideOfTeam,
 } from '../lib/lineups.js'
+import { locateMatch } from '../lib/matches.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
@@ -191,6 +192,9 @@ const MATCH_FIELDS = [
   'groupIndex',
   'venue',
   'referee',
+  // The kick-off of a hand-built playoff fixture, which keeps its day and its
+  // time in separate fields.
+  'time',
   'status',
   'statistics',
   'goals',
@@ -846,6 +850,106 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     return { ok: true }
   })
 
+
+  /**
+   * The playoff rounds an organiser builds by hand: added, renamed, resized and
+   * deleted one at a time.
+   *
+   * Their own routes rather than a `format` sent to the tournament PATCH, which
+   * is what the screen used to do. That PATCH replaces the whole attribute from
+   * the copy the browser is holding, and these rounds hold fixtures, which hold
+   * the goals and the cards the organiser enters and the teamsheets a club's
+   * own manager writes. Renaming a round would have undone all of it — the same
+   * failure the match PATCH exists to prevent, one level deeper.
+   */
+  router.post('/admin/tournaments/:id/playoff-rounds', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const fixtures = Array.isArray(ctx.body.matches) ? ctx.body.matches : []
+    if (fixtures.length > 20) throw badRequest('A round holds at most 20 games')
+
+    const round = await tournaments.addPlayoffRound(params.id!, {
+      name: typeof ctx.body.name === 'string' ? ctx.body.name : 'Playoff round',
+      description: typeof ctx.body.description === 'string' ? ctx.body.description : '',
+      // Picked field by field like every other body: these records are
+      // schemaless, so anything not named here would be persisted onto a
+      // fixture by whoever asked for it. A non-object entry is dropped rather
+      // than picked, because `pick` on a null is a 500.
+      matches: fixtures
+        .filter((one) => one && typeof one === 'object')
+        .map((one) => {
+          const fixture = pick(one as Record<string, unknown>, MATCH_FIELDS)
+          assertClubsAreInTournament(fixture, tournament)
+          return fixture
+        }),
+    })
+
+    await record(user, {
+      action: 'playoffRound.add',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Added ${round.name} to ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+    return round
+  })
+
+  router.patch('/admin/tournaments/:id/playoff-rounds/:index', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const index = Number(params.index)
+    if (!Number.isInteger(index) || index < 0) throw badRequest('That is not a round')
+
+    const updates: { name?: string; description?: string; quantityOfGames?: number } = {}
+    if (typeof ctx.body.name === 'string') updates.name = ctx.body.name
+    if (typeof ctx.body.description === 'string') updates.description = ctx.body.description
+    if (typeof ctx.body.quantityOfGames === 'number') {
+      updates.quantityOfGames = ctx.body.quantityOfGames
+    }
+
+    const round = await tournaments.updatePlayoffRound(
+      params.id!,
+      index,
+      updates,
+      expectedRound(ctx.body),
+    )
+
+    await record(user, {
+      action: 'playoffRound.update',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Edited ${round.name} in ${tournament.name}: ${describeFields(updates)}`,
+      organizerId: tournament.organizerId,
+    })
+    return round
+  })
+
+  router.delete('/admin/tournaments/:id/playoff-rounds/:index', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const index = Number(params.index)
+    if (!Number.isInteger(index) || index < 0) throw badRequest('That is not a round')
+
+    // From the query string: a DELETE carries no body, and the round the person
+    // clicked has to be named or the index alone decides which one goes.
+    await tournaments.removePlayoffRound(params.id!, index, expectedRound(ctx.query))
+
+    await record(user, {
+      action: 'playoffRound.delete',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Deleted a playoff round from ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+    return { ok: true }
+  })
+
   router.patch('/admin/tournaments/:tournamentId/matches/:matchId', async (ctx, params) => {
     const user = await ctx.user()
     const tournament = await tournaments.getOrThrow(params.tournamentId!)
@@ -853,6 +957,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
 
     const updates = pick(ctx.body, MATCH_FIELDS)
     if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
+    assertClubsAreInTournament(updates, tournament)
 
     await tournaments.updateMatch(params.tournamentId!, params.matchId!, updates)
     await record(user, {
@@ -880,9 +985,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertCanAccessOrganizer(user, tournament.organizerId)
 
     const teamId = requireString(ctx.body.teamId, 'teamId')
-    const match = (Array.isArray(tournament.matches) ? tournament.matches : []).find(
-      (candidate) => (candidate as { id?: string } | null)?.id === params.matchId,
-    )
+    // Either home of a fixture: a hand-built playoff round keeps its matches
+    // inside the format rather than in `matches`, and a teamsheet is filled in
+    // for one of those exactly as it is for a league game.
+    const match = locateMatch(tournament, params.matchId!)?.match
     if (!match) throw notFound('Match not found in this tournament')
 
     const side = sideOfTeam(match, teamId)
@@ -1197,6 +1303,49 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
 }
 
 /** "name, visibility" — enough to know what was touched, without storing it. */
+/**
+ * Which round the caller believed they were editing.
+ *
+ * An index into a list the browser read earlier is not an identity: a round
+ * deleted in another tab shifts every round after it up by one. Both the number
+ * and the name are carried so that a round from before `roundNumber` existed
+ * can still be named. Query values arrive as strings, hence the parse.
+ */
+function expectedRound(source: Record<string, unknown>): {
+  roundNumber?: number
+  name?: string
+} {
+  // `expected…`, not `name` and `roundNumber`: the PATCH body carries those as
+  // the new values, and the two must not be the same field.
+  const raw = source.expectedRoundNumber
+  const roundNumber = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN
+  return {
+    roundNumber: Number.isFinite(roundNumber) ? roundNumber : undefined,
+    name: typeof source.expectedName === 'string' ? source.expectedName : undefined,
+  }
+}
+
+/**
+ * A fixture may only name clubs this competition is holding.
+ *
+ * Without it an organiser could seed a playoff tie with any club id at all,
+ * including one another organiser runs — and that club's manager would then be
+ * entitled to write a teamsheet into a competition they have nothing to do
+ * with. An empty side is a tie whose clubs are not decided yet, and `BYE` is
+ * how a bracket says nobody.
+ */
+function assertClubsAreInTournament(
+  fixture: Record<string, unknown>,
+  tournament: { teamIds?: unknown },
+): void {
+  const entered = new Set(Array.isArray(tournament.teamIds) ? tournament.teamIds : [])
+  for (const side of ['homeTeamId', 'awayTeamId'] as const) {
+    const teamId = fixture[side]
+    if (teamId === undefined || teamId === null || teamId === '' || teamId === 'BYE') continue
+    if (!entered.has(teamId)) throw badRequest('That club is not in this competition')
+  }
+}
+
 function describeFields(updates: Record<string, unknown>): string {
   const fields = Object.keys(updates).filter((key) => key !== 'id')
   if (fields.length === 0) return 'nothing'

@@ -4,9 +4,9 @@ import { useMemo, useState, useEffect } from 'react'
 import { generatePlayoffBrackets, createPlayoffMatches as createPlayoffMatchesFromBrackets } from '../utils/schedule'
 import { generateMatchUID } from '../utils/uid'
 import { generateGroupsWithDivisionsSchedule } from '../utils/tournament'
-import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
+import { findTournamentBySlug } from '../utils/urls'
 import { organizerService } from '../lib/data'
-import type { Organizer } from '../types'
+import type { CustomPlayoffRoundConfig, Match, Organizer } from '../types'
 import LocationIcon from '../components/LocationIcon'
 import {
   IconLink,
@@ -37,13 +37,25 @@ import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivor
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, getSeasonUrl, publicSeasonUrl } from '../utils/seasons'
 
+/**
+ * Which round a click was aimed at, sent with the write.
+ *
+ * The index is this page's position in a list it read earlier; a round deleted
+ * elsewhere shifts every round after it up by one, and an index alone would
+ * then rename or delete the wrong one.
+ */
+const expectationOf = (round: { roundNumber?: number; name?: string }) => ({
+  roundNumber: round.roundNumber,
+  name: round.name,
+})
+
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
 // so we never rewrite the (large) tournament item more than once during rendering.
 const persistedReconstructedGroups = new Set<string>()
 
 export default function TournamentPage() {
   const { id, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTournaments, getOrganizerTeams, updateTournament, uploadTournamentLogo, loading, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTournaments, getOrganizerTeams, updateTournament, updateMatchFields, setScore: saveScore, addPlayoffRound, updatePlayoffRound, removePlayoffRound, uploadTournamentLogo, loading, superAdmin } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
@@ -248,16 +260,71 @@ export default function TournamentPage() {
     }
   }, [tournament])
 
+  /**
+   * Every edit on this screen writes one fixture, through the route that writes
+   * one fixture.
+   *
+   * They all used to send the competition's whole `matches` array back from the
+   * copy this page was holding — the same mistake the match screen was cured of
+   * — and it is how typing a score destroyed a match. Anything written since
+   * this page loaded was overwritten by the older copy: the goals and the cards
+   * entered on the match screen, and the teamsheets a club's own manager had
+   * named, on every fixture in the season and not only the one being edited.
+   */
   function setScore(mid: string, homeGoals: number, awayGoals: number) {
     if (!tournament) return
-    const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, homeGoals: isNaN(homeGoals) ? undefined : homeGoals, awayGoals: isNaN(awayGoals) ? undefined : awayGoals } : m))
-    updateTournament(tournament.id, { matches })
+    saveScore(
+      tournament.id,
+      mid,
+      Number.isNaN(homeGoals) ? undefined : homeGoals,
+      Number.isNaN(awayGoals) ? undefined : awayGoals,
+    ).catch((error) => console.error('Error saving the score:', error))
   }
 
   function setPlayoffTeams(mid: string, homeTeamId: string, awayTeamId: string) {
     if (!tournament) return
-    const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, homeTeamId, awayTeamId } : m))
-    updateTournament(tournament.id, { matches })
+    saveMatch(mid, { homeTeamId, awayTeamId })
+  }
+
+  /** One fixture's own fields, with a failed save reported rather than thrown. */
+  function saveMatch(mid: string, updates: Partial<Match>) {
+    if (!tournament) return
+    updateMatchFields(tournament.id, mid, updates).catch((error) =>
+      console.error('Error saving the match:', error),
+    )
+  }
+
+  /**
+   * The hand-built playoff rounds, one round at a time.
+   *
+   * Each of these used to rebuild the whole `format` object and send it — so
+   * renaming a round rewrote every fixture in every round from the copy this
+   * page was holding, and those fixtures carry goals, cards and the teamsheets
+   * a club's own manager writes.
+   */
+  function savePlayoffRound(round: Partial<CustomPlayoffRoundConfig>) {
+    if (!tournament) return
+    addPlayoffRound(tournament.id, round).catch((error) =>
+      console.error('Error adding the round:', error),
+    )
+  }
+
+  function saveRound(
+    index: number,
+    round: CustomPlayoffRoundConfig,
+    updates: { name?: string; description?: string; quantityOfGames?: number },
+  ) {
+    if (!tournament) return
+    updatePlayoffRound(tournament.id, index, updates, expectationOf(round)).catch((error) =>
+      console.error('Error saving the round:', error),
+    )
+  }
+
+  function deleteRound(index: number, round: CustomPlayoffRoundConfig) {
+    if (!tournament) return
+    removePlayoffRound(tournament.id, index, expectationOf(round)).catch((error) =>
+      console.error('Error deleting the round:', error),
+    )
   }
 
   // Get teams from current tournament only
@@ -295,9 +362,26 @@ export default function TournamentPage() {
   }
 
   function setDate(mid: string, dateISO: string) {
+    saveMatch(mid, { dateISO: dateISO || undefined })
+  }
+
+  /**
+   * Saves the fixtures a bulk change actually moved, one at a time.
+   *
+   * The helpers below work out a whole new list, which is the natural way to
+   * express "every round at the same time"; sending that list is what must not
+   * happen. Comparing it against what is on screen leaves only the matches that
+   * changed, and each of those is written as itself.
+   */
+  async function saveMovedFixtures(next: Match[]) {
     if (!tournament) return
-    const matches = tournament.matches.map((m) => (m.id === mid ? { ...m, dateISO } : m))
-    updateTournament(tournament.id, { matches })
+    for (const moved of next) {
+      const before = tournament.matches.find((m) => m.id === moved.id)
+      if (!before || before.dateISO === moved.dateISO) continue
+      await updateMatchFields(tournament.id, moved.id, { dateISO: moved.dateISO }).catch(
+        (error) => console.error('Error saving a kick-off:', error),
+      )
+    }
   }
 
   /**
@@ -310,8 +394,7 @@ export default function TournamentPage() {
     const inRound = tournament.matches.filter((m) => (m.round ?? 0) === roundNumber)
     const source = inRound.find((m) => m.dateISO)
     if (!source) return
-    const matches = applyDateToRound(tournament.matches, source.id)
-    updateTournament(tournament.id, { matches })
+    saveMovedFixtures(applyDateToRound(tournament.matches, source.id))
   }
 
   /**
@@ -321,14 +404,15 @@ export default function TournamentPage() {
    */
   function applyTimePattern() {
     if (!tournament) return
-    const matches = applyTimePatternToRounds(
-      tournament.matches,
-      rounds,
-      timePatternMoveRounds && timePatternStartDate
-        ? { startDate: timePatternStartDate, intervalDays: timePatternIntervalDays }
-        : {},
+    saveMovedFixtures(
+      applyTimePatternToRounds(
+        tournament.matches,
+        rounds,
+        timePatternMoveRounds && timePatternStartDate
+          ? { startDate: timePatternStartDate, intervalDays: timePatternIntervalDays }
+          : {},
+      ),
     )
-    updateTournament(tournament.id, { matches })
     setTimePatternOpen(false)
   }
 
@@ -355,32 +439,17 @@ export default function TournamentPage() {
       return
     }
 
-    const newRound = {
-      roundNumber: (tournament.format?.customPlayoffConfig?.playoffRounds?.length || 0) + 1,
+    // The round number and the fixtures' ids are the server's to assign: this
+    // page derives them from a list it read earlier, and a stale one makes a
+    // second round with the same number and colliding match ids.
+    savePlayoffRound({
       name: newRoundConfig.name.trim(),
       quantityOfGames: newRoundConfig.quantityOfGames,
       description: newRoundConfig.description.trim(),
       matches: Array.from({ length: newRoundConfig.quantityOfGames }, () => ({
         id: generateMatchUID(),
-        isElimination: false
-      }))
-    }
-
-    const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || []), newRound]
-    updateTournament(tournament.id, {
-      format: {
-        rounds: tournament.format?.rounds || 1,
-        mode: tournament.format?.mode || 'league',
-        playoffQualifiers: tournament.format?.playoffQualifiers,
-        customPlayoffConfig: {
-          playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-          enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-          // Kept, or renaming a round would silently turn this
-          // tournament back into a plain custom playoff.
-          preset: tournament.format?.customPlayoffConfig?.preset,
-          playoffRounds: updatedRounds
-        }
-      }
+        isElimination: false,
+      })),
     })
 
     // Reset form
@@ -897,18 +966,7 @@ export default function TournamentPage() {
 
   const addProgressiveRound = async () => {
     if (!nextRoundPlan.round) return
-    const config = tournament.format?.customPlayoffConfig
-    if (!config) return
-
-    await updateTournament(tournament.id, {
-      format: {
-        ...tournament.format!,
-        customPlayoffConfig: {
-          ...config,
-          playoffRounds: [...(config.playoffRounds || []), nextRoundPlan.round],
-        },
-      },
-    })
+    savePlayoffRound(nextRoundPlan.round)
   }
 
   // Helper function to create playoff matches
@@ -2021,73 +2079,26 @@ export default function TournamentPage() {
                     <div className="grid md:grid-cols-4 gap-4 items-end">
                       <div>
                         <label className="block text-sm font-medium mb-1">Round Name</label>
-                        <input
+                        <InlineInput
                           type="text"
                           value={roundWithQuantity.name}
-                          onChange={(e) => {
-                            const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                            updatedRounds[roundIndex] = { ...roundWithQuantity, name: e.target.value }
-                            updateTournament(tournament.id, {
-                              format: {
-                                rounds: tournament.format?.rounds || 1,
-                                mode: tournament.format?.mode || 'league',
-                                playoffQualifiers: tournament.format?.playoffQualifiers,
-                                customPlayoffConfig: {
-                                  playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                  enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                  // Kept, or renaming a round would silently turn this
-                                  // tournament back into a plain custom playoff.
-                                  preset: tournament.format?.customPlayoffConfig?.preset,
-                                  playoffRounds: updatedRounds
-                                }
-                              }
-                            })
-                          }}
+                          onCommit={(entered) => saveRound(roundIndex, round, { name: entered })}
                           className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Quantity of Games</label>
-                        <input
+                        <InlineInput
                           type="number"
                           min="1"
                           max="20"
                           value={roundWithQuantity.quantityOfGames ?? 1}
-                          onChange={(e) => {
-                            const inputValue = e.target.value
-                            const quantity = inputValue === '' ? 1 : Math.max(1, Math.min(20, parseInt(inputValue) || 1))
-                            const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                            
-                            // Generate or remove matches based on quantity
-                            let matches = [...(roundWithQuantity.matches || [])]
-                            if (quantity > matches.length) {
-                              // Add new matches
-                              for (let i = matches.length; i < quantity; i++) {
-                                matches.push({
-                                  id: generateMatchUID(),
-                                  isElimination: false
-                                })
-                              }
-                            } else if (quantity < matches.length) {
-                              // Remove excess matches
-                              matches = matches.slice(0, quantity)
-                            }
-                            
-                            updatedRounds[roundIndex] = { ...roundWithQuantity, quantityOfGames: quantity, matches }
-                            updateTournament(tournament.id, {
-                              format: {
-                                rounds: tournament.format?.rounds || 1,
-                                mode: tournament.format?.mode || 'league',
-                                playoffQualifiers: tournament.format?.playoffQualifiers,
-                                customPlayoffConfig: {
-                                  playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                  enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                  // Kept, or renaming a round would silently turn this
-                                  // tournament back into a plain custom playoff.
-                                  preset: tournament.format?.customPlayoffConfig?.preset,
-                                  playoffRounds: updatedRounds
-                                }
-                              }
+                          onCommit={(entered) => {
+                            // The fixtures themselves are added and dropped by the
+                            // server, from the round it has stored: this page's copy
+                            // of them may be older than a result somebody just saved.
+                            saveRound(roundIndex, round, {
+                              quantityOfGames: entered === '' ? 1 : Math.max(1, Math.min(20, parseInt(entered) || 1)),
                             })
                           }}
                           className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
@@ -2095,52 +2106,17 @@ export default function TournamentPage() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Description (Optional)</label>
-                        <input
+                        <InlineInput
                           type="text"
                           value={roundWithQuantity.description || ''}
-                          onChange={(e) => {
-                            const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                            updatedRounds[roundIndex] = { ...roundWithQuantity, description: e.target.value }
-                            updateTournament(tournament.id, {
-                              format: {
-                                rounds: tournament.format?.rounds || 1,
-                                mode: tournament.format?.mode || 'league',
-                                playoffQualifiers: tournament.format?.playoffQualifiers,
-                                customPlayoffConfig: {
-                                  playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                  enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                  // Kept, or renaming a round would silently turn this
-                                  // tournament back into a plain custom playoff.
-                                  preset: tournament.format?.customPlayoffConfig?.preset,
-                                  playoffRounds: updatedRounds
-                                }
-                              }
-                            })
-                          }}
+                          onCommit={(entered) => saveRound(roundIndex, round, { description: entered })}
                           placeholder="e.g., Semi-Finals, Final, etc."
                           className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                         />
                       </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => {
-                            const updatedRounds = tournament.format?.customPlayoffConfig?.playoffRounds?.filter((_, i) => i !== roundIndex) || []
-                            updateTournament(tournament.id, {
-                              format: {
-                                rounds: tournament.format?.rounds || 1,
-                                mode: tournament.format?.mode || 'league',
-                                playoffQualifiers: tournament.format?.playoffQualifiers,
-                                customPlayoffConfig: {
-                                  playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                  enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                  // Kept, or renaming a round would silently turn this
-                                  // tournament back into a plain custom playoff.
-                                  preset: tournament.format?.customPlayoffConfig?.preset,
-                                  playoffRounds: updatedRounds
-                                }
-                              }
-                            })
-                          }}
+                          onClick={() => deleteRound(roundIndex, round)}
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-red-500/20 hover:bg-red-500/30 transition-all text-red-400"
                         >
                           <IconTrash size={15} /> Delete Round
@@ -2153,7 +2129,7 @@ export default function TournamentPage() {
                       <div className="mt-4">
                         <h4 className="text-md font-medium mb-3">Matches in this Round:</h4>
                         <div className="grid gap-3">
-                          {roundWithQuantity.matches.map((match, matchIndex) => (
+                          {roundWithQuantity.matches.map((match) => (
                             <div key={match.id} className="p-4 bg-white/5 rounded-lg border border-white/10">
                               <div className="grid md:grid-cols-9 gap-4 items-center">
                                 <div className="md:col-span-2">
@@ -2161,34 +2137,15 @@ export default function TournamentPage() {
                                   <select
                                     value={match.homeTeamId || ''}
                                     onChange={(e) => {
-                                      const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                      const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                      const newHomeTeamId = e.target.value
-                                      // If away team is from different group, clear it
-                                      let newAwayTeamId = match.awayTeamId || ''
-                                      if (newHomeTeamId && newAwayTeamId && tournament.format?.mode === 'groups_with_divisions') {
-                                        const availableOpponents = getAvailableOpponents(newHomeTeamId, { isPlayoff: true })
-                                        if (!availableOpponents.find(t => t.id === newAwayTeamId)) {
-                                          newAwayTeamId = ''
-                                        }
+                                      const homeTeamId = e.target.value
+                                      // A club from another group cannot be the opponent, so
+                                      // changing the home side clears an away side it no longer fits.
+                                      let awayTeamId = match.awayTeamId || ''
+                                      if (homeTeamId && awayTeamId && tournament.format?.mode === 'groups_with_divisions') {
+                                        const opponents = getAvailableOpponents(homeTeamId, { isPlayoff: true })
+                                        if (!opponents.find(t => t.id === awayTeamId)) awayTeamId = ''
                                       }
-                                      updatedMatches[matchIndex] = { ...match, homeTeamId: newHomeTeamId, awayTeamId: newAwayTeamId }
-                                      updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
-                                      updateTournament(tournament.id, {
-                                        format: {
-                                          rounds: tournament.format?.rounds || 1,
-                                          mode: tournament.format?.mode || 'league',
-                                          playoffQualifiers: tournament.format?.playoffQualifiers,
-                                          customPlayoffConfig: {
-                                            playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                            enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                            // Kept, or renaming a round would silently turn this
-                                            // tournament back into a plain custom playoff.
-                                            preset: tournament.format?.customPlayoffConfig?.preset,
-                                            playoffRounds: updatedRounds
-                                          }
-                                        }
-                                      })
+                                      setPlayoffTeams(match.id, homeTeamId, awayTeamId)
                                     }}
                                     className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                                   >
@@ -2202,27 +2159,7 @@ export default function TournamentPage() {
                                   <label className="block text-sm font-medium mb-1">Away Team</label>
                                   <select
                                     value={match.awayTeamId || ''}
-                                    onChange={(e) => {
-                                      const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                      const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                      updatedMatches[matchIndex] = { ...match, awayTeamId: e.target.value }
-                                      updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
-                                      updateTournament(tournament.id, {
-                                        format: {
-                                          rounds: tournament.format?.rounds || 1,
-                                          mode: tournament.format?.mode || 'league',
-                                          playoffQualifiers: tournament.format?.playoffQualifiers,
-                                          customPlayoffConfig: {
-                                            playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                            enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                            // Kept, or renaming a round would silently turn this
-                                            // tournament back into a plain custom playoff.
-                                            preset: tournament.format?.customPlayoffConfig?.preset,
-                                            playoffRounds: updatedRounds
-                                          }
-                                        }
-                                      })
-                                    }}
+                                    onChange={(e) => setPlayoffTeams(match.id, match.homeTeamId || '', e.target.value)}
                                     className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                                   >
                                     <option value="">Select Team</option>
@@ -2234,62 +2171,20 @@ export default function TournamentPage() {
                                 <div>
                                   <label className="block text-sm font-medium mb-1">Score</label>
                                   <div className="flex gap-1 items-center">
-                                    <input 
-                                      inputMode="numeric" 
-                                      pattern="[0-9]*" 
-                                      className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
-                                      value={match.homeGoals ?? ''} 
-                                      onChange={(e) => {
-                                        const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                        const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                        const homeGoals = e.target.value === '' ? undefined : Number(e.target.value)
-                                        updatedMatches[matchIndex] = { ...match, homeGoals: isNaN(homeGoals as number) ? undefined : homeGoals }
-                                        updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
-                                        updateTournament(tournament.id, {
-                                          format: {
-                                            rounds: tournament.format?.rounds || 1,
-                                            mode: tournament.format?.mode || 'league',
-                                            playoffQualifiers: tournament.format?.playoffQualifiers,
-                                            customPlayoffConfig: {
-                                              playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                              enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                              // Kept, or renaming a round would silently turn this
-                                              // tournament back into a plain custom playoff.
-                                              preset: tournament.format?.customPlayoffConfig?.preset,
-                                              playoffRounds: updatedRounds
-                                            }
-                                          }
-                                        })
-                                      }}
+                                    <InlineInput
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm"
+                                      value={match.homeGoals ?? ''}
+                                      onCommit={(value) => setScore(match.id, value === '' ? NaN : Number(value), match.awayGoals ?? NaN)}
                                     />
                                     <span className="text-sm">:</span>
-                                    <input 
-                                      inputMode="numeric" 
-                                      pattern="[0-9]*" 
-                                      className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
-                                      value={match.awayGoals ?? ''} 
-                                      onChange={(e) => {
-                                        const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                        const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                        const awayGoals = e.target.value === '' ? undefined : Number(e.target.value)
-                                        updatedMatches[matchIndex] = { ...match, awayGoals: isNaN(awayGoals as number) ? undefined : awayGoals }
-                                        updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
-                                        updateTournament(tournament.id, {
-                                          format: {
-                                            rounds: tournament.format?.rounds || 1,
-                                            mode: tournament.format?.mode || 'league',
-                                            playoffQualifiers: tournament.format?.playoffQualifiers,
-                                            customPlayoffConfig: {
-                                              playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                              enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                              // Kept, or renaming a round would silently turn this
-                                              // tournament back into a plain custom playoff.
-                                              preset: tournament.format?.customPlayoffConfig?.preset,
-                                              playoffRounds: updatedRounds
-                                            }
-                                          }
-                                        })
-                                      }}
+                                    <InlineInput
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm"
+                                      value={match.awayGoals ?? ''}
+                                      onCommit={(value) => setScore(match.id, match.homeGoals ?? NaN, value === '' ? NaN : Number(value))}
                                     />
                                   </div>
                                 </div>
@@ -2297,27 +2192,11 @@ export default function TournamentPage() {
                                   <label className="block text-sm font-medium mb-1">Date</label>
                                   <CustomDatePicker
                                     value={match.dateISO ? match.dateISO.split('T')[0] : ''}
-                                    onChange={(date) => {
-                                      const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                      const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                      updatedMatches[matchIndex] = { ...match, dateISO: date ? `${date}T00:00:00.000Z` : undefined }
-                                      updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
-                                      updateTournament(tournament.id, {
-                                        format: {
-                                          rounds: tournament.format?.rounds || 1,
-                                          mode: tournament.format?.mode || 'league',
-                                          playoffQualifiers: tournament.format?.playoffQualifiers,
-                                          customPlayoffConfig: {
-                                            playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                            enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                            // Kept, or renaming a round would silently turn this
-                                            // tournament back into a plain custom playoff.
-                                            preset: tournament.format?.customPlayoffConfig?.preset,
-                                            playoffRounds: updatedRounds
-                                          }
-                                        }
+                                    onChange={(date) =>
+                                      saveMatch(match.id, {
+                                        dateISO: date ? `${date}T00:00:00.000Z` : undefined,
                                       })
-                                    }}
+                                    }
                                     className="w-full"
                                   />
                                 </div>
@@ -2325,27 +2204,7 @@ export default function TournamentPage() {
                                   <label className="block text-sm font-medium mb-1">Time</label>
                                   <CustomTimePicker
                                     value={match.time || ''}
-                                    onChange={(time) => {
-                                      const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                      const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                      updatedMatches[matchIndex] = { ...match, time: time }
-                                      updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
-                                      updateTournament(tournament.id, {
-                                        format: {
-                                          rounds: tournament.format?.rounds || 1,
-                                          mode: tournament.format?.mode || 'league',
-                                          playoffQualifiers: tournament.format?.playoffQualifiers,
-                                          customPlayoffConfig: {
-                                            playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                            enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                            // Kept, or renaming a round would silently turn this
-                                            // tournament back into a plain custom playoff.
-                                            preset: tournament.format?.customPlayoffConfig?.preset,
-                                            playoffRounds: updatedRounds
-                                          }
-                                        }
-                                      })
-                                    }}
+                                    onChange={(time) => saveMatch(match.id, { time: time || undefined })}
                                     className="w-full"
                                   />
                                 </div>
@@ -2354,47 +2213,24 @@ export default function TournamentPage() {
                                     <input
                                       type="checkbox"
                                       checked={match.isElimination}
-                                      onChange={(e) => {
-                                        const updatedRounds = [...(tournament.format?.customPlayoffConfig?.playoffRounds || [])]
-                                        const updatedMatches = [...(roundWithQuantity.matches || [])]
-                                        updatedMatches[matchIndex] = { ...match, isElimination: e.target.checked }
-                                        updatedRounds[roundIndex] = { ...roundWithQuantity, matches: updatedMatches }
-                                        updateTournament(tournament.id, {
-                                          format: {
-                                            rounds: tournament.format?.rounds || 1,
-                                            mode: tournament.format?.mode || 'league',
-                                            playoffQualifiers: tournament.format?.playoffQualifiers,
-                                            customPlayoffConfig: {
-                                              playoffTeams: tournament.format?.customPlayoffConfig?.playoffTeams || 4,
-                                              enableBye: tournament.format?.customPlayoffConfig?.enableBye || true,
-                                              // Kept, or renaming a round would silently turn this
-                                              // tournament back into a plain custom playoff.
-                                              preset: tournament.format?.customPlayoffConfig?.preset,
-                                              playoffRounds: updatedRounds
-                                            }
-                                          }
-                                        })
-                                      }}
+                                      onChange={(e) => saveMatch(match.id, { isElimination: e.target.checked })}
                                       className="rounded border-gray-300"
                                     />
                                     <span className="text-sm text-red-400 inline-flex items-center gap-1.5"><IconKnockout size={14} /> Elimination</span>
                                   </label>
                                 </div>
                                 <div className="flex flex-col gap-2">
-                                  <button
-                                    onClick={() => {
-                                      // Navigate to match page for stats
-                                      const publicUrl = organizer
-                                        ? `${getPublicTournamentUrl(tournament, organizer)}/matches/${match.id}`
-                                        : `/public/tournaments/${tournament.id}/matches/${match.id}`
-                                      window.open(publicUrl, '_blank')
-                                    }}
+                                  {/* The organiser's own match screen, the same one every league
+                                      fixture gets. These rounds used to open the public page in a
+                                      new tab, because the routes behind that screen could not find
+                                      a fixture stored inside the format. */}
+                                  <Link
+                                    to={`${adminSeasonUrl(tournament, organizer)}/matches/${match.id}`}
                                     className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-blue-500/20 hover:bg-blue-500/30 transition-all text-blue-400 text-sm"
-                                    disabled={!match.homeTeamId || !match.awayTeamId}
-                                    title={!match.homeTeamId || !match.awayTeamId ? 'Select teams first' : 'View match stats'}
+                                    title="Goals, cards, teamsheets and statistics"
                                   >
                                     <IconChart size={14} /> Match details
-                                  </button>
+                                  </Link>
                                 </div>
                               </div>
                             </div>
