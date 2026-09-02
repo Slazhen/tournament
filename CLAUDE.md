@@ -266,6 +266,33 @@ the public page. Everything that used to sit under `/admin` redirects
 (`LegacyAdminRoute` in `src/main.tsx`), and the API's own routes are untouched —
 `/admin/*` there is the server's namespace, not a URL anybody types.
 
+**The organiser's own address is a page.** `/homebush_futsal` — the first
+segment of every public competition link — is `PublicOrganizerPage`, the index
+route under `/:orgSlug`, reading `GET /public/by-slug/:organizerSlug`. It
+existed as an address long before it existed as a page and answered with a
+blank screen. Two things follow. Any one-segment address now lands there, so
+the page has to answer 404 itself for a slug that names nobody. And a static
+route ranks above `/:orgSlug`, so an organiser whose name slugifies to
+`teams`, `login`, `dashboard`, `tournaments`, `calendar`, `organizers`,
+`changes`, `join`, `public`, `admin` or `my-club` would have an unreachable
+page — nothing refuses such a name yet.
+
+**A cached list has a reader-dependent age.** `lib/cache.ts` keeps table reads
+in the Lambda's memory, and `invalidate` after a write clears only the
+container that ran it: every other warm one serves its copy for the rest of the
+TTL. A visitor reading a table a minute after it changed does not care; the
+organiser who has just created something and is looking at the screen that
+should show it does, and reported it as "my tournaments are not linked to my
+organiser" a minute before they were. So a signed-in read passes `adminRead`
+(`ADMIN_CACHE_SECONDS`, zero by default: through to DynamoDB), and the two
+places where a stale list is a wrong decision rather than a slow screen — what
+deleting an organiser would take with it, and the deletion — pass `liveRead`,
+which ignores the setting. A fresh load is stored under the same key with the
+full TTL, so it warms the copy the public reads instead of dropping it. Public
+routes pass nothing and are unchanged: they are the traffic this cache exists
+for. The GSI behind `listByOrganizer` is still eventually consistent, so
+something created in the last second can be missing whatever the cache does.
+
 **Being signed in is not a role.** Every organiser route is wrapped in
 `<ProtectedRoute requireOrganizer>`, which admits an `organizer` or the super
 admin and sends anybody else to `landingPathFor(user)`. Without it a club

@@ -5,6 +5,7 @@ import { createSession } from '../lib/sessions.js'
 import { ddb, PutCommand } from '../lib/ddb.js'
 import { SITE_URL, TABLES } from '../lib/env.js'
 import { record } from '../lib/audit.js'
+import { adminRead } from '../lib/cache.js'
 import { sendTeamInvite } from '../lib/mail.js'
 import { teams, tournaments, organizers, isPublic, seasonStatus } from '../repos.js'
 import {
@@ -421,7 +422,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
 
     // Every public tournament these clubs appear in, plus the ones they have
     // applied to, in full — the club page shows the table and the next match.
-    const all = await tournaments.listAll()
+    // The manager reading this page is usually the person who just saved a
+    // teamsheet or applied to a competition, so this read does not take another
+    // container's copy of the list.
+    const all = await tournaments.listAll(adminRead)
     const relevant = all.filter((tournament) => {
       const inSquadList = (tournament.teamIds ?? []).some((id: string) => teamIds.includes(id))
       const applied = entries.some((entry) => entry.tournamentId === tournament.id)

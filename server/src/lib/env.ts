@@ -65,6 +65,17 @@ export const PUBLIC_CACHE_SECONDS = Number(process.env.PUBLIC_CACHE_SECONDS ?? 6
 /** How long the API keeps a table read in Lambda memory between requests. */
 export const SERVER_CACHE_SECONDS = Number(process.env.SERVER_CACHE_SECONDS ?? 60)
 
+/**
+ * The same cache, as a signed-in request is allowed to see it.
+ *
+ * Zero means an admin or manager read never takes a cached list: the entry may
+ * have been loaded by this container before a write that happened in another
+ * one, and the person reading is usually the person who just wrote. Raise it
+ * only if these reads ever become a cost of their own — public traffic is
+ * unaffected either way.
+ */
+export const ADMIN_CACHE_SECONDS = Number(process.env.ADMIN_CACHE_SECONDS ?? 0)
+
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 /** Largest image a client may upload, enforced by S3 itself via the POST policy. */

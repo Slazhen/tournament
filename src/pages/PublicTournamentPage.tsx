@@ -516,7 +516,11 @@ export default function PublicTournamentPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
-      <PublicHeader />
+      {/* Someone arriving on a shared link is standing inside one organiser's
+          season; up from here is that organiser, not the whole directory. */}
+      <PublicHeader
+        back={organizerSlug ? { to: `/${organizerSlug}`, label: 'All competitions' } : undefined}
+      />
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>

@@ -71,6 +71,24 @@ function ageFrom(dateOfBirth: unknown): number | undefined {
 
 const toPublicTeams = (list: Team[]): Team[] => list.map(toPublicTeam)
 
+/**
+ * A club as a listing shows it: a crest, a name and the colours to draw it in.
+ *
+ * A whitelist rather than `toPublicTeam`, which returns the club whole — squad
+ * included. An organiser's page names every club in every season they run, and
+ * sending each one's players with it would be tens of squads nobody asked for.
+ */
+function toClubCard(team: Team) {
+  return {
+    id: team.id,
+    name: team.name,
+    logo: team.logo,
+    colors: Array.isArray(team.colors) ? team.colors : [],
+    crestColor: team.crestColor,
+    crestOpaqueBackground: team.crestOpaqueBackground,
+  }
+}
+
 export function registerPublicRoutes(router: Router<RequestContext>): void {
   router.get('/public/organizers', async () => {
     const all = await organizers.list()
@@ -178,6 +196,47 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
     if (!organizer) throw notFound('Organizer not found')
     return organizer
   }
+
+  /**
+   * An organiser's own page: /homebush_futsal.
+   *
+   * That address already existed — it is the first half of every competition
+   * link the organiser hands out — and the site answered it with a blank
+   * screen, because routing had a page for /:organizer/:competition and
+   * nothing for the segment above it. It carries the competitions grouped into
+   * seasons by the page, and the clubs that play in them, so a visitor who
+   * trims a URL back lands somewhere rather than nowhere.
+   *
+   * Summaries, not whole tournaments: this is a listing, and a season carries
+   * every match and every teamsheet it has.
+   */
+  router.get('/public/by-slug/:organizerSlug', async (_ctx, params) => {
+    const organizer = await organizerBySlug(params.organizerSlug!)
+    const seasons = (await tournaments.listByOrganizer(organizer.id)).filter(isPublic)
+
+    // Only the clubs that appear in a public competition. A club the organiser
+    // has entered nowhere is not part of what this page is about, and the list
+    // is what names a champion.
+    // `teamIds` is checked rather than trusted: these records are schemaless and
+    // the tournament POST passes its body through, so a non-array is writable
+    // today — and iterating one would be a 500 for every visitor of this page.
+    const clubIds = new Set<string>()
+    for (const season of seasons) {
+      if (!Array.isArray(season.teamIds)) continue
+      for (const id of season.teamIds) if (typeof id === 'string') clubIds.add(id)
+    }
+
+    return {
+      organizer: {
+        id: organizer.id,
+        name: organizer.name,
+        logo: organizer.logo,
+        description: organizer.description,
+      },
+      tournaments: seasons.map(toSummary),
+      clubs: (await teams.getMany([...clubIds])).map(toClubCard),
+    }
+  })
 
   /**
    * The old address of a tournament, and the address of a whole competition,
@@ -299,7 +358,9 @@ async function buildTeamContext(team: Awaited<ReturnType<typeof teams.get>> & ob
 
   const referenced = new Set<string>()
   for (const tournament of played) {
-    for (const id of tournament.teamIds ?? []) referenced.add(id)
+    // Same reason as the organiser page: a stored `teamIds` that is not an array
+    // would throw here, on a route every club and player page goes through.
+    for (const id of Array.isArray(tournament.teamIds) ? tournament.teamIds : []) referenced.add(id)
     for (const match of (tournament.matches ?? []) as { homeTeamId?: string; awayTeamId?: string }[]) {
       if (match?.homeTeamId) referenced.add(match.homeTeamId)
       if (match?.awayTeamId) referenced.add(match.awayTeamId)

@@ -21,6 +21,10 @@ Parameters:
   ServerCacheSeconds:
     Type: String
     Default: '60'
+  AdminCacheSeconds:
+    Type: String
+    Description: How stale a signed-in read may be. Zero reads through to DynamoDB.
+    Default: '0'
   SiteUrl:
     Type: String
     Description: Where password-reset links point.
@@ -81,6 +85,7 @@ Resources:
           ALLOWED_ORIGINS: !Ref AllowedOrigins
           PUBLIC_CACHE_SECONDS: !Ref PublicCacheSeconds
           SERVER_CACHE_SECONDS: !Ref ServerCacheSeconds
+          ADMIN_CACHE_SECONDS: !Ref AdminCacheSeconds
           S3_BUCKET: !Ref ImagesBucket
           TABLE_ORGANIZERS: !Sub '${TablePrefix}-organizers'
           TABLE_TEAMS: !Sub '${TablePrefix}-teams'

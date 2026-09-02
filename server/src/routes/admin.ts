@@ -34,7 +34,7 @@ import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
 import { record, recent } from '../lib/audit.js'
-import { invalidate } from '../lib/cache.js'
+import { adminRead, liveRead } from '../lib/cache.js'
 import { issueResetToken } from '../lib/resets.js'
 import { SITE_URL } from '../lib/env.js'
 import { sendPasswordReset } from '../lib/mail.js'
@@ -282,7 +282,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
 
   router.get('/admin/organizers', async (ctx) => {
     const user = await ctx.user()
-    const all = await organizers.list()
+    const all = await organizers.list(adminRead)
     return isSuperAdmin(user) ? all : all.filter((o) => o.id === user.organizerId)
   })
 
@@ -291,14 +291,14 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
   // instead of the empty list it means.
   router.get('/admin/teams', async (ctx) => {
     const user = await ctx.user()
-    if (isSuperAdmin(user)) return teams.listAll()
-    return user.organizerId ? teams.listByOrganizer(user.organizerId) : []
+    if (isSuperAdmin(user)) return teams.listAll(adminRead)
+    return user.organizerId ? teams.listByOrganizer(user.organizerId, adminRead) : []
   })
 
   router.get('/admin/tournaments', async (ctx) => {
     const user = await ctx.user()
-    if (isSuperAdmin(user)) return tournaments.listAll()
-    return user.organizerId ? tournaments.listByOrganizer(user.organizerId) : []
+    if (isSuperAdmin(user)) return tournaments.listAll(adminRead)
+    return user.organizerId ? tournaments.listByOrganizer(user.organizerId, adminRead) : []
   })
 
   router.get('/admin/tournaments/:id', async (ctx, params) => {
@@ -341,12 +341,9 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // Read past the cache, exactly as the delete does. Answering this one from
     // a stale copy is worse than answering it slowly: the operator would be
     // agreeing to a smaller deletion than the one that happens.
-    invalidate(`tournaments:organizer:${id}`)
-    invalidate(`teams:organizer:${id}`)
-
     const [ownTournaments, ownTeams, accounts] = await Promise.all([
-      tournaments.listByOrganizer(id),
-      teams.listByOrganizer(id),
+      tournaments.listByOrganizer(id, liveRead),
+      teams.listByOrganizer(id, liveRead),
       accountsOfOrganizer(id),
     ])
 
@@ -389,12 +386,9 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // The index behind them is eventually consistent, so something created in
     // the last second can still be missed; `scripts/delete-orphans.mjs` is the
     // net underneath.
-    invalidate(`tournaments:organizer:${id}`)
-    invalidate(`teams:organizer:${id}`)
-
     const [ownTournaments, ownTeams] = await Promise.all([
-      tournaments.listByOrganizer(id),
-      teams.listByOrganizer(id),
+      tournaments.listByOrganizer(id, liveRead),
+      teams.listByOrganizer(id, liveRead),
     ])
 
     const teamsTo = typeof ctx.query?.teamsTo === 'string' ? ctx.query.teamsTo.trim() : ''

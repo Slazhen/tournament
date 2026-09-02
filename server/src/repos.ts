@@ -10,7 +10,7 @@ import {
   UpdateCommand,
 } from './lib/ddb.js'
 import { TABLES } from './lib/env.js'
-import { cached, defaultTtl, invalidate } from './lib/cache.js'
+import { cached, defaultTtl, invalidate, type ReadOptions } from './lib/cache.js'
 import { generateId } from './lib/passwords.js'
 import { notFound } from './lib/http.js'
 import type { Organizer, Team, Tournament } from './lib/types.js'
@@ -20,8 +20,8 @@ import type { Organizer, Team, Tournament } from './lib/types.js'
  * ------------------------------------------------------------------ */
 
 export const organizers = {
-  async list(): Promise<Organizer[]> {
-    return cached('organizers:all', defaultTtl, () => scanAll<Organizer>(TABLES.ORGANIZERS))
+  async list(read?: ReadOptions): Promise<Organizer[]> {
+    return cached('organizers:all', defaultTtl, () => scanAll<Organizer>(TABLES.ORGANIZERS), read)
   },
 
   async get(id: string): Promise<Organizer | null> {
@@ -66,7 +66,7 @@ export const organizers = {
  * ------------------------------------------------------------------ */
 
 export const teams = {
-  async listByOrganizer(organizerId: string): Promise<Team[]> {
+  async listByOrganizer(organizerId: string, read?: ReadOptions): Promise<Team[]> {
     return cached(`teams:organizer:${organizerId}`, defaultTtl, async () => {
       // organizerId-index keeps this a Query instead of a full-table Scan, which
       // is the difference between paying for one organizer's teams and paying
@@ -77,11 +77,11 @@ export const teams = {
         KeyConditionExpression: 'organizerId = :organizerId',
         ExpressionAttributeValues: { ':organizerId': organizerId },
       })
-    })
+    }, read)
   },
 
-  async listAll(): Promise<Team[]> {
-    return cached('teams:all', defaultTtl, () => scanAll<Team>(TABLES.TEAMS))
+  async listAll(read?: ReadOptions): Promise<Team[]> {
+    return cached('teams:all', defaultTtl, () => scanAll<Team>(TABLES.TEAMS), read)
   },
 
   async getMany(ids: string[]): Promise<Team[]> {
@@ -273,8 +273,8 @@ export function toSummary(tournament: Tournament): TournamentSummary {
 export const isPublic = (tournament: Tournament): boolean => tournament.visibility !== 'private'
 
 export const tournaments = {
-  async listAll(): Promise<Tournament[]> {
-    return cached('tournaments:all', defaultTtl, () => scanAll<Tournament>(TABLES.TOURNAMENTS))
+  async listAll(read?: ReadOptions): Promise<Tournament[]> {
+    return cached('tournaments:all', defaultTtl, () => scanAll<Tournament>(TABLES.TOURNAMENTS), read)
   },
 
   /**
@@ -287,7 +287,7 @@ export const tournaments = {
     return all.filter(isPublic).map(toSummary)
   },
 
-  async listByOrganizer(organizerId: string): Promise<Tournament[]> {
+  async listByOrganizer(organizerId: string, read?: ReadOptions): Promise<Tournament[]> {
     return cached(`tournaments:organizer:${organizerId}`, defaultTtl, async () => {
       return queryAll<Tournament>({
         TableName: TABLES.TOURNAMENTS,
@@ -295,7 +295,7 @@ export const tournaments = {
         KeyConditionExpression: 'organizerId = :organizerId',
         ExpressionAttributeValues: { ':organizerId': organizerId },
       })
-    })
+    }, read)
   },
 
   async get(id: string): Promise<Tournament | null> {

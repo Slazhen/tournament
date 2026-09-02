@@ -20,6 +20,7 @@ import {
   groupIntoSeries,
   seasonLabel,
 } from '../utils/seasons'
+import { getOrganizerUrl } from '../utils/urls'
 import { useAuth, useSignedIn } from '../contexts/AuthContext'
 
 /**
@@ -312,7 +313,14 @@ export default function HomePage() {
                     </div>
                   )}
                   <div className="min-w-0">
-                    <h3 className="font-semibold truncate">{organizer.name}</h3>
+                    {/* The organiser's own page, which lists everything they
+                        run and the clubs in it. */}
+                    <Link
+                      to={getOrganizerUrl(organizer)}
+                      className="font-semibold truncate block hover:text-blue-300 transition-colors"
+                    >
+                      {organizer.name}
+                    </Link>
                     <p className="text-xs text-gray-400">
                       {competitions.length}{' '}
                       {competitions.length === 1 ? 'tournament' : 'tournaments'}

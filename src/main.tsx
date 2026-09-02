@@ -81,6 +81,7 @@ const PublicTournamentPage = lazyPage(() => import('./pages/PublicTournamentPage
 const PublicTeamPage = lazyPage(() => import('./pages/PublicTeamPage.tsx'))
 const PublicPlayerPage = lazyPage(() => import('./pages/PublicPlayerPage.tsx'))
 const PublicMatchPage = lazyPage(() => import('./pages/PublicMatchPage.tsx'))
+const PublicOrganizerPage = lazyPage(() => import('./pages/PublicOrganizerPage.tsx'))
 
 /**
  * Where an /admin address goes now.
@@ -262,6 +263,15 @@ const router = createBrowserRouter([
     path: '/:orgSlug',
     errorElement: <RouteError />,
     children: [
+      {
+        // The organiser's own page. Without it /homebush_futsal matched this
+        // branch, found no child to render and left the visitor on a blank
+        // screen — and that segment is the first half of every link an
+        // organiser hands out. Any one-segment address lands here, so the page
+        // itself answers 404 for one that names nobody.
+        index: true,
+        element: <PublicOrganizerPage />,
+      },
       { 
         path: ':tournamentSlug', 
         element: <PublicTournamentPage />

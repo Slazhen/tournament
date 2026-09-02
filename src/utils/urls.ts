@@ -57,6 +57,14 @@ export function generateOrganizerSlug(organizer: Organizer | { name: string }): 
 }
 
 /**
+ * The organiser's own public page, which is the first segment of every public
+ * competition address: /homebush_futsal.
+ */
+export function getOrganizerUrl(organizer: Organizer | { name: string }): string {
+  return `/${generateOrganizerSlug(organizer)}`
+}
+
+/**
  * The organiser's readable address for one competition.
  * Format: /tournaments/:orgSlug/:tournamentSlug
  *

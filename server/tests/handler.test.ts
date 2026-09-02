@@ -41,6 +41,14 @@ const organizerUser: AuthUser = {
 
 const otherTeam = { id: 'team-other', name: 'Rivals', organizerId: 'org-2' }
 
+/** The organiser whose slug the public organiser page is asked for. */
+const organizerRecord = {
+  id: 'org-1',
+  name: 'Homebush Futsal',
+  email: 'organiser@example.com',
+  createdAtISO: '2026-01-01T00:00:00.000Z',
+}
+
 /**
  * A club as the public route finds it: someone with a date of birth, someone
  * marked private, and a hole in the list of the kind the browser-side era left
@@ -78,7 +86,7 @@ vi.mock('../src/repos.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/repos.js')>()
   return {
     ...actual,
-    organizers: { list: vi.fn(async () => []) },
+    organizers: { list: vi.fn(async () => [organizerRecord]) },
     teams: {
       get: vi.fn(async (id: string) =>
         id === 'team-other'
@@ -208,6 +216,25 @@ describe('public routes', () => {
     const response = await request('GET', '/public/organizers/org-1/tournaments')
     const body = parse(response.body) as { id: string }[]
     expect(body.map((t) => t.id)).toEqual(['t-public'])
+  })
+
+  it('gives an organiser their own page, without a private season or an email', async () => {
+    const response = await request('GET', '/public/by-slug/homebush_futsal')
+    const body = parse(response.body) as {
+      organizer: Record<string, unknown>
+      tournaments: { id: string }[]
+      clubs: unknown[]
+    }
+
+    expect(response.statusCode).toBe(200)
+    expect(body.tournaments.map((t) => t.id)).toEqual(['t-public'])
+    // The organiser's contact address is not part of a public page.
+    expect(body.organizer.email).toBeUndefined()
+  })
+
+  it('answers 404 for a one-segment address that names no organiser', async () => {
+    const response = await request('GET', '/public/by-slug/nobody')
+    expect(response.statusCode).toBe(404)
   })
 
   it('allows caching of public reads but not of anything else', async () => {

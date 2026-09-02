@@ -41,6 +41,23 @@ export const organizerService = {
     return api.get<Organizer[]>('/public/organizers')
   },
 
+  /**
+   * One organiser's public page, by the slug in the address bar.
+   *
+   * Null rather than a throw: the same URL shape is anything with one segment,
+   * so a mistyped address arrives here and the page shows "not found" instead
+   * of an error screen.
+   */
+  async getPublicPage(organizerSlug: string): Promise<OrganizerPage | null> {
+    try {
+      return await api.get<OrganizerPage>(
+        `/public/by-slug/${encodeURIComponent(organizerSlug)}`,
+      )
+    } catch {
+      return null
+    }
+  },
+
   async create(name: string, email: string): Promise<Organizer | null> {
     return api.post<Organizer>('/admin/organizers', { name, email })
   },
@@ -134,6 +151,30 @@ export type TournamentSummary = {
   seasonLabel?: string
   championTeamId?: string
   status?: 'upcoming' | 'running' | 'finished'
+}
+
+/** An organiser as a visitor sees them: no email, no contact details. */
+export type PublicOrganizer = Pick<Organizer, 'id' | 'name'> & {
+  logo?: string
+  description?: string
+}
+
+/** A club on a listing: enough to draw the badge and name it, and no squad. */
+export type ClubCard = {
+  id: string
+  name: string
+  logo?: string
+  colors: string[]
+  crestColor?: string | null
+  crestOpaqueBackground?: boolean | null
+}
+
+/** An organiser's own page: /homebush_futsal. */
+export type OrganizerPage = {
+  organizer: PublicOrganizer
+  /** Every public season they run, for the page to group into competitions. */
+  tournaments: TournamentSummary[]
+  clubs: ClubCard[]
 }
 
 /** A public tournament page's worth of data, in one request. */
