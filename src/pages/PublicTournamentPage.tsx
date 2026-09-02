@@ -1267,6 +1267,27 @@ export default function PublicTournamentPage() {
                 }
 
                 const ranked = rows.length
+
+                // Place is shared by everyone level on the figure the table is
+                // sorted by, and the next place skips accordingly: two players on
+                // nine goals are both 1st, the third is 3rd. The secondary sort key
+                // only orders a tie, it does not break it.
+                const metric = (record: { goals: number; assists: number }) =>
+                  playerStatsFilter === 'scorers'
+                    ? record.goals
+                    : playerStatsFilter === 'assists'
+                      ? record.assists
+                      : record.goals + record.assists
+
+                const places: number[] = []
+                rows.forEach((row, index) => {
+                  places.push(
+                    index > 0 && metric(row.record) === metric(rows[index - 1].record)
+                      ? places[index - 1]
+                      : index + 1,
+                  )
+                })
+
                 const visible = showAllStats ? rows : rows.slice(0, 10)
 
                 // An empty table used to be the whole answer, which reads as a
@@ -1287,9 +1308,10 @@ export default function PublicTournamentPage() {
                     <table className="w-full text-xs sm:text-base">
                       <thead>
                         <tr className="border-b border-white/20">
+                          <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">#</th>
                           <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Player</th>
                           <th className="text-left py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Club</th>
-                          <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">P</th>
+                          <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Games</th>
                           <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Goals</th>
                           <th className="text-center py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">Assists</th>
                           {playerStatsFilter === 'combined' && (
@@ -1298,11 +1320,14 @@ export default function PublicTournamentPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {visible.map(({ record, team, player }) => (
+                        {visible.map(({ record, team, player }, index) => (
                           <tr
                             key={record.playerId}
                             className="border-b border-white/10 hover:bg-white/5 transition-colors"
                           >
+                            <td className="py-2 px-1 sm:px-6 text-white font-semibold text-xs sm:text-lg">
+                              {places[index]}
+                            </td>
                             <td className="py-2 px-1 sm:px-6">
                               <div className="flex items-center gap-1 sm:gap-3">
                                 {player?.photo ? (
