@@ -96,6 +96,23 @@ export type Team = {
    * come off rather than saving into a refusal.
    */
   managerUserIds?: string[]
+  /**
+   * Whether organisers who do not run this club may find it and invite it.
+   *
+   * The club's own decision, set by its managers or — while nobody has taken it
+   * on — by the organiser who owns it. Absent means no: a club that has never
+   * been asked has not agreed to be approached by strangers.
+   */
+  discoverable?: boolean
+  /**
+   * Set by the API on another organiser's club that plays in one of yours.
+   *
+   * The record is there so the club can be named in the table, in the fixture
+   * list and on a teamsheet; it is not there to be edited, and the API refuses
+   * every write to it. Screens read this rather than comparing organiser ids,
+   * because the super admin's copy of the list carries neither.
+   */
+  visiting?: boolean
 }
 
 export type Match = {

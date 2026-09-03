@@ -18,8 +18,11 @@ import { deleteAllUserSessions } from '../lib/sessions.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import { organizers, teams, tournaments } from '../repos.js'
 import {
+  deleteEntriesForTeam,
   deleteEntriesForTournament,
   deleteInvitesOfOrganizer,
+  entriesForTeam,
+  getEntry,
   linkManagerToTeam,
   unlinkManagerFromTeam,
   unlinkOwnerManagers,
@@ -89,7 +92,28 @@ const TEAM_FIELDS = [
   // Whether the public is told how old this club's players are. A club-wide
   // decision, so it lives here and not on each player.
   'hidePlayerAges',
+  // Whether other organisers may find this club and invite it. The club's own
+  // decision — `assertManagesTeam` guards the write, so it is the managers who
+  // set it, or the owning organiser while the club has none.
+  'discoverable',
 ] as const
+
+/**
+ * The club flags where a wrong value is not a wrong display but a wrong
+ * decision.
+ *
+ * Absent means "no" for both, so anything that is not a boolean — a null, which
+ * clears the field, or the string "false", which is truthy — would either
+ * publish a club that did not ask to be listed or quietly unlist one that did.
+ * The same rule `isPublic` follows on a player, and for the same reason.
+ */
+function assertClubFlags(updates: Record<string, unknown>): void {
+  for (const field of ['discoverable', 'hidePlayerAges'] as const) {
+    if (updates[field] !== undefined && typeof updates[field] !== 'boolean') {
+      throw badRequest(`${field} must be true or false`)
+    }
+  }
+}
 
 /**
  * What may be written about one player.
@@ -283,6 +307,154 @@ async function managersOfTeams(list: Team[]): Promise<Record<string, ClubManager
   return out
 }
 
+/**
+ * What of another organiser's club travels to the organiser it plays against.
+ *
+ * A named list and not a deletion of the fields that are sensitive today, for
+ * the reason every projection in this API is: these records are schemaless and
+ * `PATCH` persists whatever `TEAM_FIELDS` and `PLAYER_FIELDS` admit, so a field
+ * added next year — `discoverable` was added this year — would otherwise reach
+ * every organiser this club visits on the day it is written.
+ *
+ * Players hidden with `isPublic: false` are kept, unlike in the public
+ * projection: this organiser names the teamsheets for this club and enters it
+ * in the competition, and a player they cannot see is a player who cannot be
+ * fielded. What is dropped is the date of birth, which a teamsheet has never
+ * needed.
+ */
+const VISITING_TEAM_FIELDS = [
+  'id',
+  'name',
+  'organizerId',
+  'createdAtISO',
+  'colors',
+  'logo',
+  'crestColor',
+  'crestOpaqueBackground',
+  'photo',
+  'establishedDate',
+  'socialMedia',
+  'hidePlayerAges',
+] as const
+
+const VISITING_PLAYER_FIELDS = [
+  'id',
+  'firstName',
+  'lastName',
+  'number',
+  'position',
+  'heightCm',
+  'weightKg',
+  'preferredFoot',
+  'photo',
+  'socialMedia',
+  'isPublic',
+  'createdAtISO',
+] as const
+
+/**
+ * Another organiser's club, as the organiser whose competition it plays in may
+ * see it.
+ *
+ * The squad comes with it, and that is deliberate: entering a club in a
+ * competition and naming who played for it are the organiser's to do for every
+ * club in the season, claimed or not, and both are picked from this list. What
+ * does not come is anything about the club as a club — `managerUserIds` is a
+ * list of accounts the organiser has no standing over, which is why
+ * `/admin/tournaments/:id/managers` already refuses to name them, and a date of
+ * birth belongs to the club that holds it: a teamsheet needs a name, not a
+ * birthday.
+ *
+ * `visiting` is the flag every screen reads to know this club is not theirs to
+ * edit. The API refuses those writes anyway — `assertManagesTeam` sees another
+ * organiser's club — so without it the editing controls were drawn and then
+ * saved into a refusal.
+ */
+/**
+ * Which clubs may be written into a competition's team list.
+ *
+ * `teamIds` is the one field on a tournament that names records belonging to
+ * somebody else, and both the create and the `PATCH` pass their body through —
+ * so an organiser could put any club id in the system into their own season.
+ * That was untidy while a foreign id resolved to nothing; it stopped being
+ * untidy when `/admin/teams` began returning the club behind it, because the
+ * same request would then have handed over that club's squad, and the club's
+ * own page would have shown it playing in a competition it never joined.
+ *
+ * A club is enterable if this organiser owns it, or if the club has agreed —
+ * an entry marked accepted, whether the club applied or answered an invitation.
+ * Ids already in the season are left where they are: some of them predate
+ * entries altogether, and refusing them would leave a live season nobody can
+ * save.
+ *
+ * The design problem underneath is that a tournament has never had a
+ * `TEAM_FIELDS` of its own and this route writes what it is given. This closes
+ * the field that names other people's records. It does not pay the debt.
+ */
+async function assertEnterableTeams(
+  organizerId: string,
+  tournamentId: string | null,
+  wanted: unknown,
+  already: string[],
+): Promise<void> {
+  if (!Array.isArray(wanted)) return
+  // The list is written into the record whatever it holds, so an object or a
+  // number in it is a club id nothing can ever resolve, sitting in a season
+  // forever. The cap is not a rule about football; it is what stops a hand-made
+  // request turning this check into a thousand reads.
+  if (wanted.some((id) => typeof id !== 'string')) {
+    throw badRequest('teamIds must be a list of club ids')
+  }
+  if (wanted.length > 200) throw badRequest('That is more clubs than one competition can hold')
+
+  const held = new Set(already)
+  const added = wanted.filter((id): id is string => typeof id === 'string' && !held.has(id))
+  if (added.length === 0) return
+
+  const records = (await teams.getMany(added)) as Team[]
+  const byId = new Map(records.map((team) => [team.id, team]))
+
+  for (const id of added) {
+    const club = byId.get(id)
+    // An id naming no club leaks nothing and is refused by the routes that
+    // would act on it. Answering for it here would be a second opinion.
+    if (!club || club.organizerId === organizerId) continue
+
+    const entry = tournamentId ? await getEntry(tournamentId, id) : null
+    if (entry?.status !== 'accepted') {
+      throw forbidden(`${club.name} has not agreed to play in this competition`)
+    }
+  }
+}
+
+export function toVisitingTeam(team: Team): Team {
+  const out: Record<string, unknown> = { visiting: true }
+  for (const field of VISITING_TEAM_FIELDS) {
+    if (team[field] !== undefined) out[field] = team[field]
+  }
+
+  // A hole in the list. These come from the browser-side era and from a
+  // tournament POST that passes its body through, and a null here is a null
+  // every screen that draws a squad would then dereference.
+  const players = Array.isArray(team.players)
+    ? (team.players as Array<Record<string, unknown> | null>)
+        .filter(
+          (player): player is Record<string, unknown> =>
+            Boolean(player) && typeof player === 'object',
+        )
+        .map((player) => {
+          const kept: Record<string, unknown> = {}
+          for (const field of VISITING_PLAYER_FIELDS) {
+            if (player[field] !== undefined) kept[field] = player[field]
+          }
+          return kept
+        })
+    : []
+
+  out.players = players
+  return out as Team
+}
+
 export function registerAdminRoutes(router: Router<RequestContext>): void {
   /* ---------------- listings (include private data) ---------------- */
 
@@ -292,13 +464,70 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     return isSuperAdmin(user) ? all : all.filter((o) => o.id === user.organizerId)
   })
 
-  // A team manager belongs to no organizer, and DynamoDB rejects an empty key
-  // value — so asking anyway turned their first admin request into a 500
-  // instead of the empty list it means.
+  /**
+   * The clubs this account administers, plus the ones visiting its
+   * competitions.
+   *
+   * A club belonging to another organiser can be playing here — it applied and
+   * was accepted, or it was invited — and until this route said so it was a row
+   * of teamIds with no record behind it: every one of the organiser's screens
+   * reads its clubs from this one list, so a visiting club had no name in the
+   * table, no name in the fixture list, and no squad to pick a teamsheet from.
+   * The organiser's own screens are what needs it; `toVisitingTeam` decides
+   * what of somebody else's club they are shown.
+   *
+   * A team manager belongs to no organizer, and DynamoDB rejects an empty key
+   * value — so asking anyway turned their first admin request into a 500
+   * instead of the empty list it means.
+   */
   router.get('/admin/teams', async (ctx) => {
     const user = await ctx.user()
     if (isSuperAdmin(user)) return teams.listAll(adminRead)
-    return user.organizerId ? teams.listByOrganizer(user.organizerId, adminRead) : []
+    if (!user.organizerId) return []
+
+    const own = await teams.listByOrganizer(user.organizerId, adminRead)
+    const mine = new Set(own.map((team) => team.id))
+
+    const seasons = await tournaments.listByOrganizer(user.organizerId, adminRead)
+    // Which of this organiser's seasons each foreign club appears in, so its
+    // agreement can be looked up against one of them.
+    const visitors = new Map<string, string[]>()
+    for (const season of seasons) {
+      for (const id of (season.teamIds ?? []) as string[]) {
+        if (mine.has(id)) continue
+        const seen = visitors.get(id)
+        if (seen) seen.push(season.id)
+        else visitors.set(id, [season.id])
+      }
+    }
+    if (visitors.size === 0) return own
+
+    // What opens another organiser's club is the club having agreed to play
+    // here, not its id appearing in a list this organiser writes. `PATCH
+    // /admin/tournaments/:id` still passes its body through, so `teamIds` can
+    // name any club in the system; `assertEnterableTeams` refuses to add one
+    // that has not agreed, and this is the same rule on the way out — it also
+    // covers the seasons written before that check existed.
+    //
+    // One query per visiting club, on the `teamId-index`, rather than a read
+    // per club-and-season pair: `visitors` collects every id in every season
+    // that is not this organiser's, which includes ids naming nothing at all —
+    // clubs deleted years ago, and rows from the browser-side era — and this is
+    // the read every one of the organiser's screens starts with.
+    const checked = await Promise.all(
+      [...visitors].map(async ([teamId, seasonIds]) => {
+        const seasons = new Set(seasonIds)
+        const rows = await entriesForTeam(teamId)
+        return rows.some((row) => row.status === 'accepted' && seasons.has(row.tournamentId))
+          ? teamId
+          : null
+      }),
+    )
+    const agreed = checked.filter((id): id is string => id !== null)
+    if (agreed.length === 0) return own
+
+    const visiting = (await teams.getMany(agreed)) as Team[]
+    return [...own, ...visiting.map(toVisitingTeam)]
   })
 
   router.get('/admin/tournaments', async (ctx) => {
@@ -484,6 +713,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // naming no account cannot be taken off the list afterwards.
     const fields = pick(ctx.body, TEAM_FIELDS)
     assertTeamColours(fields)
+    // Checked on the create as well as on the update: a validation that runs on
+    // one and not the other has not been done, which is the lesson `colors`
+    // taught this file.
+    assertClubFlags(fields)
     const team = await teams.create({
       ...fields,
       name,
@@ -522,6 +755,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
 
     assertTeamColours(updates)
+    assertClubFlags(updates)
 
     // A club changing hands takes its manager list with it, and the previous
     // owner's own link to it was granted by owning it. Done before the move
@@ -663,6 +897,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     if (!team) throw notFound('Team not found')
     assertCanAccessOrganizer(user, team.organizerId)
 
+    // The mirror of the tournament delete: an application or an invitation
+    // naming a club that no longer exists shows on the organiser's screen as a
+    // decision to make about nobody.
+    await deleteEntriesForTeam(params.id!)
     await teams.remove(params.id!)
 
     // Whoever ran this club stops running it. The link is stored on the account
@@ -766,6 +1004,9 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // with `themeColor: "url(…)"` keeps it, since a later PATCH only checks
     // the fields it is given.
     assertCompetitionColours(ctx.body)
+    // Nothing has agreed to anything yet, so a club this organiser does not own
+    // cannot be in a competition on the day it is created.
+    await assertEnterableTeams(organizerId, null, ctx.body.teamIds, [])
     const tournament = await tournaments.create({ ...ctx.body, name, organizerId })
     await record(user, {
       action: 'tournament.create',
@@ -810,6 +1051,12 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // This body is still passed through rather than picked from a named list —
     // the debt described above — so the colours have to be named here.
     assertCompetitionColours(ctx.body)
+    await assertEnterableTeams(
+      tournament.organizerId,
+      params.id!,
+      ctx.body.teamIds,
+      (tournament.teamIds ?? []) as string[],
+    )
 
     await tournaments.update(params.id!, ctx.body)
     await record(user, {
@@ -826,6 +1073,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const user = await ctx.user()
     const tournament = await tournaments.getOrThrow(params.id!)
     assertCanAccessOrganizer(user, tournament.organizerId)
+    // Before the removal, and the same call the organizer delete makes: an
+    // entry is keyed by its tournament, so a row left behind is an invitation
+    // the club can see on its own page and can neither accept nor dismiss.
+    await deleteEntriesForTournament(params.id!)
     await tournaments.remove(params.id!)
     await record(user, {
       action: 'tournament.delete',

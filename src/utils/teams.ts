@@ -107,11 +107,15 @@ export function publicTeamUrl(teamId: string, fromTournamentId?: string): string
  * as unclaimed here; the public pages offer no editing either way.
  */
 export function canEditClub(
-  team: Pick<Team, 'managerUserIds'>,
+  team: Pick<Team, 'managerUserIds' | 'visiting'>,
   userId: string | undefined,
   superAdmin: boolean,
 ): boolean {
   if (superAdmin) return true
+  // Another organiser's club, here because it plays in one of ours. The API
+  // strips its manager list, so the "nobody runs it, therefore it is mine to
+  // edit" rule below would otherwise read as yes on every one of them.
+  if (team.visiting === true) return false
   const managers = team.managerUserIds ?? []
   if (userId && managers.includes(userId)) return true
   return managers.length === 0

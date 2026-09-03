@@ -39,6 +39,21 @@ export function assertSuperAdmin(user: AuthUser): void {
 }
 
 /**
+ * The caller runs competitions at all.
+ *
+ * Not a question about one record, which is why it is not
+ * `assertCanAccessOrganizer`: the club directory belongs to no organizer in
+ * particular, so there is no id to compare against. A team manager carries no
+ * `organizerId`, and the directory names other people's clubs and the people
+ * who run them — a list a coach has no business reading.
+ */
+export function assertIsOrganizer(user: AuthUser): void {
+  if (isSuperAdmin(user)) return
+  if (user.role === 'organizer' && user.organizerId) return
+  throw forbidden('Only an organizer can do that')
+}
+
+/**
  * An organizer may only touch resources belonging to their own organizer id.
  * The super admin may touch anything.
  */

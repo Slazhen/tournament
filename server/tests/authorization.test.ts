@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   assertCanAccessOrganizer,
+  assertIsOrganizer,
   assertManagesTeam,
   assertSuperAdmin,
   extractBearerToken,
@@ -9,7 +10,9 @@ import {
 import { toPublicUser, type AuthUser } from '../src/lib/types.js'
 import { buildUpdate } from '../src/lib/ddb.js'
 import { corsHeaders, parseJsonBody, HttpError } from '../src/lib/http.js'
-import { toClubTournament } from '../src/routes/clubs.js'
+import { organiserMayDecide, toClubTournament, toDirectoryClub } from '../src/routes/clubs.js'
+import { toVisitingTeam } from '../src/routes/admin.js'
+import type { Team } from '../src/lib/types.js'
 
 const organizerUser: AuthUser = {
   id: 'u-1',
@@ -326,5 +329,134 @@ describe('a hand-built playoff, as a visiting club sees it', () => {
   it('survives a hole in the fixture list', () => {
     const holed = toClubTournament({ ...tournament, matches: [null, undefined] }, ['team-mine'])
     expect(holed.matches).toHaveLength(2)
+  })
+})
+
+describe('who may read the club directory', () => {
+  it('lets an organizer and the super admin in', () => {
+    expect(() => assertIsOrganizer(organizerUser)).not.toThrow()
+    expect(() => assertIsOrganizer(superAdmin)).not.toThrow()
+  })
+
+  it('keeps a club manager out', () => {
+    // It names other people's clubs and the people who run them. A coach has no
+    // organizerId either, so an inline comparison would have let them through.
+    expect(() => assertIsOrganizer(manager)).toThrow(HttpError)
+  })
+
+  it('refuses an organizer with no organizer id', () => {
+    expect(() => assertIsOrganizer({ ...organizerUser, organizerId: undefined })).toThrow(HttpError)
+  })
+})
+
+describe('a club as a stranger sees it', () => {
+  const listed = {
+    id: 'team-listed',
+    name: 'Sporting Sydney',
+    organizerId: 'org-2',
+    colors: ['#ff0000'],
+    logo: 'https://example.com/crest.png',
+    crestColor: '#ff0000',
+    managerUserIds: ['u-8'],
+    managerLinkedAt: { 'u-8': '2026-01-01T00:00:00.000Z' },
+    players: [{ id: 'p-1', dateOfBirth: '1999-01-01' }, null, { id: 'p-2' }],
+    discoverable: true,
+    secretFieldInventedLater: 'nope',
+  } as unknown as Team
+
+  const managerNames = new Map([['u-8', 'Ana Petrova']])
+  const leagueNames = new Map([['org-2', 'Homebush Futsal']])
+
+  it('names the person who runs the club', () => {
+    const card = toDirectoryClub(listed, managerNames, leagueNames)
+    expect(card.ownerName).toBe('Ana Petrova')
+    expect(card.ownerKind).toBe('manager')
+  })
+
+  it('falls back to the league for a club nobody has taken on', () => {
+    const unclaimed = { ...listed, managerUserIds: [] } as unknown as Team
+    const card = toDirectoryClub(unclaimed, managerNames, leagueNames)
+    expect(card.ownerName).toBe('Homebush Futsal')
+    expect(card.ownerKind).toBe('organizer')
+  })
+
+  it('sends a whitelist and not the record', () => {
+    const card = toDirectoryClub(listed, managerNames, leagueNames) as Record<string, unknown>
+    // No account ids, no squad, and nothing a PATCH writes onto a club later.
+    expect(card.managerUserIds).toBeUndefined()
+    expect(card.players).toBeUndefined()
+    expect(card.secretFieldInventedLater).toBeUndefined()
+    // A hole in the squad is not a player.
+    expect(card.squadSize).toBe(2)
+  })
+})
+
+describe("another organiser's club, playing here", () => {
+  const guest = {
+    id: 'team-guest',
+    name: 'Aspire FC',
+    organizerId: 'org-2',
+    managerUserIds: ['u-8'],
+    managerLinkedAt: { 'u-8': '2026-01-01T00:00:00.000Z' },
+    players: [
+      { id: 'p-1', firstName: 'Ana', dateOfBirth: '1999-01-01' },
+      null,
+    ],
+  } as unknown as Team
+
+  it('keeps the squad, so a teamsheet can be named', () => {
+    const visiting = toVisitingTeam(guest) as Record<string, unknown>
+    const players = visiting.players as Array<Record<string, unknown>>
+    expect(players).toHaveLength(1)
+    expect(players[0]!.firstName).toBe('Ana')
+  })
+
+  it('drops what belongs to the club and not to the competition', () => {
+    const visiting = toVisitingTeam(guest) as Record<string, unknown>
+    const players = visiting.players as Array<Record<string, unknown>>
+    expect(visiting.managerUserIds).toBeUndefined()
+    expect(visiting.managerLinkedAt).toBeUndefined()
+    expect(players[0]!.dateOfBirth).toBeUndefined()
+    expect(visiting.visiting).toBe(true)
+  })
+})
+
+describe('answering an entry', () => {
+  it("will not let an organiser accept their own invitation", () => {
+    // Otherwise asking the club is a formality: the organiser writes the
+    // invitation and accepts it in the next request.
+    expect(organiserMayDecide('invited', 'accepted')).toBe(false)
+  })
+
+  it('lets them withdraw one', () => {
+    expect(organiserMayDecide('invited', 'declined')).toBe(true)
+  })
+
+  it('will not let them overrule a club that refused, by any route', () => {
+    // `refused` exists as its own status because `declined` is a decision of
+    // the organiser's own that they may reverse. Turning a refusal into one of
+    // those is the laundering step, so it is refused as well — the first
+    // version of this allowed `refused -> declined` and the accept came free.
+    expect(organiserMayDecide('refused', 'accepted')).toBe(false)
+    expect(organiserMayDecide('refused', 'declined')).toBe(false)
+  })
+
+  it('will not let them re-grant an invitation they took back', () => {
+    expect(organiserMayDecide('withdrawn', 'accepted')).toBe(false)
+    expect(organiserMayDecide('withdrawn', 'declined')).toBe(false)
+  })
+
+  it('lets them reverse their own refusal of an application', () => {
+    expect(organiserMayDecide('declined', 'accepted')).toBe(true)
+  })
+
+  it('lets them drop a club they had accepted, but not re-accept one', () => {
+    expect(organiserMayDecide('accepted', 'declined')).toBe(true)
+    expect(organiserMayDecide('accepted', 'accepted')).toBe(false)
+  })
+
+  it('leaves an application alone', () => {
+    expect(organiserMayDecide('pending', 'accepted')).toBe(true)
+    expect(organiserMayDecide('pending', 'declined')).toBe(true)
   })
 })

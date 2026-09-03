@@ -117,9 +117,17 @@ export default function TeamPage() {
   // a refusal. Until the answer has arrived, or where it could not be read,
   // nothing is offered: a field that appears and then disappears under the
   // cursor is worse than one that arrives a moment late.
+  //
+  // A club another organiser owns, here because it plays in one of these
+  // competitions, is nothing on this screen but a name and a squad to read: the
+  // API strips its manager list, so the "nobody runs it, therefore it is mine"
+  // rule below would otherwise read as yes on every one of them.
+  const visitingClub = team?.visiting === true
   const clubIsMineToEdit =
-    superAdmin || iRunThisClub || (managersLoaded && !managersFailed && managers.length === 0)
-  const runByItsManager = managersLoaded && !managersFailed && !iRunThisClub && managers.length > 0
+    !visitingClub &&
+    (superAdmin || iRunThisClub || (managersLoaded && !managersFailed && managers.length === 0))
+  const runByItsManager =
+    !visitingClub && managersLoaded && !managersFailed && !iRunThisClub && managers.length > 0
   
   // Redirect if no organizer is selected. The super admin has none and needs
   // none: the club in front of them names the organizer it belongs to.
@@ -304,6 +312,10 @@ export default function TeamPage() {
               </button>
             </div>
 
+            {/* Who runs a club, and handing it over, are questions about the
+                club itself — so neither is asked about somebody else's. */}
+            {!visitingClub && (
+              <>
             {/* Who has the club now. The organiser's first question about a
                 club they have invited somebody to is whether anybody took it
                 up, and until now the answer was nowhere in the interface. */}
@@ -482,6 +494,16 @@ export default function TeamPage() {
                 </div>
               )}
             </div>
+              </>
+            )}
+
+            {visitingClub && (
+              <p className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl text-left text-sm opacity-70">
+                {team.name} is run in another organiser's league and plays here as a guest. Its
+                name, crest and squad are theirs. You still choose who is registered for your
+                competitions, name the teamsheets, and decide whether the club plays at all.
+              </p>
+            )}
           </div>
         </div>
         

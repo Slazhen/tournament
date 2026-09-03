@@ -501,7 +501,24 @@ export type ClubManager = {
   linkedAt?: string
 }
 
-export type EntryStatus = 'pending' | 'accepted' | 'declined' | 'withdrawn'
+/**
+ * `pending` and `invited` are the same row asked from opposite ends: the club
+ * applied and the organiser has not answered, or the organiser invited and the
+ * club has not. Only the club can turn `invited` into `accepted`.
+ *
+ * The three noes are three facts. `declined`: the organiser turned an
+ * application down, and may change their mind. `refused`: the club turned an
+ * invitation down, and the organiser may not overrule it — asking again means
+ * inviting again. `withdrawn`: the organiser took back an invitation the club
+ * had not answered.
+ */
+export type EntryStatus =
+  | 'pending'
+  | 'invited'
+  | 'accepted'
+  | 'declined'
+  | 'refused'
+  | 'withdrawn'
 
 export type Entry = {
   tournamentId: string
@@ -515,6 +532,36 @@ export type Entry = {
   /** The decision this application replaced, when a club asked again. */
   previousNote?: string
   previousDecidedAt?: string
+  /** Copied onto an invitation, for a competition the club cannot otherwise read. */
+  tournamentName?: string
+  /**
+   * The club's name, added by the organiser's own listing of these rows.
+   *
+   * A club applying from another organiser's league is in none of the lists the
+   * settings screen holds, so without this the row asking the organiser to
+   * decide said "A club".
+   */
+  teamName?: string
+}
+
+/**
+ * A club that has said other organisers may find it.
+ *
+ * Not a `Team`: what comes back is a whitelist — a crest, a name, the size of
+ * the squad and who to ask — because the club belongs to somebody else and the
+ * records are schemaless.
+ */
+export type DirectoryClub = {
+  id: string
+  name: string
+  logo?: string
+  colors: string[]
+  crestColor?: string | null
+  crestOpaqueBackground?: boolean | null
+  squadSize: number
+  /** The manager who runs it, or the league that listed it. Absent for neither. */
+  ownerName?: string
+  ownerKind: 'manager' | 'organizer'
 }
 
 export const clubService = {
@@ -586,6 +633,24 @@ export const clubService = {
   },
 
   /**
+   * The club's answer to an invitation.
+   *
+   * Only the club may accept one — the organiser who issued it cannot, which is
+   * the whole point of asking — so this is the manager's route and not a second
+   * way into the organiser's.
+   */
+  async answerInvitation(
+    tournamentId: string,
+    teamId: string,
+    status: 'accepted' | 'declined',
+  ): Promise<void> {
+    await api.patch(`/manager/tournaments/${encodeURIComponent(tournamentId)}/entry`, {
+      teamId,
+      status,
+    })
+  },
+
+  /**
    * Which of a club's players are entered in one competition.
    *
    * Sending every player is the same as sending none: the server stores that as
@@ -623,6 +688,18 @@ export const clubService = {
 
   async entriesFor(tournamentId: string): Promise<Entry[]> {
     return api.get(`/admin/tournaments/${encodeURIComponent(tournamentId)}/entries`)
+  },
+
+  /** Every club that has listed itself, the caller's own left out. */
+  async directory(): Promise<DirectoryClub[]> {
+    return api.get('/admin/clubs/directory')
+  },
+
+  /** Offers a club a place. It is not in the competition until the club says yes. */
+  async inviteToTournament(tournamentId: string, teamId: string): Promise<Entry> {
+    return api.post(`/admin/tournaments/${encodeURIComponent(tournamentId)}/invitations`, {
+      teamId,
+    })
   },
 
   async decide(

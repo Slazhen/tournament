@@ -161,6 +161,10 @@ export default function MyClubPage() {
             await clubService.apply(team.id, tournamentId)
             await load()
           }}
+          onAnswerInvitation={async (tournamentId, status) => {
+            await clubService.answerInvitation(tournamentId, team.id, status)
+            await load()
+          }}
         />
       ))}
     </div>
@@ -176,6 +180,7 @@ function ClubCard({
   openCompetitions,
   organizerNames,
   onApply,
+  onAnswerInvitation,
   onReload,
 }: {
   team: Team
@@ -187,6 +192,10 @@ function ClubCard({
   openCompetitions: TournamentSummary[]
   organizerNames: Record<string, string>
   onApply: (tournamentId: string) => Promise<void>
+  onAnswerInvitation: (
+    tournamentId: string,
+    status: 'accepted' | 'declined',
+  ) => Promise<void>
   onReload: () => Promise<void>
 }) {
   /** The competitions this club is actually playing in. */
@@ -228,6 +237,9 @@ function ClubCard({
 
   const pending = entries.filter((entry) => entry.status === 'pending')
   const declined = entries.filter((entry) => entry.status === 'declined')
+  // An organiser has offered this club a place. Nothing has happened yet: an
+  // invitation is a question, and this is the only screen that can answer it.
+  const invited = entries.filter((entry) => entry.status === 'invited')
 
   // What is off the list: the competitions the club is in, and the applications
   // it is still waiting on or has been refused — those two have a row of their
@@ -238,6 +250,7 @@ function ClubCard({
     ...playing.map((tournament) => tournament.id),
     ...pending.map((entry) => entry.tournamentId),
     ...declined.map((entry) => entry.tournamentId),
+    ...invited.map((entry) => entry.tournamentId),
   ])
   const canApplyTo = openCompetitions.filter((summary) => !enteredIds.has(summary.id))
 
@@ -308,6 +321,18 @@ function ClubCard({
             />
           ))}
 
+          {invited.map((entry) => (
+            <InvitationRow
+              key={entry.tournamentId}
+              // The name copied onto the invitation first: a competition the
+              // club has not joined is in neither of the lists this page holds
+              // when the organiser has not published it.
+              name={entry.tournamentName || nameOf(tournaments, openCompetitions, entry.tournamentId)}
+              organizerName={organizerNames[entry.organizerId]}
+              onAnswer={(status) => onAnswerInvitation(entry.tournamentId, status)}
+            />
+          ))}
+
           {pending.map((entry) => (
             <div
               key={entry.tournamentId}
@@ -362,6 +387,71 @@ function ClubCard({
 /* ================================================================== *
  * Joining competitions
  * ================================================================== */
+
+/**
+ * A place an organiser has offered this club.
+ *
+ * The club is not in the competition and will not be until this is answered:
+ * the organiser's route stops at "invited" on purpose, and accepting is the
+ * only thing that puts the club in. Declining is an answer rather than silence,
+ * so the organiser is not left waiting on a club that has decided.
+ */
+function InvitationRow({
+  name,
+  organizerName,
+  onAnswer,
+}: {
+  name: string
+  organizerName?: string
+  onAnswer: (status: 'accepted' | 'declined') => Promise<void>
+}) {
+  const [busy, setBusy] = useState<'accepted' | 'declined' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const answer = async (status: 'accepted' | 'declined') => {
+    setBusy(status)
+    setError(null)
+    try {
+      await onAnswer(status)
+    } catch (caught) {
+      setError(messageOf(caught, 'That could not be sent.'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="px-3 py-2 rounded-lg bg-white/[0.03] border border-emerald-400/25">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="min-w-0">
+          <span className="block truncate">{name}</span>
+          <span className="block text-xs text-emerald-300/80">
+            {organizerName ? `${organizerName} has invited you` : 'You have been invited'}
+          </span>
+        </span>
+        <span className="flex gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => answer('accepted')}
+            className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 text-emerald-300 transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            <IconCheck size={13} /> {busy === 'accepted' ? 'Joining…' : 'Accept'}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => answer('declined')}
+            className="text-xs px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all disabled:opacity-50"
+          >
+            {busy === 'declined' ? 'Sending…' : 'No thanks'}
+          </button>
+        </span>
+      </div>
+      {error && <p className="text-xs text-red-300 mt-1">{error}</p>}
+    </div>
+  )
+}
 
 /**
  * An application the organiser turned down.
@@ -603,6 +693,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
   const [youtube, setYoutube] = useState(team.socialMedia?.youtube ?? '')
   const [established, setEstablished] = useState(team.establishedDate ?? '')
   const [hideAges, setHideAges] = useState(team.hidePlayerAges === true)
+  const [discoverable, setDiscoverable] = useState(team.discoverable === true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -616,6 +707,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
     setYoutube(team.socialMedia?.youtube ?? '')
     setEstablished(team.establishedDate ?? '')
     setHideAges(team.hidePlayerAges === true)
+    setDiscoverable(team.discoverable === true)
   }, [team])
 
   const save = async () => {
@@ -638,6 +730,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
           youtube: youtube.trim(),
         },
         hidePlayerAges: hideAges,
+        discoverable,
       })
       await onReload()
       setEditing(false)
@@ -795,6 +888,27 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
                 </span>
               </label>
 
+              {/* Being findable is a separate decision from being public. The
+                  club's page has always been public; what this opens is being
+                  approached by an organiser who does not run any competition
+                  the club plays in. Off unless the club says otherwise — a club
+                  that has never been asked has not agreed to be. */}
+              <label className="flex items-start gap-2 text-sm text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={discoverable}
+                  onChange={(event) => setDiscoverable(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Let other organisers find this club
+                  <span className="block text-xs text-gray-500">
+                    They can search for it by name and invite it to a competition. Nothing happens
+                    until you accept an invitation, and you can turn this off at any time.
+                  </span>
+                </span>
+              </label>
+
               {error && <p className="text-sm text-red-300">{error}</p>}
 
               <div className="flex gap-2">
@@ -837,6 +951,14 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
               </div>
 
               <SocialLinks socialMedia={team.socialMedia} empty="No social links yet." />
+
+              {/* Worth saying without opening the form: it is the setting that
+                  decides whether strangers may approach the club at all. */}
+              <p className="text-xs text-gray-400">
+                {team.discoverable === true
+                  ? 'Other organisers can find this club and invite it to their competitions.'
+                  : 'Only organisers whose competitions this club already plays in can see it.'}
+              </p>
             </>
           )}
 

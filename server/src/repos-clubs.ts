@@ -283,7 +283,30 @@ export async function unlinkManagerFromTeam(userId: string, team: Team): Promise
  * Entries: a club's participation in one competition
  * ------------------------------------------------------------------ */
 
-export type EntryStatus = 'pending' | 'accepted' | 'declined' | 'withdrawn'
+/**
+ * Where one club's participation in one competition has got to.
+ *
+ * `pending` and `invited` are the same row asked from opposite ends: the club
+ * applied and the organiser has not answered, or the organiser invited and the
+ * club has not. Which of the two it is decides who may write the next status —
+ * an organiser must not be able to accept their own invitation on the club's
+ * behalf, which is the whole point of asking.
+ *
+ * The three ways of saying no are three statuses because they are three
+ * different facts and the wrong one is a hole. `declined` is the organiser
+ * turning down an application, which they may reverse — they are the person
+ * whose answer it was. `refused` is the club turning down an invitation, which
+ * the organiser may not reverse; asking again means inviting again, which the
+ * club answers again. `withdrawn` is the organiser taking back an invitation
+ * the club had not yet answered.
+ */
+export type EntryStatus =
+  | 'pending'
+  | 'invited'
+  | 'accepted'
+  | 'declined'
+  | 'refused'
+  | 'withdrawn'
 
 export type Entry = {
   tournamentId: string
@@ -297,6 +320,28 @@ export type Entry = {
   decidedAt?: string
   /** Why an application was turned down, when the organizer says. */
   note?: string
+  /**
+   * Who owned the club when the invitation was issued.
+   *
+   * A super admin can move a club to another organiser, and an invitation is
+   * not torn up when they do — so without this the new owner inherits a
+   * question they never saw asked and, for a club nobody has claimed, answers
+   * it in the club's name. `enterInvitedTournament` re-checks the same pairing
+   * on a `TeamInvite` and for the same reason. A club with a manager of its own
+   * is unaffected: the person answering is the club either way.
+   */
+  teamOrganizerId?: string
+  /**
+   * The competition's name, copied onto an invitation when it is issued.
+   *
+   * A club invited to a season that is not published has no way to read its
+   * name: `/manager/overview` deliberately carries nothing about a competition
+   * the club is not in yet, and a private one is not on the public list either.
+   * Without this the invitation arrives naming nothing. Copied rather than
+   * looked up, for the same reason `TeamInvite` copies it: one read fewer, and
+   * a competition renamed afterwards still reads sensibly.
+   */
+  tournamentName?: string
   /**
    * The decision this application replaced, when a club asks again after having
    * been turned down. One row holds one status, so without these the organizer
@@ -389,6 +434,27 @@ export async function deleteEntriesForTournament(tournamentId: string): Promise<
   return entries.length
 }
 
+/**
+ * Removes every entry belonging to a club that is going away.
+ *
+ * The mirror of `deleteEntriesForTournament`, and needed for the same reason:
+ * an entry is keyed by the tournament, so a row about a deleted club stays
+ * reachable from the organiser's side and shows as an application from a club
+ * whose name nothing can resolve.
+ */
+export async function deleteEntriesForTeam(teamId: string): Promise<number> {
+  const entries = await entriesForTeam(teamId)
+  for (const entry of entries) {
+    await ddb.send(
+      new DeleteCommand({
+        TableName: TABLES.ENTRIES,
+        Key: { tournamentId: entry.tournamentId, teamId: entry.teamId },
+      }),
+    )
+  }
+  return entries.length
+}
+
 export async function entriesForTeam(teamId: string): Promise<Entry[]> {
   return queryAll<Entry>({
     TableName: TABLES.ENTRIES,
@@ -398,12 +464,23 @@ export async function entriesForTeam(teamId: string): Promise<Entry[]> {
   })
 }
 
+/**
+ * Records the answer to an application or an invitation.
+ *
+ * `expected` makes the write conditional on the status the caller read, the way
+ * `putEntry` does and for the same reason: an invitation and its withdrawal are
+ * written by two different people, and accepting one the organiser withdrew a
+ * moment ago would put a club in a competition nobody currently wants it in.
+ * Left out, the write lands unconditionally — which is what the organiser's own
+ * decision on an application it has already read has always done.
+ */
 export async function decideEntry(
   tournamentId: string,
   teamId: string,
   status: EntryStatus,
   decidedBy: string,
   note?: string,
+  expected?: EntryStatus,
 ): Promise<void> {
   await ddb.send(
     new UpdateCommand({
@@ -417,7 +494,9 @@ export async function decideEntry(
         ':decidedBy': decidedBy,
         ':decidedAt': new Date().toISOString(),
         ':note': note ?? null,
+        ...(expected ? { ':expected': expected } : {}),
       },
+      ...(expected ? { ConditionExpression: '#status = :expected' } : {}),
     }),
   )
 }

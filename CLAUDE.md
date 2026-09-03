@@ -209,6 +209,86 @@ row as `previousNote` and `previousDecidedAt` — but a pending application is
 returned rather than rewritten, so every repeat costs the organiser one
 deliberate answer.
 
+**A club is found only if it says so.** `team.discoverable` is opt-in and
+written by the people who may edit the club — its managers, or the owning
+organiser while nobody has taken it on. `GET /admin/clubs/directory` returns the
+clubs that have set it, the caller's own left out, projected through
+`toDirectoryClub`: a crest, a name, the squad size and who to ask. Who to ask is
+a person where the club has a manager and the owning league where it has none,
+and it is never an email address — an organiser who wants the club invites it
+through the API, and the club decides whether to answer.
+
+**An invitation is a question, and only the club answers it.** `POST
+/admin/tournaments/:id/invitations` writes an entry with status `invited` and
+stops; `PATCH /manager/tournaments/:t/entry`, guarded by `assertManagesTeam`, is
+the club accepting or refusing. The organiser's own decide route refuses
+`accepted` on an `invited` row (`organiserMayDecide`), or asking would be a
+formality — the person who wrote the invitation would accept it in the next
+request. A club invited to a competition it turns out to want anyway may press
+apply: `POST /manager/entries` treats an existing `invited` row as an acceptance
+rather than writing `pending` over the organiser's decision.
+
+The three ways of saying no are three statuses because the wrong one is a hole.
+`declined` is the organiser turning down an application and may be reversed —
+it was their answer. `refused` is the club turning down an invitation and may
+not be. `withdrawn` is the organiser taking back an offer nobody had answered.
+`organiserMayDecide` is a whitelist of transitions rather than a rule about the
+current status, and it is a whitelist because the first version was not: it
+refused `accepted` on a `refused` row and left `refused -> declined` open, so
+one extra request laundered the club's refusal into a decision of the
+organiser's own and the acceptance came free. `pending` and `declined` are
+theirs to answer either way; `invited` and `accepted` they may only take back;
+`refused` and `withdrawn` are ends, and asking again means issuing another
+invitation for the club to answer. Turning an `accepted` entry down does not
+remove the club from `teamIds`, so it is refused while the club is still in the
+season — the teams list is written on the settings screen, which shows what
+changing it costs the fixtures first.
+
+Every write to an entry is conditional on the status the caller read, because
+both sides write this row and an organiser withdrawing at the moment the club
+accepted used to mark it declined while the club sat in `teamIds`.
+
+**A club can play in a league that does not own it, so `/admin/teams` returns
+it.** Marked `visiting: true` and projected through `toVisitingTeam` — a named
+list, like every other projection here, because these records are schemaless and
+a field added to `TEAM_FIELDS` next year would otherwise reach every organiser
+the club visits on the day it is written. The squad comes with it, hidden
+players included: this organiser names the teamsheets and enters the club in the
+competition, and a player they cannot see is a player who cannot be fielded.
+What does not come is the club as a club — `managerUserIds`, and every player's
+date of birth. `visiting` is what the screens read to know they may not edit it
+(`canEditClub`, `clubIsMineToEdit` on `TeamPage`), because the API refuses those
+writes and a control that saves into a refusal is worse than no control.
+
+What opens that record is the club having agreed — an entry marked `accepted` —
+and not its id appearing in `teamIds`. Both halves matter: `POST
+/admin/tournaments` and `PATCH /admin/tournaments/:id` pass their bodies
+through, so an organiser could type any club id in the system into their own
+season, and once `/admin/teams` resolved those ids that would have handed over
+the club's squad. `assertEnterableTeams` refuses to *add* a club this organiser
+neither owns nor has an accepted entry for — ids already in the season are left
+alone, because some of them predate entries and refusing them would leave a live
+season nobody can save — and `/admin/teams` applies the same rule on the way
+out. The design problem underneath is that a tournament has never had a
+`TEAM_FIELDS` of its own; this closes the field that names other people's
+records and does not pay the debt.
+
+Still open, and older than any of this: `matches` is passed through by the same
+two routes. `assertClubsAreInTournament` guards the playoff-round and match
+routes, but a `matches` array written whole can still name a club that is not in
+`teamIds` — which puts a club nobody asked in the organiser's fixture list and,
+through `sideOfTeam`, offers its manager a teamsheet in a competition it has
+nothing to do with. It leaks no record, and the registration rules stop most of
+what could be written; fixing it means checking every fixture in a body the draw
+generators and the repair tools legitimately send whole.
+
+**Deleting takes the entries with it.** A competition and a club both do it now
+(`deleteEntriesForTournament`, `deleteEntriesForTeam`). An entry is keyed by its
+tournament, so a row left behind is an invitation on the club's page that it can
+neither accept nor dismiss, or an application from a club whose name nothing can
+resolve. For the same reason the club's answer route reads the tournament
+*after* its decline branch: refusing a dead invitation has to work.
+
 **An invitation can carry a competition.** A link issued from a tournament's
 settings screen holds its `tournamentId`, and claiming it both hands over the
 club and enters it — the organiser inviting a coach mid-setup has already

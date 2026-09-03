@@ -360,7 +360,10 @@ export default function TeamsPage() {
                 )}
                 <div>
                   <h3 className="text-xl font-semibold">{team.name}</h3>
-                  <p className="text-sm opacity-80">{team.players.length} players</p>
+                  <p className="text-sm opacity-80">
+                    {team.players.length} players
+                    {team.visiting && <span className="opacity-70"> · guest club</span>}
+                  </p>
                   {!currentOrganizer && (
                     <p className="text-xs opacity-60">
                       {getOrganizerById(team.organizerId)?.name ??
@@ -418,6 +421,11 @@ export default function TeamsPage() {
                       />
                     </div>
                   </>
+                ) : team.visiting ? (
+                  <p className="text-sm opacity-70">
+                    Plays here as a guest from another organiser's league. Its crest, colours and
+                    squad are theirs.
+                  </p>
                 ) : (
                   <p className="text-sm opacity-70">
                     Run by its own manager: the crest, the colours and the squad are theirs.
@@ -431,12 +439,17 @@ export default function TeamsPage() {
                   >
                     Manage
                   </Link>
-                  <button
-                    onClick={() => deleteTeam(team.id)}
-                    className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
-                  >
-                    Delete
-                  </button>
+                  {/* Deleting a club another organiser owns is refused by the
+                      API, and it is not something this organiser should be
+                      offered: removing it from a season is on the season. */}
+                  {!team.visiting && (
+                    <button
+                      onClick={() => deleteTeam(team.id)}
+                      className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

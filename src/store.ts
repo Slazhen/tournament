@@ -814,10 +814,34 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Scoped to the organizer being administered — everything, for a super admin,
   // who administers all of them.
+  //
+  // A club another organizer owns is kept when it is playing in one of these
+  // competitions: the API marks those `visiting` and sends them for exactly
+  // this reason, and every screen that names a club — the table, the fixture
+  // list, the teamsheet — reads this list. Filtering on the owner alone left
+  // an accepted club as an id with no record behind it.
   getOrganizerTeams: () => {
-    const { teams, currentOrganizerId, superAdmin } = get()
+    const { teams, tournaments, currentOrganizerId, superAdmin } = get()
     if (!currentOrganizerId) return superAdmin ? teams : []
-    return teams.filter(team => team.organizerId === currentOrganizerId)
+
+    // The super admin's list is every club there is and carries no `visiting`
+    // flag — the API only marks the ones it sends an organizer. Scoped to one
+    // organizer they need the same clubs that organizer needs, so the guests
+    // are worked out from the competitions instead.
+    if (superAdmin) {
+      const guests = new Set<string>()
+      for (const tournament of tournaments) {
+        if (tournament.organizerId !== currentOrganizerId) continue
+        for (const id of tournament.teamIds ?? []) guests.add(id)
+      }
+      return teams.filter(
+        team => team.organizerId === currentOrganizerId || guests.has(team.id),
+      )
+    }
+
+    return teams.filter(
+      team => team.organizerId === currentOrganizerId || team.visiting === true,
+    )
   },
 
   getOrganizerTournaments: () => {

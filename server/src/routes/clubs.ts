@@ -1,6 +1,7 @@
 import { badRequest, forbidden, notFound } from '../lib/http.js'
 import {
   assertCanAccessOrganizer,
+  assertIsOrganizer,
   assertManagesTeam,
   isClaimedTeam,
   isSuperAdmin,
@@ -8,7 +9,7 @@ import {
 } from '../lib/auth.js'
 import { assertPasswordStrength, generateId, generateSalt, hashPassword } from '../lib/passwords.js'
 import { createSession } from '../lib/sessions.js'
-import { ddb, PutCommand } from '../lib/ddb.js'
+import { ddb, PutCommand, scanAll } from '../lib/ddb.js'
 import { SITE_URL, TABLES } from '../lib/env.js'
 import { record } from '../lib/audit.js'
 import { adminRead } from '../lib/cache.js'
@@ -25,6 +26,7 @@ import {
   peekInvite,
   putEntry,
   type Entry,
+  type EntryStatus,
   type TeamInvite,
 } from '../repos-clubs.js'
 import {
@@ -35,7 +37,7 @@ import {
 } from '../lib/lineups.js'
 import { locateMatch } from '../lib/matches.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
-import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
+import { toPublicUser, type AuthUser, type Team, type Tournament } from '../lib/types.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
 
@@ -228,6 +230,93 @@ export function toClubTournament(
   return visible
 }
 
+/**
+ * A club as a stranger's search shows it.
+ *
+ * A whitelist, like every other projection in this file, and a short one: a
+ * crest, a name, how many players it has, and who to ask. These records are
+ * schemaless and a `PATCH` writes what it is given, so a field invented next
+ * year must not travel to other organisers by default.
+ *
+ * The name is a person where there is one — the manager who runs the club and
+ * who ticked the box — and the league that owns the record where there is not,
+ * because an unclaimed club that lists itself is its organiser saying so. An
+ * email address is in neither case: an organiser who wants this club invites it
+ * here, and the club decides whether to answer.
+ */
+export type DirectoryClub = {
+  id: string
+  name: string
+  logo?: string
+  colors: string[]
+  crestColor?: string | null
+  crestOpaqueBackground?: boolean | null
+  squadSize: number
+  ownerName?: string
+  ownerKind: 'manager' | 'organizer'
+}
+
+export function toDirectoryClub(
+  team: Team,
+  managerNames: Map<string, string>,
+  organizerNames: Map<string, string>,
+): DirectoryClub {
+  const named = (team.managerUserIds ?? [])
+    .map((id) => managerNames.get(id))
+    .filter((name): name is string => Boolean(name))
+
+  const players = Array.isArray(team.players)
+    ? (team.players as unknown[]).filter(Boolean)
+    : []
+
+  // A club with managers is run by them whatever their accounts are called, so
+  // a manager who never set a display name must not make the club read as one
+  // the league itself listed — that is the line the organiser decides on.
+  const claimed = (team.managerUserIds ?? []).length > 0
+
+  return {
+    id: team.id,
+    name: team.name,
+    logo: typeof team.logo === 'string' ? team.logo : undefined,
+    colors: Array.isArray(team.colors) ? (team.colors as string[]) : [],
+    crestColor: (team.crestColor as string | null | undefined) ?? undefined,
+    crestOpaqueBackground: (team.crestOpaqueBackground as boolean | null | undefined) ?? undefined,
+    squadSize: players.length,
+    ownerName: named.length > 0 ? named.join(', ') : claimed ? undefined : organizerNames.get(team.organizerId),
+    ownerKind: claimed ? 'manager' : 'organizer',
+  }
+}
+
+/**
+ * Whether an organiser may write this answer onto an entry in this state.
+ *
+ * Accepting is the club's word and not the organiser's. An invitation the club
+ * has not answered must not become a place in the competition at the hands of
+ * the person who issued it — otherwise asking is a formality and "the club
+ * agreed" means nothing. Withdrawing what they offered is theirs to do, and
+ * that is what turning down an `invited` row is.
+ */
+export function organiserMayDecide(
+  current: EntryStatus,
+  next: 'accepted' | 'declined',
+): boolean {
+  // A club is waiting on them, or they turned its application down: that
+  // answer was theirs and is theirs to reverse.
+  if (current === 'pending' || current === 'declined') return true
+
+  // Their own offer, or a club already in. They may take either back; they may
+  // never grant it, because the yes is the club's to say.
+  if (current === 'invited' || current === 'accepted') return next === 'declined'
+
+  // `refused` and `withdrawn` are ends, and this is a whitelist rather than a
+  // fallthrough because the first version of it was not: refusing `accepted` on
+  // a `refused` row while leaving `refused -> declined` open meant the organiser
+  // could launder a club's refusal into their own decision in one extra request
+  // and then accept it. To ask again they issue another invitation, and the
+  // club answers again.
+  return false
+}
+
 export function registerClubRoutes(router: Router<RequestContext>): void {
   /* ---------------- invitations ---------------- */
 
@@ -417,6 +506,151 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     }
   })
 
+  /* ---------------- finding a club to invite ---------------- */
+
+  /**
+   * The clubs that have said other organisers may find them.
+   *
+   * A club is nobody's to advertise but its own, so this list is opt-in and the
+   * flag is written by the same people who may edit the club — its managers, or
+   * the organiser who owns it while it has none. Everything else about a club
+   * is already reachable somewhere; what is new here is being *findable* by
+   * somebody who does not run the league it plays in.
+   *
+   * The caller's own clubs are left out. They are already in `/admin/teams`,
+   * and an organiser does not invite a club they can simply tick.
+   *
+   * The whole directory in one answer rather than a query per keystroke: it is
+   * a short list, every round trip from here costs a third of a second, and the
+   * browser can narrow a list it already holds.
+   */
+  router.get('/admin/clubs/directory', async (ctx) => {
+    const user = await ctx.user()
+    assertIsOrganizer(user)
+
+    const all = (await teams.listAll(adminRead)) as Team[]
+    const open = all.filter(
+      (team) => team.discoverable === true && team.organizerId !== user.organizerId,
+    )
+    if (open.length === 0) return []
+
+    // One scan of the accounts table for the whole list rather than a read per
+    // manager, the same arrangement `managersOfTeams` uses in admin.ts. Only
+    // the name: an email address is the club's to give out, and an organiser
+    // who wants this club invites it here rather than writing to it.
+    const wanted = new Set<string>()
+    for (const team of open) for (const id of team.managerUserIds ?? []) wanted.add(id)
+
+    const managerNames = new Map<string, string>()
+    if (wanted.size > 0) {
+      for (const account of await scanAll<AuthUser>(TABLES.AUTH_USERS)) {
+        if (!wanted.has(account.id) || account.isActive === false) continue
+        if (account.displayName) managerNames.set(account.id, account.displayName)
+      }
+    }
+
+    const organizerNames = new Map(
+      (await organizers.list(adminRead)).map((organizer) => [organizer.id, organizer.name]),
+    )
+
+    return open
+      .map((team) => toDirectoryClub(team, managerNames, organizerNames))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  })
+
+  /**
+   * Inviting a club into a competition.
+   *
+   * The mirror of `POST /manager/entries`, and deliberately the same row: an
+   * entry is one club's participation in one competition however the question
+   * came to be asked, and two records for it would be two answers to "is this
+   * club in" waiting to disagree.
+   *
+   * What it is not is an entry. A club that has listed itself has agreed to be
+   * asked, not to play — so this writes `invited` and stops, and the club's own
+   * manager is the only person who can turn that into a place in the season.
+   */
+  router.post('/admin/tournaments/:id/invitations', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const teamId = typeof ctx.body.teamId === 'string' ? ctx.body.teamId : ''
+    if (!teamId) throw badRequest('teamId is required')
+
+    const team = (await teams.getOrThrow(teamId)) as Team
+    // Being findable and being invitable are the same permission: the club said
+    // other organisers may approach it, and nothing else here did.
+    if (team.discoverable !== true) {
+      throw forbidden('That club is not open to invitations from other organisers')
+    }
+
+    if ((tournament.teamIds ?? []).includes(teamId)) {
+      throw badRequest('This club is already in that competition')
+    }
+
+    // A season every match of which has a score is over, and adding a club to
+    // it changes a finished table. The application route refuses this for the
+    // same reason.
+    if (seasonStatus(tournament) === 'finished') {
+      throw badRequest('That competition has finished')
+    }
+
+    const existing = await getEntry(params.id!, teamId)
+    // An invitation already sitting there is returned rather than rewritten, so
+    // pressing the button twice does not reset the date the club is looking at.
+    if (existing?.status === 'invited') return existing
+    if (existing?.status === 'pending') {
+      throw badRequest('This club has already applied — answer the application instead')
+    }
+    if (existing?.status === 'accepted') {
+      throw badRequest('This club has already been accepted')
+    }
+
+    const invitation: Entry = {
+      tournamentId: params.id!,
+      teamId,
+      organizerId: tournament.organizerId,
+      status: 'invited',
+      requestedBy: user.id,
+      requestedByRole: user.role,
+      // The club may have no other way to read it: `/manager/overview` carries
+      // nothing about a competition the club is not in, and an unpublished one
+      // is on no public list either.
+      tournamentName: tournament.name,
+      teamOrganizerId: team.organizerId,
+      createdAt: new Date().toISOString(),
+      // A club that has said no before, or an offer taken back, is worth the
+      // organiser seeing on the row rather than a request that reads as new —
+      // the same reason an application carries what it replaced.
+      previousNote: existing?.note || undefined,
+      previousDecidedAt: existing?.decidedAt || undefined,
+    }
+
+    let entry: Entry
+    try {
+      entry = await putEntry(invitation, existing ? existing.status : null)
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      // The club answered, or applied, between the read and the write. That is
+      // the current state of this entry and the organiser should see it rather
+      // than an invitation written on top of it.
+      const current = await getEntry(params.id!, teamId)
+      if (current) return current
+      throw error
+    }
+
+    await record(user, {
+      action: 'entry.invite',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Invited ${team.name} to join ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return entry
+  })
+
   /* ---------------- a manager's own clubs ---------------- */
 
   /**
@@ -502,6 +736,16 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     }
 
     const existing = await getEntry(tournamentId, teamId)
+
+    // The organiser has already asked, and this is the club saying yes. Writing
+    // a fresh `pending` row on top would throw away a decision the organiser
+    // has made and ask them to make it again — and the club pressing "apply"
+    // for a competition it was invited to means exactly what accepting means.
+    if (existing && existing.status === 'invited') {
+      await acceptInvitation(user, tournament, team as Team, existing)
+      return { ...existing, status: 'accepted' as const, decidedBy: user.id }
+    }
+
     // A pending application is returned rather than rewritten. That is also
     // what stops a club badgering an organizer: asking again is only possible
     // once the organizer has answered, so every repeat costs them one
@@ -553,6 +797,76 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     })
 
     return entry
+  })
+
+  /**
+   * The club's answer to an invitation.
+   *
+   * The other half of `POST /admin/tournaments/:id/invitations`, and the reason
+   * that route stops at `invited`: an organiser may offer a place, and only the
+   * club may take it. Guarded by `assertManagesTeam`, so it is the club's own
+   * managers who answer — or, for a club nobody has taken on, the organiser who
+   * owns it, who is the only person there is to ask.
+   */
+  router.patch('/manager/tournaments/:tournamentId/entry', async (ctx, params) => {
+    const user = await ctx.user()
+
+    const teamId = typeof ctx.body.teamId === 'string' ? ctx.body.teamId : ''
+    if (!teamId) throw badRequest('teamId is required')
+
+    const status = ctx.body.status
+    if (status !== 'accepted' && status !== 'declined') {
+      throw badRequest("status must be 'accepted' or 'declined'")
+    }
+
+    const team = (await teams.getOrThrow(teamId)) as Team
+    assertManagesTeam(user, team)
+
+    const entry = await getEntry(params.tournamentId!, teamId)
+    if (!entry) throw notFound('There is no invitation for that club')
+    if (entry.status !== 'invited') {
+      throw badRequest('That invitation has already been answered')
+    }
+
+    assertMayAnswerFor(user, team, entry)
+
+    // Deliberately after the decline branch below, which must work whatever
+    // became of the competition: an organiser can delete a season with an
+    // invitation outstanding, and a question the club can neither accept nor
+    // dismiss would sit on its page for good.
+    const tournament = await tournaments.get(params.tournamentId!)
+
+    if (status === 'declined') {
+      try {
+        await decideEntry(params.tournamentId!, teamId, 'refused', user.id, undefined, 'invited')
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+        // The organiser took the invitation back a second ago. Nothing is left
+        // to refuse, and saying so beats a 500 on a button that was on screen.
+        throw badRequest('That invitation was withdrawn — reload to see where this stands')
+      }
+      if (tournament) {
+        await record(user, {
+          action: 'entry.invite_refused',
+          entity: 'tournament',
+          entityId: params.tournamentId!,
+          summary: `${team.name} turned down the invitation to join ${tournament.name}`,
+          organizerId: tournament.organizerId,
+        })
+      }
+      return { ok: true }
+    }
+
+    if (!tournament) throw notFound('That competition no longer exists')
+
+    // A season that has finished cannot take a new club, whoever asked first.
+    // An invitation outlives the season it was issued for.
+    if (seasonStatus(tournament) === 'finished') {
+      throw badRequest('That competition has finished')
+    }
+
+    await acceptInvitation(user, tournament, team, entry)
+    return { ok: true }
   })
 
   /**
@@ -680,7 +994,17 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     // and `undefined !== undefined` is false — the inline version let them
     // through on any row whose organizer id was missing.
     assertCanAccessOrganizer(user, tournament.organizerId)
-    return entriesForTournament(params.id!)
+
+    // The club's name with each row. A club from another organiser can apply
+    // here and be invited here, and it is not in the caller's own list of
+    // clubs — so the screen that asks them to decide used to say "A club".
+    // The name and nothing else: the record itself is not theirs.
+    const rows = await entriesForTournament(params.id!)
+    if (rows.length === 0) return rows
+
+    const named = await teams.getMany(rows.map((row) => row.teamId))
+    const names = new Map(named.map((team) => [team.id, team.name]))
+    return rows.map((row) => ({ ...row, teamName: names.get(row.teamId) }))
   })
 
   /**
@@ -707,8 +1031,52 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const entry = await getEntry(params.id!, params.teamId!)
     if (!entry) throw notFound('No application from that club')
 
+    // An invitation this organiser issued is not theirs to accept: the club has
+    // not answered, and accepting for them would make the asking a formality.
+    // Turning it down is withdrawing what they offered, which is theirs.
+    if (!organiserMayDecide(entry.status, status)) {
+      throw badRequest(
+        entry.status === 'refused' || entry.status === 'withdrawn'
+          ? 'That invitation is closed — invite the club again if you want to ask'
+          : 'This club was invited and has not answered yet — only the club can accept',
+      )
+    }
+
+    // Marking an entry declined does not take the club out of the season — the
+    // teams list is written on the settings screen, which shows what changing
+    // it costs the fixtures first. Doing it here left the club playing with no
+    // record of having agreed, which is also what `/admin/teams` reads to
+    // decide whether to name it: the season would have gone on with a club
+    // nothing could resolve.
+    if (status === 'declined' && (tournament.teamIds ?? []).includes(params.teamId!)) {
+      throw badRequest(
+        'This club is playing in the competition — take it out of the season first',
+      )
+    }
+
+    // The three other ways into a season all refuse a finished one; this was
+    // the way round them, through an application nobody answered in time.
+    if (status === 'accepted' && seasonStatus(tournament) === 'finished') {
+      throw badRequest('That competition has finished')
+    }
+
     const note = typeof ctx.body.note === 'string' ? ctx.body.note.trim() : undefined
-    await decideEntry(params.id!, params.teamId!, status, user.id, note)
+    const withdrawing = entry.status === 'invited'
+    // Taking back an offer the club has not answered is its own status: a row
+    // marked `declined` is an application the organiser turned down and may
+    // reverse, and this is not that.
+    const written: EntryStatus = withdrawing && status === 'declined' ? 'withdrawn' : status
+
+    // Conditional on the state the decision was read in. Both sides write this
+    // row: an organiser withdrawing an invitation at the moment the club
+    // accepted it would otherwise mark it declined while the club was already
+    // in `teamIds`, which is the same bug `putEntry` was made conditional for.
+    try {
+      await decideEntry(params.id!, params.teamId!, written, user.id, note, entry.status)
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      throw badRequest('That club answered first — reload to see where this stands')
+    }
 
     const team = await teams.get(params.teamId!)
 
@@ -720,16 +1088,82 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     }
 
     await record(user, {
-      action: `entry.${status}`,
+      action: `entry.${written}`,
       entity: 'tournament',
       entityId: params.id!,
-      summary: `${status === 'accepted' ? 'Accepted' : 'Turned down'} ${
-        team?.name ?? 'a club'
-      } for ${tournament.name}`,
+      summary: withdrawing
+        ? `Withdrew the invitation for ${team?.name ?? 'a club'} to join ${tournament.name}`
+        : `${status === 'accepted' ? 'Accepted' : 'Turned down'} ${
+            team?.name ?? 'a club'
+          } for ${tournament.name}`,
       organizerId: tournament.organizerId,
     })
 
     return { ok: true }
+  })
+}
+
+/**
+ * Whether this caller may answer this invitation in the club's name.
+ *
+ * A super admin can move a club to another organiser, and an invitation is not
+ * torn up when they do. The club's own managers answer for it wherever it
+ * sits — the question was put to them. An organiser answering because nobody
+ * has claimed the club is standing in for a club that belonged to somebody else
+ * when the question was asked, and that is not theirs to answer.
+ * `enterInvitedTournament` re-checks the same pairing on a `TeamInvite`, for the
+ * same reason and with the same argument.
+ */
+function assertMayAnswerFor(user: AuthUser, team: Team, entry: Entry): void {
+  if (managesTeam(user, team)) return
+  if (entry.teamOrganizerId && entry.teamOrganizerId !== team.organizerId) {
+    throw forbidden('This club has changed hands since it was invited')
+  }
+}
+
+/**
+ * The club taking up an invitation.
+ *
+ * Two callers: the club answering the invitation on its own page, and the club
+ * applying to a competition it turns out to have been invited to already.
+ *
+ * The write is conditional on the row still saying `invited`, because the
+ * organiser can withdraw what they offered and a club accepting a second later
+ * would otherwise put itself into a season nobody currently wants it in. The
+ * decision is recorded before the club is added, the same order the organiser's
+ * own route uses: an entry marked accepted with the club missing from `teamIds`
+ * is a competition the organiser can still add it to, and the reverse is a
+ * place in a season with no record of who agreed to it.
+ */
+async function acceptInvitation(
+  user: AuthUser,
+  tournament: Tournament,
+  team: Team,
+  entry: Entry,
+): Promise<void> {
+  // Here rather than only in the route that answers on screen: the apply route
+  // reaches this too, by treating a club's application to a competition it was
+  // already invited to as the acceptance it plainly is.
+  assertMayAnswerFor(user, team, entry)
+
+  try {
+    await decideEntry(tournament.id, team.id, 'accepted', user.id, undefined, 'invited')
+  } catch (error) {
+    if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+    // The organiser took the invitation back between the read and this write.
+    // The condition did its job; what is left is saying so rather than
+    // answering 500 to somebody who pressed a button that was on screen.
+    throw badRequest('That invitation was withdrawn — reload to see where this stands')
+  }
+
+  await tournaments.addTeam(tournament.id, team.id)
+
+  await record(user, {
+    action: 'entry.invite_accepted',
+    entity: 'tournament',
+    entityId: tournament.id,
+    summary: `${team.name} accepted the invitation to join ${tournament.name}`,
+    organizerId: tournament.organizerId,
   })
 }
 
@@ -784,7 +1218,10 @@ async function enterInvitedTournament(
     const existing = await getEntry(tournament.id, team.id)
     const overruled = existing && existing.status !== 'accepted' ? existing.status : null
     if (overruled) {
-      await decideEntry(tournament.id, team.id, 'accepted', invite.createdBy)
+      // Conditional on what was read: this overrules an answer, which is worth
+      // doing to the answer that is actually there and not to whichever one
+      // landed while the claim was in flight.
+      await decideEntry(tournament.id, team.id, 'accepted', invite.createdBy, undefined, overruled)
     }
 
     if (!added && !overruled) return
