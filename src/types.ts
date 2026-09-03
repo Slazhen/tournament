@@ -314,6 +314,30 @@ export type Tournament = {
    */
   championTeamId?: string
   logo?: string
+  /**
+   * The logo's own dominant colour, read from the file when it was uploaded.
+   *
+   * The public season header is painted in it, exactly as a club's header is
+   * painted in `Team.crestColor`, and for the same reason: it cannot be read
+   * later. The image bucket answers without CORS headers, so a canvas that has
+   * drawn a published logo refuses its pixels, and the logo goes to S3 through
+   * a presigned POST that no Lambda ever sees the bytes of — `utils/crest.ts`
+   * covers both. Null where a logo was replaced by one that could not be
+   * measured, so the header stops using the colour of a logo that is gone.
+   */
+  logoColor?: string | null
+  /** Whether that logo is artwork on a solid plate rather than a cut-out mark. */
+  logoOpaqueBackground?: boolean | null
+  /**
+   * The colour the organiser chose for this season's header, overriding the one
+   * read from the logo.
+   *
+   * Separate from `logoColor` rather than written over it: uploading a new logo
+   * re-reads the automatic colour, and a deliberate choice must survive that.
+   * Absent means "whatever the logo says", which is what every season did
+   * before this field existed.
+   */
+  themeColor?: string | null
   backgroundImage?: string
   playoffBrackets?: PlayoffBracket[]
   location?: {

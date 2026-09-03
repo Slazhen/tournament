@@ -13,6 +13,7 @@ import { clubService, tournamentService } from '../lib/data'
 import type { ClubManager, Entry } from '../lib/data'
 import type { Team, Tournament } from '../types'
 import { hasSquadEntry, registeredPlayers } from '../utils/squads'
+import { competitionColor } from '../utils/crest'
 import Trophy from '../components/Trophy'
 import { IconLink, IconUser, IconUsers } from '../components/icons'
 import {
@@ -332,6 +333,8 @@ export default function TournamentSettingsPage() {
             />
           </div>
         </div>
+
+        <HeaderColour tournament={tournament} onChange={updateTournament} />
       </section>
 
       {/* ---------- Visibility ---------- */}
@@ -1213,5 +1216,82 @@ function SquadRow({
         </div>
       )}
     </li>
+  )
+}
+
+/**
+ * The colour the season's public header is painted in.
+ *
+ * Two values sit behind one control. `logoColor` is read from the logo when it
+ * is uploaded and is what almost every competition should use; `themeColor` is
+ * the organiser saying otherwise, and is kept separate so that uploading a new
+ * logo re-reads the automatic colour without discarding a deliberate choice.
+ * Clearing the override is therefore a real action and not the same as picking
+ * the colour the logo happens to have today — which is also why every season
+ * that predates this reads as "no colour" rather than as a chosen grey.
+ */
+function HeaderColour({
+  tournament,
+  onChange,
+}: {
+  tournament: Tournament
+  onChange: (id: string, updates: Partial<Tournament>) => void
+}) {
+  const automatic = tournament.logoColor ?? null
+  const chosen = tournament.themeColor ?? null
+  const stored = competitionColor(tournament)
+  // React maps `onChange` on a colour input to the DOM `input` event, which
+  // fires all the way through a drag across the picker. Saving from it would
+  // send a request per pixel of travel, each one rewriting the season record.
+  // The value is held here and written once the hand has stopped moving —
+  // waiting for a blur alone would lose a colour picked and then navigated
+  // away from, since the picker keeps focus while it is open.
+  const [draft, setDraft] = useState<string | null>(null)
+  const shown = draft ?? stored
+
+  useEffect(() => {
+    if (draft === null) return
+    if (draft.toLowerCase() === stored.toLowerCase()) return
+    const timer = setTimeout(() => onChange(tournament.id, { themeColor: draft }), 600)
+    return () => clearTimeout(timer)
+  }, [draft, stored, tournament.id, onChange])
+
+  return (
+    <div>
+      <span className="text-sm opacity-70">Header colour</span>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <span
+          aria-hidden
+          className="w-10 h-10 rounded-lg border border-white/20 shrink-0"
+          style={{ backgroundColor: shown }}
+        />
+        <input
+          type="color"
+          aria-label="Header colour"
+          value={shown}
+          onChange={(event) => setDraft(event.target.value)}
+          className="w-16 h-10 rounded-lg bg-white/5 border border-white/20 cursor-pointer"
+        />
+        {chosen && (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(null)
+              onChange(tournament.id, { themeColor: null })
+            }}
+            className="text-sm opacity-70 hover:opacity-100 transition-opacity underline underline-offset-4"
+          >
+            {automatic ? 'Use the logo’s colour' : 'Clear'}
+          </button>
+        )}
+      </div>
+      <span className="text-xs opacity-50">
+        {chosen
+          ? 'Chosen by hand. Uploading a new logo will not change it.'
+          : automatic
+            ? 'Read from the logo. Pick a colour to override it.'
+            : 'This logo was uploaded before colours were read from them. Upload it again, or pick a colour here.'}
+      </span>
+    </div>
   )
 }

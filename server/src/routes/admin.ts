@@ -30,6 +30,7 @@ import {
   refusedByRegistration,
   sideOfTeam,
 } from '../lib/lineups.js'
+import { assertCompetitionColours, assertTeamColours } from '../lib/colours.js'
 import { locateMatch } from '../lib/matches.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { findUserByCredential } from './auth.js'
@@ -481,8 +482,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // that a manager's presence closes a club to them, a `managerUserIds` in
     // the create body makes a club its own creator cannot edit, and an id
     // naming no account cannot be taken off the list afterwards.
+    const fields = pick(ctx.body, TEAM_FIELDS)
+    assertTeamColours(fields)
     const team = await teams.create({
-      ...pick(ctx.body, TEAM_FIELDS),
+      ...fields,
       name,
       organizerId,
       // Every screen reads this as a list. A club stored without the key is
@@ -518,32 +521,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     }
     if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
 
-    // Colours are written into CSS declarations on pages anybody can read, so
-    // they are checked here rather than trusted: the browser computes them, and
-    // a browser is not a place a value becomes safe. `colors` was never checked
-    // and is printed through the `background` shorthand on the match pages,
-    // which accepts `url(...)` — a club manager could have made every visitor
-    // to a public match fetch an address of their choosing.
-    //
-    // `null` clears, as everywhere else: a crest that could not be measured
-    // must be able to take the previous crest's colour off the club with it.
-    const colour = (value: unknown) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)
-    if ('crestColor' in updates && updates.crestColor !== null && !colour(updates.crestColor)) {
-      throw badRequest('crestColor must be a #rrggbb colour')
-    }
-    if (
-      'crestOpaqueBackground' in updates &&
-      updates.crestOpaqueBackground !== null &&
-      typeof updates.crestOpaqueBackground !== 'boolean'
-    ) {
-      throw badRequest('crestOpaqueBackground must be true or false')
-    }
-    if ('colors' in updates) {
-      const colors = updates.colors
-      if (!Array.isArray(colors) || colors.length === 0 || colors.length > 2 || !colors.every(colour)) {
-        throw badRequest('colors must be one or two #rrggbb colours')
-      }
-    }
+    assertTeamColours(updates)
 
     // A club changing hands takes its manager list with it, and the previous
     // owner's own link to it was granted by owning it. Done before the move
@@ -783,6 +761,11 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const user = await ctx.user()
     const organizerId = resolveOrganizerId(user, ctx.body.organizerId)
     const name = requireString(ctx.body.name, 'name')
+    // The create passes the body through, exactly as the PATCH below does, so
+    // the colour check has to run here too — otherwise a competition created
+    // with `themeColor: "url(…)"` keeps it, since a later PATCH only checks
+    // the fields it is given.
+    assertCompetitionColours(ctx.body)
     const tournament = await tournaments.create({ ...ctx.body, name, organizerId })
     await record(user, {
       action: 'tournament.create',
@@ -823,6 +806,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     if (refused.length > 0) {
       throw badRequest(`${refused.join(' and ')} cannot be edited here`)
     }
+
+    // This body is still passed through rather than picked from a named list —
+    // the debt described above — so the colours have to be named here.
+    assertCompetitionColours(ctx.body)
 
     await tournaments.update(params.id!, ctx.body)
     await record(user, {

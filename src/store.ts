@@ -1000,10 +1000,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+  /**
+   * The logo, and the colour the season's public header is painted in.
+   *
+   * Read here for the same reason a club's crest is: the published image is
+   * served without CORS headers, so nothing can measure it later. A logo that
+   * could not be read clears the previous one's colour rather than leaving the
+   * header painted in the colour of a logo the competition no longer has. The
+   * organiser's own `themeColor` is deliberately not touched — it overrides
+   * this, and changing the logo is not a decision to abandon it.
+   */
   uploadTournamentLogo: async (tournamentId: string, file: File) => {
     try {
       const url = await uploadImage(file, { kind: 'tournament', id: tournamentId })
-      await get().updateTournament(tournamentId, { logo: url })
+      const appearance = await readCrestAppearance(file)
+      await get().updateTournament(tournamentId, {
+        logo: url,
+        logoColor: appearance?.crestColor ?? null,
+        logoOpaqueBackground: appearance?.crestOpaqueBackground ?? null,
+      })
     } catch (error) {
       console.error('Store: Error uploading tournament logo:', error)
     }

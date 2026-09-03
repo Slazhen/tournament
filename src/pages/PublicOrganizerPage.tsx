@@ -6,6 +6,7 @@ import PublicHeader from '../components/PublicHeader'
 import NotFound from '../components/NotFound'
 import { IconBall, IconShield, IconTrophy, IconUsers } from '../components/icons'
 import { currentSeason, getSeasonUrl, groupIntoSeries, seasonLabel } from '../utils/seasons'
+import { headerColor } from '../utils/crest'
 
 /**
  * An organiser's own page: /homebush_futsal.
@@ -232,9 +233,16 @@ export default function PublicOrganizerPage() {
                         className="w-9 h-9 rounded-full object-contain bg-white/5 shrink-0"
                       />
                     ) : (
+                      // `background`, the shorthand, printed the club's stored
+                      // colour raw — and the shorthand accepts `url(...)`.
+                      // Clubs created before the API checked `colors` can hold
+                      // one, so both halves of that fix apply here: the value
+                      // goes through `headerColor`, which returns a colour or
+                      // the fallback and nothing else, and it is set on
+                      // `backgroundColor`, which cannot fetch anything.
                       <span
                         className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 border border-white/15"
-                        style={{ background: club.colors[0] || 'rgba(255,255,255,0.05)' }}
+                        style={{ backgroundColor: headerColor(club) }}
                       >
                         <IconShield size={16} />
                       </span>

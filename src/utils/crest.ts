@@ -61,6 +61,19 @@ export const shade = (hex: string, amount: number): string =>
 export const inkOn = (background: string): string => (luminance(background) > 0.42 ? '#0d1013' : '#ffffff')
 
 /**
+ * The same colour at a given opacity.
+ *
+ * A club's colour is washed across half a fixture row rather than filling it,
+ * so the row keeps the dark ground the rest of the page is built on. Written as
+ * `rgba()` rather than by appending two hex digits, because the value is also
+ * read back by nothing and guessed at by everybody.
+ */
+export const translucent = (hex: string, alpha: number): string => {
+  const [r, g, b] = rgbOf(hex)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/**
  * The colour a club's header is painted in.
  *
  * The crest wins where it has been read, the club's first colour stands in for
@@ -72,6 +85,23 @@ export function headerColor(team: { crestColor?: string | null; colors?: string[
   const chosen = [team.crestColor, team.colors?.[0]].find((value) => typeof value === 'string' && HEX.test(value))
   const base = chosen ?? '#3B82F6'
   return luminance(base) > 0.62 ? blend(base, '#0a0d10', 0.3) : base
+}
+
+/**
+ * The colour a competition's header is painted in.
+ *
+ * The organiser's own choice first, then the colour read from the logo when it
+ * was uploaded, then the same blue every club without a measured crest falls
+ * back to. The hex test in `headerColor` is what stands between a stored value
+ * and a CSS declaration on a page anybody can read: the API refuses anything
+ * but `#rrggbb`, and this refuses it a second time, because the record is
+ * schemaless and older ones were written before that check existed.
+ */
+export function competitionColor(tournament: {
+  themeColor?: string | null
+  logoColor?: string | null
+}): string {
+  return headerColor({ crestColor: tournament.themeColor ?? tournament.logoColor })
 }
 
 /** Sample size. Large enough to keep the badge's own colours, small enough to be instant. */

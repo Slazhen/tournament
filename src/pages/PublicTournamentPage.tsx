@@ -19,6 +19,7 @@ import {
 } from '../utils/standings'
 import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
+import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
 
 const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
 
@@ -109,6 +110,10 @@ export default function PublicTournamentPage() {
   // Every public season of the same competition, for the switcher.
   const [seasons, setSeasons] = useState<TournamentSummary[]>([])
   const [organizerSlug, setOrganizerSlug] = useState<string>('')
+  // Who runs it. The slug routes already return the organiser in the same
+  // answer, so naming them in the header costs no request; the old id route
+  // does not, and the header simply leaves the line out.
+  const [organizer, setOrganizer] = useState<SeasonOrganizer | null>(null)
 
   // Handle both old and new URL structures
   const actualTournamentId = useMemo(() => {
@@ -129,6 +134,7 @@ export default function PublicTournamentPage() {
     setTournament(null)
     setTeams([])
     setSeasons([])
+    setOrganizer(null)
 
     const loadData = async () => {
       try {
@@ -143,6 +149,7 @@ export default function PublicTournamentPage() {
             setTournament(bundle?.tournament ?? null)
             setTeams(bundle?.teams ?? [])
             setSeasons(bundle?.seasons ?? [])
+            setOrganizer(bundle?.organizer ?? null)
             setOrganizerSlug(decodeURIComponent(orgSlug).trim())
           }
           return
@@ -161,6 +168,7 @@ export default function PublicTournamentPage() {
             setTournament(bundle?.tournament ?? null)
             setTeams(bundle?.teams ?? [])
             setSeasons(bundle?.seasons ?? [])
+            setOrganizer(bundle?.organizer ?? null)
             setOrganizerSlug(org)
 
             if (bundle?.tournament) {
@@ -353,6 +361,17 @@ export default function PublicTournamentPage() {
       ? `/${organizerSlug}/${slugify(competition)}/${slugify(thisSeason)}/matches/${encodeURIComponent(match.id)}`
       : `/public/tournaments/${tournament.id}/matches/${encodeURIComponent(match.id)}`
 
+  /**
+   * One fixture, in the two clubs' own colours.
+   *
+   * It used to be a grey card like every other grey card on the page, while the
+   * same fixture on its own page was a plate split down the middle and painted
+   * in the two crests' colours. A season is thirty of these in a column, so
+   * this is the restrained form of that: the ground stays dark and each club's
+   * colour washes in from its own edge, under its crest, fading out well before
+   * the score. The seam the scoreboard needs is not needed here — the two
+   * washes never meet.
+   */
   const renderMatch = (match: any) => {
     const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
     const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
@@ -363,61 +382,25 @@ export default function PublicTournamentPage() {
     const isMatchUpcoming = status === 'upcoming'
 
     return (
-      <div key={match.id} className={`group relative bg-white/5 backdrop-blur-sm rounded-xl p-3 sm:p-6 hover:bg-white/10 transition-all duration-300 border ${
-        isMatchFinished ? 'border-green-500/20' :
-        isMatchUpcoming ? 'border-blue-500/20' :
-        'border-yellow-500/20'
-      }`}>
-        {/* A bare coloured dot sat here. Nothing on the page said what
-            the colours meant, so it read as decoration. The elimination flag
-            sits beside it — it was in the data all along and never reached the
-            page, so a knockout game looked like any other fixture. */}
-        <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1">
-          {match.isElimination && (
-            <span className="text-[10px] sm:text-xs uppercase tracking-wide font-medium px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-400/20">
-              Elimination
-            </span>
-          )}
-          <span className={`text-[10px] sm:text-xs uppercase tracking-wide font-medium px-2 py-0.5 rounded-full ${
-            isMatchFinished ? 'bg-green-500/15 text-green-300' :
-            isMatchUpcoming ? 'bg-blue-500/15 text-blue-300' :
-            'bg-yellow-500/15 text-yellow-300'
-          }`}>
-            {isMatchFinished ? 'Full time' : isMatchUpcoming ? 'Scheduled' : 'In progress'}
-          </span>
-        </div>
+      <div
+        key={match.id}
+        className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] hover:border-white/20 transition-colors"
+      >
+        <SideWash team={homeTeam} side="home" />
+        <SideWash team={awayTeam} side="away" />
 
-        <div className="flex items-center justify-between">
+        <div className="relative flex items-center justify-between p-3 sm:p-4 pt-7 sm:pt-8">
           {/* Home Team */}
-          <div className="flex items-center gap-2 sm:gap-4 flex-1">
-            {homeTeam?.logo ? (
-              <div className="relative">
-                <img
-    loading="lazy"
-    decoding="async" 
-                  src={homeTeam.logo} 
-                  alt={`${homeTeam.name} logo`}
-                  className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
-                />
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
-              </div>
-            ) : (
-              <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                <span className="text-sm sm:text-lg font-bold text-white">
-                  {homeTeam?.name?.charAt(0) || 'H'}
-                </span>
-              </div>
-            )}
-            <div>
-              <Link 
-                to={publicTeamUrl(match.homeTeamId, tournament?.id)}
-                className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300"
-              >
-                {homeTeam?.name || 'Unknown Team'}
-              </Link>
-            </div>
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+            <ClubBadge team={homeTeam} fallback="H" />
+            <Link
+              to={publicTeamUrl(match.homeTeamId, tournament?.id)}
+              className="text-white font-semibold text-sm sm:text-lg truncate hover:text-blue-200 transition-colors"
+            >
+              {homeTeam?.name || 'Unknown Team'}
+            </Link>
           </div>
-          
+
           {/* Score/VS — and the way into the match itself.
 
               The score was a plain block of text. Everybody pressed it, nothing
@@ -425,68 +408,67 @@ export default function PublicTournamentPage() {
               the shot count was reachable only by typing its address. */}
           <Link
             to={matchHref(match)}
-            className="text-center px-2 sm:px-6 rounded-lg hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 transition-colors py-1"
+            className="shrink-0 text-center px-2 sm:px-5 py-1 rounded-lg hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 transition-colors"
             aria-label={`Match details: ${homeTeam?.name || 'Home'} against ${awayTeam?.name || 'Away'}`}
           >
             {isMatchFinished ? (
-              <div className="space-y-1 sm:space-y-2">
-                <div className="text-xl sm:text-3xl font-bold text-white">
-                  {match.homeGoals} - {match.awayGoals}
-                </div>
+              <div className="text-xl sm:text-3xl font-bold text-white tabular-nums leading-none drop-shadow">
+                {match.homeGoals} - {match.awayGoals}
               </div>
             ) : (
-              <div className="space-y-1 sm:space-y-2">
-                {/* The status now has one home, the badge in the corner. */}
-                <div className="text-sm sm:text-xl font-semibold text-gray-300">vs</div>
-              </div>
+              // The status now has one home, the badge in the corner.
+              <div className="text-sm sm:text-lg font-semibold text-gray-300 leading-none">vs</div>
             )}
 
-            {/* Match Date & Time */}
             {(() => {
               const when = kickOff(match)
               if (!when) return null
               return (
-                <div className="text-xs sm:text-sm text-gray-300 mt-1 sm:mt-2">
+                <div className="text-[11px] sm:text-xs text-gray-300 mt-1.5 leading-tight">
                   {when.day && <div>{when.day}</div>}
                   <div>{when.time}</div>
                 </div>
               )
             })()}
 
-            <div className="text-[10px] sm:text-xs text-gray-400 mt-1 underline decoration-white/20 underline-offset-4">
+            <div className="text-[10px] sm:text-[11px] text-gray-400 mt-1 underline decoration-white/20 underline-offset-4">
               Match details
             </div>
           </Link>
-          
+
           {/* Away Team */}
-          <div className="flex items-center gap-2 sm:gap-4 flex-1 justify-end">
-            <div className="text-right">
-              <Link 
-                to={publicTeamUrl(match.awayTeamId, tournament?.id)}
-                className="text-white font-semibold text-sm sm:text-lg group-hover:text-blue-300 transition-colors duration-300"
-              >
-                {awayTeam?.name || 'Unknown Team'}
-              </Link>
-            </div>
-            {awayTeam?.logo ? (
-              <div className="relative">
-                <img
-    loading="lazy"
-    decoding="async" 
-                  src={awayTeam.logo} 
-                  alt={`${awayTeam.name} logo`}
-                  className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
-                />
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
-              </div>
-            ) : (
-              <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                <span className="text-sm sm:text-lg font-bold text-white">
-                  {awayTeam?.name?.charAt(0) || 'A'}
-                </span>
-              </div>
-            )}
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 justify-end">
+            <Link
+              to={publicTeamUrl(match.awayTeamId, tournament?.id)}
+              className="text-white font-semibold text-sm sm:text-lg truncate text-right hover:text-blue-200 transition-colors"
+            >
+              {awayTeam?.name || 'Unknown Team'}
+            </Link>
+            <ClubBadge team={awayTeam} fallback="A" />
           </div>
+        </div>
+
+        {/* A bare coloured dot sat here. Nothing on the page said what
+            the colours meant, so it read as decoration. The elimination flag
+            sits beside it — it was in the data all along and never reached the
+            page, so a knockout game looked like any other fixture. */}
+        <div className="absolute top-2 right-2 sm:top-2.5 sm:right-3 flex items-center gap-1">
+          {match.isElimination && (
+            <span className="text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 rounded-full bg-red-500/20 text-red-200 border border-red-400/25">
+              Elimination
+            </span>
+          )}
+          <span
+            className={`text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 rounded-full ${
+              isMatchFinished
+                ? 'bg-green-500/20 text-green-200'
+                : isMatchUpcoming
+                  ? 'bg-blue-500/20 text-blue-200'
+                  : 'bg-yellow-500/20 text-yellow-200'
+            }`}
+          >
+            {isMatchFinished ? 'Full time' : isMatchUpcoming ? 'Scheduled' : 'In progress'}
+          </span>
         </div>
       </div>
     )
@@ -529,141 +511,17 @@ export default function PublicTournamentPage() {
         <div className="absolute bottom-32 right-1/3 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl animate-pulse delay-3000"></div>
       </div>
 
-      {/* Header */}
-      <div className="relative z-10">
-        <div className="container mx-auto px-4 py-16 text-center">
-          <div className="glass rounded-2xl p-8 max-w-4xl mx-auto shadow-2xl border border-white/20">
-            {tournament.logo && (
-              <div className="mb-6 flex justify-center">
-                <div className="relative">
-                  <div className="absolute inset-0 rounded-2xl blur-2xl opacity-30 bg-gradient-to-r from-blue-400/20 to-purple-400/20" />
-                  {/* A round frame with heavy padding turned a wide club crest
-                      into a small sticker floating in a grey disc. */}
-                  <div className="relative bg-white/[0.07] rounded-2xl p-3 border border-white/15">
-                    <img
-                      decoding="async"
-                      src={tournament.logo}
-                      alt={`${tournament.name} logo`}
-                      className="w-28 h-28 object-contain"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-              {competition}
-            </h1>
-
-            {/* Which season is on screen, and how to reach the others. */}
-            {seasons.length > 1 ? (
-              <div className="mb-5 flex flex-wrap items-center justify-center gap-2">
-                {seasons.map((season) => {
-                  const isCurrent = season.id === tournament.id
-                  return (
-                    <Link
-                      key={season.id}
-                      to={seasonHref(season)}
-                      aria-current={isCurrent ? 'page' : undefined}
-                      className={`px-3 py-1.5 rounded-full text-sm inline-flex items-center gap-1.5 border transition-colors ${
-                        isCurrent
-                          ? 'bg-white/15 border-white/25 text-white font-medium'
-                          : 'bg-white/[0.03] border-white/10 text-gray-300 hover:text-white hover:bg-white/10'
-                      }`}
-                    >
-                      {season.status === 'finished' && <Trophy size={14} />}
-                      {seasonLabel(season)}
-                    </Link>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="mb-5 text-gray-300">{thisSeason}</p>
-            )}
-
-            {/* A finished season has a champion, and that is the headline. */}
-            {champion && (
-              <div className="mb-6 inline-flex items-center gap-4 rounded-2xl border border-amber-400/25 bg-gradient-to-r from-amber-500/[0.14] to-transparent px-5 py-3.5">
-                <Trophy size={44} />
-                <div className="text-left">
-                  <div className="text-[11px] uppercase tracking-[0.08em] text-amber-200/70">
-                    Champions {thisSeason}
-                  </div>
-                  <Link
-                    to={publicTeamUrl(champion.id, tournament?.id)}
-                    className="text-lg sm:text-xl font-bold hover:text-amber-200 transition-colors"
-                  >
-                    {champion.name}
-                  </Link>
-                </div>
-                {champion.logo && (
-                  <img
-                    loading="lazy"
-                    decoding="async"
-                    src={champion.logo}
-                    alt=""
-                    className="w-12 h-12 rounded-full object-cover border border-amber-400/30"
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Venue, links and the size of the tournament. */}
-            <div className="space-y-4">
-              {venue && (
-                <div className="flex items-center justify-center gap-2 text-base sm:text-lg text-gray-200">
-                  <LocationIcon size={18} />
-                  {venue.href ? (
-                    <a
-                      href={venue.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-white underline decoration-white/25 underline-offset-4 transition-colors"
-                    >
-                      {venue.label}
-                    </a>
-                  ) : (
-                    <span>{venue.label}</span>
-                  )}
-                </div>
-              )}
-
-              {(tournament.socialMedia?.facebook || tournament.socialMedia?.instagram) && (
-                <div className="flex justify-center gap-3">
-                  {tournament.socialMedia?.facebook && (
-                    <a
-                      href={tournament.socialMedia.facebook}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/15 px-4 py-2 rounded-lg transition-colors"
-                    >
-                      <FacebookIcon size={18} />
-                      <span className="text-sm">Facebook</span>
-                    </a>
-                  )}
-                  {tournament.socialMedia?.instagram && (
-                    <a
-                      href={tournament.socialMedia.instagram}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/15 px-4 py-2 rounded-lg transition-colors"
-                    >
-                      <InstagramIcon size={18} />
-                      <span className="text-sm">Instagram</span>
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {/* Two coloured dots used to sit in front of these numbers,
-                  decorating nothing. */}
-              <p className="text-sm text-gray-300">
-                {tournament.teamIds?.length || 0} teams · {tournament.matches?.length || 0} matches
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SeasonHeader
+        tournament={tournament}
+        organizer={organizer}
+        organizerSlug={organizerSlug}
+        competition={competition}
+        thisSeason={thisSeason}
+        seasons={seasons}
+        seasonHref={seasonHref}
+        champion={champion}
+        venue={venue}
+      />
 
       {/* Content */}
       <div className="container mx-auto px-4 py-8 relative z-10">
@@ -1742,4 +1600,332 @@ function defaultOpenRounds(groups: any[][]): boolean[] {
   const lastComplete = complete.lastIndexOf(true)
   const firstIncomplete = complete.indexOf(false)
   return groups.map((_, index) => index === lastComplete || index === firstIncomplete)
+}
+
+/** Only the parts of the organiser this page prints. */
+type SeasonOrganizer = { id: string; name: string; logo?: string }
+
+/**
+ * The competition's own plate, at the top of its season.
+ *
+ * What stood here was a centred grey glass box: the same box on every
+ * competition in the system, with the logo shrunk into a rounded frame in the
+ * middle of it and half a screen of empty space around the name. A club's page
+ * has been painted in its own colour for a while — `PublicTeamPage` and
+ * `MatchScoreboard` — and there was no reason a competition should be the one
+ * thing on the site with no face. This is the same treatment: the colour behind
+ * it, the logo blown up and dimmed as the ground, the mark and the name on top.
+ *
+ * The colour comes from `utils/crest.ts`: the organiser's choice where they made
+ * one, the logo's own dominant colour where it was read at upload, and the
+ * fallback blue otherwise — which is what every season uploaded before this
+ * shows until its logo is uploaded again or a colour is picked in settings.
+ */
+function SeasonHeader({
+  tournament,
+  organizer,
+  organizerSlug,
+  competition,
+  thisSeason,
+  seasons,
+  seasonHref,
+  champion,
+  venue,
+}: {
+  tournament: any
+  organizer: SeasonOrganizer | null
+  organizerSlug: string
+  competition: string
+  thisSeason: string
+  seasons: TournamentSummary[]
+  seasonHref: (season: TournamentSummary) => string
+  champion: any
+  venue: { label: string; href?: string } | null
+}) {
+  const base = competitionColor(tournament)
+  const ink = inkOn(shade(base, -0.2))
+  const background = `linear-gradient(15deg, ${shade(base, -0.4)} 0%, ${shade(base, -0.12)} 55%, ${shade(base, 0.08)} 100%)`
+
+  return (
+    <div className="relative z-10 container mx-auto px-4 pt-6 pb-8">
+      <section className="relative w-full max-w-6xl mx-auto rounded-2xl overflow-hidden border border-white/10">
+        <div aria-hidden className="absolute inset-0" style={{ background }} />
+
+        {/* The logo as the ground, running off the right edge. The radial mask
+            fades it into the colour; a logo uploaded with its background still
+            on it — a JPEG, or a PNG on a white plate — is dimmed further and
+            drained of colour, since that plate is the largest thing in it. */}
+        {tournament.logo && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 -right-10 -translate-y-1/2 h-[260px] w-[260px] sm:h-[320px] sm:w-[320px]"
+            style={{
+              opacity: tournament.logoOpaqueBackground ? 0.12 : 0.18,
+              filter: tournament.logoOpaqueBackground ? 'grayscale(1) contrast(0.8)' : undefined,
+              maskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
+              WebkitMaskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
+            }}
+          >
+            <img decoding="async" src={tournament.logo} alt="" className="w-full h-full object-contain" />
+          </div>
+        )}
+
+        {/* Enough shadow on the left for the name to sit on, whatever the logo
+            behind it turns out to be. */}
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(100deg, rgba(0,0,0,.5) 0%, rgba(0,0,0,.18) 52%, rgba(255,255,255,.05) 100%)',
+          }}
+        />
+
+        <div className="relative p-5 sm:p-8 flex items-start gap-4 sm:gap-7">
+          {/* `object-contain`: a logo that is not square loses its edges to a
+              box it was never drawn for under `object-cover`. */}
+          <div className="w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl p-1.5">
+            {tournament.logo ? (
+              <img
+                decoding="async"
+                src={tournament.logo}
+                alt={`${competition} logo`}
+                className="w-full h-full object-contain rounded-xl"
+              />
+            ) : (
+              <div className="opacity-80">
+                <IconTrophy size={34} />
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {/* Who runs it, as a line above the name rather than a page a
+                visitor has to guess exists. */}
+            {organizer && organizerSlug && (
+              <Link
+                to={`/${organizerSlug}`}
+                className="inline-flex items-center gap-2 mb-1.5 hover:opacity-100 opacity-80 transition-opacity"
+                style={{ color: ink }}
+              >
+                {organizer.logo && (
+                  <img
+                    decoding="async"
+                    src={organizer.logo}
+                    alt=""
+                    className="w-5 h-5 rounded-full object-cover border border-white/25"
+                  />
+                )}
+                <span className="text-xs sm:text-sm font-medium uppercase tracking-[0.08em] truncate">
+                  {organizer.name}
+                </span>
+              </Link>
+            )}
+
+            <h1
+              className="text-2xl sm:text-4xl md:text-5xl font-bold drop-shadow-lg leading-tight"
+              style={{ color: ink }}
+            >
+              {competition}
+            </h1>
+
+            {/* Which season is on screen, and how to reach the others. */}
+            {seasons.length > 1 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {seasons.map((season) => {
+                  const isCurrent = season.id === tournament.id
+                  return (
+                    <Link
+                      key={season.id}
+                      to={seasonHref(season)}
+                      aria-current={isCurrent ? 'page' : undefined}
+                      className={`px-3 py-1 rounded-full text-sm inline-flex items-center gap-1.5 border transition-colors ${
+                        isCurrent
+                          ? 'bg-white/20 border-white/30 font-semibold'
+                          : 'bg-black/20 border-white/15 hover:bg-white/15'
+                      }`}
+                      style={{ color: ink }}
+                    >
+                      {season.status === 'finished' && <Trophy size={14} />}
+                      {seasonLabel(season)}
+                    </Link>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm font-medium opacity-85" style={{ color: ink }}>
+                {thisSeason}
+              </p>
+            )}
+
+            {/* The venue, the size of the season and the accounts, on one line
+                each rather than in the stack of centred blocks this replaced. */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" style={{ color: ink }}>
+              {venue && (
+                <span className="inline-flex items-center gap-1.5 opacity-90">
+                  <LocationIcon size={16} />
+                  {venue.href ? (
+                    <a
+                      href={venue.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline decoration-white/30 underline-offset-4 hover:opacity-100"
+                    >
+                      {venue.label}
+                    </a>
+                  ) : (
+                    <span>{venue.label}</span>
+                  )}
+                </span>
+              )}
+              <span className="opacity-80">
+                {tournament.teamIds?.length || 0} teams · {tournament.matches?.length || 0} matches
+              </span>
+              {tournament.socialMedia?.facebook && (
+                <a
+                  href={tournament.socialMedia.facebook}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Facebook"
+                  aria-label={`${competition} on Facebook`}
+                  className="opacity-90 hover:opacity-100 hover:scale-110 transition-all drop-shadow"
+                >
+                  <FacebookIcon size={20} />
+                </a>
+              )}
+              {tournament.socialMedia?.instagram && (
+                <a
+                  href={tournament.socialMedia.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Instagram"
+                  aria-label={`${competition} on Instagram`}
+                  className="opacity-90 hover:opacity-100 hover:scale-110 transition-all drop-shadow"
+                >
+                  <InstagramIcon size={20} />
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* A finished season has a champion, and that is the headline — but it
+              is the club's news and not the competition's, so it keeps the
+              amber it has everywhere else rather than taking the season's
+              colour. */}
+          {champion && (
+            <Link
+              to={publicTeamUrl(champion.id, tournament?.id)}
+              className="hidden md:flex shrink-0 items-center gap-3 rounded-2xl border border-amber-300/30 bg-black/35 backdrop-blur-sm px-4 py-3 hover:bg-black/45 transition-colors"
+            >
+              <Trophy size={36} />
+              <div className="text-left min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.08em] text-amber-200/80">
+                  Champions {thisSeason}
+                </div>
+                <div className="text-base font-bold text-white truncate">{champion.name}</div>
+              </div>
+            </Link>
+          )}
+        </div>
+
+        {/* The champion again, under the name, where there is no room beside it. */}
+        {champion && (
+          <Link
+            to={publicTeamUrl(champion.id, tournament?.id)}
+            className="relative md:hidden flex items-center gap-3 border-t border-white/15 bg-black/30 px-5 py-3"
+          >
+            <Trophy size={28} />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.08em] text-amber-200/80">
+                Champions {thisSeason}
+              </div>
+              <div className="text-sm font-bold text-white truncate">{champion.name}</div>
+            </div>
+          </Link>
+        )}
+      </section>
+    </div>
+  )
+}
+
+/**
+ * One club's colour washing in from its own edge of a fixture row, with its
+ * crest behind it.
+ *
+ * Half the width, not the whole row: the wash has to be gone by the middle so
+ * the score reads on the dark ground whatever the two clubs wear, and two clubs
+ * in near-identical colours stay two clubs rather than one field. The crest is
+ * faint enough to be texture — it is already printed at full strength as the
+ * badge in front of it, and a second copy competing with the first is what
+ * makes a row like this look busy.
+ */
+function SideWash({ team, side }: { team: any; side: 'home' | 'away' }) {
+  if (!team) return null
+  // A club whose crest is near-black — and several are — has nothing to wash
+  // onto a dark row: its colour and the ground under it are the same, so the
+  // row comes out looking like the grey card this replaced. Lifted just far
+  // enough to read as a colour. The club header does not need this because it
+  // paints the whole plate, where black is a black plate and reads perfectly.
+  const measured = headerColor(team)
+  const base = luminance(measured) < 0.045 ? shade(measured, 0.3) : measured
+  const from = side === 'home' ? '90deg' : '270deg'
+
+  return (
+    <div
+      aria-hidden
+      className={`pointer-events-none absolute inset-y-0 w-1/2 ${side === 'home' ? 'left-0' : 'right-0'}`}
+    >
+      <div
+        className="absolute inset-0"
+        style={{
+          // Weak on purpose. At the strength the match page paints a whole half
+          // in, a column of thirty fixtures is a column of thirty coloured
+          // bands and nothing on it stands out; this is enough to say whose
+          // side is whose and no more.
+          background: `linear-gradient(${from}, ${translucent(base, 0.18)} 0%, ${translucent(base, 0.04)} 45%, rgba(0,0,0,0) 100%)`,
+        }}
+      />
+      {team.logo && (
+        <div
+          className={`absolute top-1/2 -translate-y-1/2 h-[120px] w-[120px] ${
+            side === 'home' ? '-left-8' : '-right-8'
+          }`}
+          style={{
+            opacity: team.crestOpaqueBackground ? 0.07 : 0.11,
+            filter: team.crestOpaqueBackground ? 'grayscale(1) contrast(0.8)' : undefined,
+            maskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
+            WebkitMaskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
+          }}
+        >
+          <img loading="lazy" decoding="async" src={team.logo} alt="" className="w-full h-full object-contain" />
+        </div>
+      )}
+      {/* The colour as an edge, so a club with no crest to wash still has one. */}
+      <div
+        className={`absolute inset-y-0 w-1 ${side === 'home' ? 'left-0' : 'right-0'}`}
+        style={{ backgroundColor: base }}
+      />
+    </div>
+  )
+}
+
+/** The crest in a fixture row, or the club's initial where there is none. */
+function ClubBadge({ team, fallback }: { team: any; fallback: string }) {
+  if (!team?.logo) {
+    return (
+      <div className="w-9 h-9 sm:w-11 sm:h-11 shrink-0 rounded-full bg-white/10 flex items-center justify-center border border-white/20">
+        <span className="text-sm font-bold text-white">{team?.name?.charAt(0) || fallback}</span>
+      </div>
+    )
+  }
+
+  return (
+    <img
+      loading="lazy"
+      decoding="async"
+      src={team.logo}
+      alt=""
+      className="w-9 h-9 sm:w-11 sm:h-11 shrink-0 rounded-full object-cover border border-white/25"
+    />
+  )
 }

@@ -531,6 +531,15 @@ round: a row whose player cannot be found still counts, under "Former player".
   told apart. Photographs go through `photo` (2000px) and `profile` (1200px);
   `server/scripts/optimize-images.mjs` has the same trap, because a team photo
   sits under the same key prefix as the crest.
+- **A competition has a colour too, and it has two sources.** The public season
+  header is painted the way a club's header is — `SeasonHeader` in
+  `PublicTournamentPage.tsx`, `competitionColor` in `utils/crest.ts`. It reads
+  `themeColor`, the colour the organiser picked in the season's settings, and
+  falls back to `logoColor`, read from the logo when it was uploaded exactly as
+  a crest is measured below. The two are separate fields on purpose: uploading
+  a new logo re-reads `logoColor`, and a colour somebody chose deliberately must
+  survive that. Every season that predates this has neither, so its header is
+  the fallback blue until the logo is uploaded again or a colour is picked.
 - **A crest is measured while the browser still holds the file.** The public
   club header is painted in `team.crestColor`, read from the image at upload
   time by `readCrestAppearance` in `src/utils/crest.ts` and saved beside
@@ -543,10 +552,22 @@ round: a row whose player cannot be found still counts, under "Former player".
 - **A colour is checked by the API, not by the browser that computed it.**
   `colors` went unvalidated for a long time and is printed into a `background`
   shorthand, which accepts `url(...)` — a club manager could have made every
-  visitor to a public match fetch an address of their choosing. The teams
-  `PATCH` now refuses anything but one or two `#rrggbb` values, and the pages
-  set `backgroundColor` rather than `background`. Both halves matter: the
-  validation stops it being stored, the property stops it being honoured.
+  visitor to a public match fetch an address of their choosing. Nothing but one
+  or two `#rrggbb` values is accepted now, and the pages set `backgroundColor`
+  rather than `background`. Both halves matter: the validation stops it being
+  stored, the property stops it being honoured.
+
+  Neither half was finished the first time, and both misses are the same
+  mistake in two shapes. The check lived inside the club `PATCH` alone, so a
+  club *created* with `colors: ["url(…)"]` kept the value — nothing re-checks a
+  field a later PATCH does not mention. And the organiser's own page still
+  printed `colors[0]` through the shorthand. So the checks live in
+  `server/src/lib/colours.ts` (`assertTeamColours`, `assertCompetitionColours`)
+  and run on every route that writes such a record, create included, with
+  `server/tests/colours.test.ts` over them; a page that prints a stored colour
+  passes it through `headerColor` first, which returns a colour or the fallback
+  and nothing else. **A validation that runs on the update and not on the
+  create has not been done.**
 - **The table is sorted deterministically.** `sortTeamsByStandings` used to end
   in a coin toss, so a season nobody had played — where every club ties on every
   criterion — dealt out different positions on every render.
