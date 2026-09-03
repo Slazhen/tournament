@@ -1,7 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAppStore } from '../store'
 import { useState, useEffect, useMemo } from 'react'
-import { uid } from '../utils/uid'
 import { findTournamentBySlug, getPublicTournamentUrl } from '../utils/urls'
 import { adminSeasonUrl } from '../utils/seasons'
 import { organizerService } from '../lib/data'
@@ -9,16 +8,14 @@ import type { Organizer, Player } from '../types'
 import MatchDateTime from '../components/MatchDateTime'
 import InlineInput from '../components/InlineInput'
 import InlineTextarea from '../components/InlineTextarea'
+import MatchEvents from '../components/MatchEvents'
 import {
-  IconBall,
   IconArrowLeft,
-  IconCard,
   IconClipboard,
 } from '../components/icons'
-import { playersForPicking, registeredPlayers } from '../utils/squads'
+import { registeredPlayers } from '../utils/squads'
 import { youtubeEmbedUrl } from '../utils/video'
-import { cardLabel, cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
-import type { CardType } from '../utils/matches'
+import { cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
 
 /**
  * The team totals somebody types in, in the order the table shows them.
@@ -26,6 +23,8 @@ import type { CardType } from '../utils/matches'
  * Goals are not one of them: the score is edited on the scoreboard, and the
  * cards are counted from the bookings.
  */
+type MatchTab = 'overview' | 'statistics' | 'lineups' | 'goals' | 'content'
+
 const STATISTIC_ROWS: Array<{
   label: string
   field: 'shots' | 'shotsOnTarget' | 'corners' | 'fouls' | 'possession'
@@ -72,7 +71,7 @@ export default function MatchPage() {
   const homeTeam = teams.find(t => t.id === match?.homeTeamId)
   const awayTeam = teams.find(t => t.id === match?.awayTeamId)
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'statistics' | 'lineups' | 'goals' | 'content'>('overview')
+  const [activeTab, setActiveTab] = useState<MatchTab>('overview')
 
   // The organizer running this competition, which is not the same as whoever is
   // signed in: the super admin runs none of them.
@@ -134,63 +133,6 @@ export default function MatchPage() {
     homeGoals: goals.filter(g => g.team === 'home').length,
     awayGoals: goals.filter(g => g.team === 'away').length,
   })
-
-  const updateGoal = (goalId: string, updates: Partial<{ minute: number; playerId: string; assistPlayerId?: string; type: 'goal' | 'penalty' | 'own_goal' }>) => {
-    if (!goalId) {
-      // Don't create goals automatically - this should only happen when explicitly adding goals
-      return
-    }
-
-    const goals = match.goals?.map(g => {
-      if (g.id !== goalId) return g
-      const merged = { ...g, ...updates }
-      // An own goal is put in by a player of the other side, so switching a
-      // goal into or out of that type leaves a scorer who plays for the wrong
-      // club — and an assist, which an own goal does not have.
-      if (updates.type !== undefined && updates.type !== g.type) {
-        const crossesSides = updates.type === 'own_goal' || g.type === 'own_goal'
-        if (crossesSides) merged.playerId = ''
-        if (updates.type === 'own_goal') merged.assistPlayerId = undefined
-      }
-      return merged
-    }) || []
-    updateMatch({ goals })
-  }
-
-  const createGoal = (team: 'home' | 'away', goalNumber: number) => {
-    const newGoal = {
-      id: uid(),
-      team,
-      playerId: '',
-      minute: 0,
-      type: 'goal' as 'goal' | 'penalty' | 'own_goal',
-      assistPlayerId: undefined,
-      goalNumber
-    }
-    const goals = [...(match.goals || []), newGoal]
-    updateMatch({ goals, ...scoreOf(goals) })
-  }
-
-  const createCard = (team: 'home' | 'away') => {
-    const cards = [
-      ...(match.cards ?? []),
-      { id: uid(), team, playerId: '', minute: 0, type: 'yellow' as CardType },
-    ]
-    updateMatch({ cards })
-  }
-
-  const updateCard = (
-    cardId: string,
-    updates: Partial<{ minute: number; playerId: string; type: CardType }>,
-  ) => {
-    updateMatch({
-      cards: (match.cards ?? []).map((card) => (card.id === cardId ? { ...card, ...updates } : card)),
-    })
-  }
-
-  const deleteCard = (cardId: string) => {
-    updateMatch({ cards: (match.cards ?? []).filter((card) => card.id !== cardId) })
-  }
 
   /**
    * One event gone, and the score with it. Written once: this was two calls,
@@ -384,16 +326,16 @@ export default function MatchPage() {
       {/* Tabs */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <div className="flex gap-2 mb-6">
-          {[
+          {([
             { id: 'overview', label: 'Overview' },
             { id: 'statistics', label: 'Statistics' },
             { id: 'lineups', label: 'Lineups' },
             { id: 'goals', label: 'Goals & Events' },
-            { id: 'content', label: 'Content' }
-          ].map(tab => (
+            { id: 'content', label: 'Content' },
+          ] satisfies Array<{ id: MatchTab; label: string }>).map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2 rounded-lg transition-all ${
                 activeTab === tab.id 
                   ? 'bg-white/20 text-white' 
@@ -454,7 +396,7 @@ export default function MatchPage() {
               <div>
                 <h3 className="font-semibold mb-4">Goals Timeline</h3>
                 <div className="space-y-2">
-                  {match.goals
+                  {[...match.goals]
                     .sort((a, b) => a.minute - b.minute)
                     .map(goal => (
                     <div key={goal.id} className="flex items-center justify-between p-3 glass rounded-lg">
@@ -603,301 +545,13 @@ export default function MatchPage() {
         )}
 
         {activeTab === 'goals' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-xl">Goals & Events</h3>
-              <div className="text-sm text-gray-400">
-                {match.homeGoals || 0} - {match.awayGoals || 0}
-              </div>
-            </div>
-            
-            {/* Add Goal Buttons */}
-            <div className="flex gap-4">
-              <button
-                onClick={() => {
-                  const homeGoalCount = match.goals?.filter(g => g.team === 'home').length || 0
-                  createGoal('home', homeGoalCount + 1)
-                }}
-                className="px-4 py-2 rounded-lg glass hover:bg-blue-500/20 transition-all border border-blue-400/30 text-blue-400"
-              >
-                + Add {homeTeam.name} Goal
-              </button>
-              <button
-                onClick={() => {
-                  const awayGoalCount = match.goals?.filter(g => g.team === 'away').length || 0
-                  createGoal('away', awayGoalCount + 1)
-                }}
-                className="px-4 py-2 rounded-lg glass hover:bg-red-500/20 transition-all border border-red-400/30 text-red-400"
-              >
-                + Add {awayTeam.name} Goal
-              </button>
-            </div>
-            
-            {/* Goals List */}
-            <div className="space-y-4">
-              {match.goals && match.goals.length > 0 ? (
-                match.goals
-                  .sort((a, b) => a.minute - b.minute)
-                  .map(goal => {
-                    const team = goal.team === 'home' ? homeTeam : awayTeam
-                    const isHomeTeam = goal.team === 'home'
-                    // Who is offered as the scorer: the other squad for an own
-                    // goal. Without this the only names on the list were the
-                    // team the goal counted for, so the player who actually put
-                    // it in could not be named at all and the field was left
-                    // empty — and the public page then had nothing to show.
-                    const scorerTeam = scorerSide(goal) === 'home' ? homeTeam : awayTeam
-                    const isOwnGoal = goal.type === 'own_goal'
-                    return (
-                      <div key={goal.id} className="glass rounded-xl p-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-4">
-                            <div className={`w-8 h-8 ${isHomeTeam ? 'bg-blue-500/20 border-blue-400/30' : 'bg-red-500/20 border-red-400/30'} rounded-full flex items-center justify-center border`}>
-                              <span className={`font-bold ${isHomeTeam ? 'text-blue-400' : 'text-red-400'}`}>
-                                {goal.goalNumber || 1}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              {team.logo && (
-                                <img
-              loading="lazy"
-              decoding="async" src={team.logo} alt={`${team.name} logo`} className="w-8 h-8 rounded-full object-cover" />
-                              )}
-                              <span className={`font-semibold ${isHomeTeam ? 'text-blue-400' : 'text-red-400'}`}>
-                                {team.name} Goal #{goal.goalNumber || 1}
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => deleteGoal(goal.id)}
-                            className="text-red-400 hover:text-red-300 transition-colors"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                        
-                        <div className="grid md:grid-cols-4 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium mb-2">Minute</label>
-                            <InlineInput
-                              type="number"
-                              min="1"
-                              max="120"
-                              value={goal.minute || ''}
-                              onCommit={(value) => updateGoal(goal.id, { minute: Number(value) })}
-                              className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
-                                isHomeTeam 
-                                  ? 'focus:border-blue-400/50 focus:ring-blue-400/20' 
-                                  : 'focus:border-red-400/50 focus:ring-red-400/20'
-                              }`}
-                              placeholder="Minute"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium mb-2">
-                              {isOwnGoal ? `Own goal by (${scorerTeam?.name ?? 'other team'})` : 'Scorer'}
-                            </label>
-                            <select
-                              value={goal.playerId || ''}
-                              onChange={(e) => updateGoal(goal.id, { playerId: e.target.value })}
-                              className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
-                                isHomeTeam 
-                                  ? 'focus:border-blue-400/50 focus:ring-blue-400/20' 
-                                  : 'focus:border-red-400/50 focus:ring-red-400/20'
-                              }`}
-                            >
-                              <option value="">{isOwnGoal ? 'Select Player' : 'Select Scorer'}</option>
-                              {playersForPicking(tournament, scorerTeam, goal.playerId).map(player => (
-                                <option key={player.id} value={player.id}>
-                                  {player.firstName} {player.lastName}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          {/* An own goal has no assist, so the field is not
-                              offered for one. */}
-                          <div className={isOwnGoal ? 'hidden' : ''}>
-                            <label className="block text-sm font-medium mb-2">Assist Provider</label>
-                            <select
-                              value={goal.assistPlayerId || ''}
-                              onChange={(e) => updateGoal(goal.id, { assistPlayerId: e.target.value || undefined })}
-                              className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
-                                isHomeTeam 
-                                  ? 'focus:border-blue-400/50 focus:ring-blue-400/20' 
-                                  : 'focus:border-red-400/50 focus:ring-red-400/20'
-                              }`}
-                            >
-                              <option value="">No Assist</option>
-                              {playersForPicking(tournament, team, goal.assistPlayerId).map(player => (
-                                <option key={player.id} value={player.id}>
-                                  {player.firstName} {player.lastName}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium mb-2">Type</label>
-                            <select
-                              value={goal.type || 'goal'}
-                              onChange={(e) => updateGoal(goal.id, { type: e.target.value as 'goal' | 'penalty' | 'own_goal' })}
-                              className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
-                                isHomeTeam 
-                                  ? 'focus:border-blue-400/50 focus:ring-blue-400/20' 
-                                  : 'focus:border-red-400/50 focus:ring-red-400/20'
-                              }`}
-                            >
-                              <option value="goal">Goal</option>
-                              <option value="penalty">Penalty</option>
-                              <option value="own_goal">Own Goal</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })
-              ) : (
-                <div className="glass rounded-xl p-8 text-center">
-                  <div className="mb-4 flex justify-center opacity-60"><IconBall size={36} /></div>
-                  <h4 className="font-semibold text-lg mb-2">No Goals Yet</h4>
-                  <p className="text-gray-400">Click the buttons above to add goals</p>
-                </div>
-              )}
-            </div>
-
-            {/* Bookings. Recorded here rather than as two numbers on the
-                statistics tab: who was booked is the part a visitor comes for,
-                and the totals fall out of the list on their own. */}
-            <div className="space-y-4 pt-4 border-t border-white/10">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-xl">Cards</h3>
-                <div className="text-sm text-gray-400 flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconCard size={14} variant="yellow" />
-                    {cardsShown.home.yellow + cardsShown.away.yellow}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconCard size={14} variant="red" />
-                    {cardsShown.home.red + cardsShown.away.red}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <button
-                  onClick={() => createCard('home')}
-                  className="px-4 py-2 rounded-lg glass hover:bg-blue-500/20 transition-all border border-blue-400/30 text-blue-400"
-                >
-                  + Add {homeTeam.name} card
-                </button>
-                <button
-                  onClick={() => createCard('away')}
-                  className="px-4 py-2 rounded-lg glass hover:bg-red-500/20 transition-all border border-red-400/30 text-red-400"
-                >
-                  + Add {awayTeam.name} card
-                </button>
-              </div>
-
-              {(match.cards?.length ?? 0) > 0 ? (
-                <div className="space-y-4">
-                  {/* Copied before sorting: the array belongs to the record this
-                      page is holding, and sorting it in place reorders it there. */}
-                  {[...(match.cards ?? [])]
-                    .sort((a, b) => a.minute - b.minute)
-                    .map(card => {
-                      const team = card.team === 'home' ? homeTeam : awayTeam
-                      const isHomeTeam = card.team === 'home'
-                      return (
-                        <div key={card.id} className="glass rounded-xl p-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <IconCard size={20} variant={card.type} />
-                              {team.logo && (
-                                <img
-                                  loading="lazy"
-                                  decoding="async"
-                                  src={team.logo}
-                                  alt={`${team.name} logo`}
-                                  className="w-8 h-8 rounded-full object-cover"
-                                />
-                              )}
-                              <span className={`font-semibold ${isHomeTeam ? 'text-blue-400' : 'text-red-400'}`}>
-                                {team.name} — {cardLabel(card.type)}
-                              </span>
-                            </div>
-                            <button
-                              onClick={() => deleteCard(card.id)}
-                              className="text-red-400 hover:text-red-300 transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </div>
-
-                          <div className="grid md:grid-cols-3 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium mb-2">Minute</label>
-                              <InlineInput
-                                type="number"
-                                min="1"
-                                max="120"
-                                value={card.minute || ''}
-                                onCommit={(value) => updateCard(card.id, { minute: Number(value) })}
-                                className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
-                                  isHomeTeam
-                                    ? 'focus:border-blue-400/50 focus:ring-blue-400/20'
-                                    : 'focus:border-red-400/50 focus:ring-red-400/20'
-                                }`}
-                                placeholder="Minute"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium mb-2">Player</label>
-                              <select
-                                value={card.playerId || ''}
-                                onChange={(e) => updateCard(card.id, { playerId: e.target.value })}
-                                className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
-                                  isHomeTeam
-                                    ? 'focus:border-blue-400/50 focus:ring-blue-400/20'
-                                    : 'focus:border-red-400/50 focus:ring-red-400/20'
-                                }`}
-                              >
-                                <option value="">Select player</option>
-                                {playersForPicking(tournament, team, card.playerId).map(player => (
-                                  <option key={player.id} value={player.id}>
-                                    {player.firstName} {player.lastName}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium mb-2">Card</label>
-                              <select
-                                value={card.type}
-                                onChange={(e) => updateCard(card.id, { type: e.target.value as CardType })}
-                                className={`w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:ring-2 transition-all ${
-                                  isHomeTeam
-                                    ? 'focus:border-blue-400/50 focus:ring-blue-400/20'
-                                    : 'focus:border-red-400/50 focus:ring-red-400/20'
-                                }`}
-                              >
-                                <option value="yellow">Yellow card</option>
-                                <option value="second_yellow">Second yellow</option>
-                                <option value="red">Red card</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                </div>
-              ) : (
-                <div className="glass rounded-xl p-8 text-center">
-                  <div className="mb-4 flex justify-center"><IconCard size={36} /></div>
-                  <h4 className="font-semibold text-lg mb-2">No cards yet</h4>
-                  <p className="text-gray-400">Add a booking with the buttons above</p>
-                </div>
-              )}
-            </div>
-          </div>
+          <MatchEvents
+            match={match}
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+            onSave={updateMatch}
+            onGoToLineups={() => setActiveTab('lineups')}
+          />
         )}
 
         {activeTab === 'content' && (

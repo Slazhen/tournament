@@ -529,6 +529,40 @@ one of them. The recount therefore happens only when the event list itself
 changes. The Statistics tab shows Goals as a number and no longer offers a second
 field for it.
 
+**An event is entered against the teamsheet, and written once.** The scorer,
+the assist and the booked player are picked from `lineups` for that side —
+`playersNamedInMatch` in `src/utils/squads.ts`, with shirt numbers — and not
+from the competition's registration: the person typing has the sheet in front
+of them, and a picker holding forty registered names is how the wrong one is
+chosen. An own goal takes the other side's sheet, the same flip `scorerSide`
+makes everywhere else. An empty picker therefore means a sheet nobody has
+filled in, and the screen says so and links to the Line-ups tab rather than
+falling back to the whole squad — falling back is how the sheet stays empty.
+Anyone already named on the event stays in the list whatever the sheet says, or
+correcting a teamsheet in April would silently empty the field naming a scorer
+from March. Naming a scorer does not add them to the sheet: the teamsheet is a
+record somebody makes deliberately, and `playerRecords` already credits an
+appearance to anyone with a goal.
+
+`src/components/MatchEvents.tsx` is that screen, and its rule is that nothing
+reaches the API until a form is submitted. Every field on the old one saved on
+change: a new goal was created empty with minute 0, sorted itself to the top of
+a list that was sorted in place — on the record this page was holding — and then
+jumped as soon as the minute was typed, while each select raced the last. The
+add form fills a whole goal in, one write adds it and recounts the score, and an
+existing event is corrected in the same fields behind Edit and Save. The goal's
+ordinal is derived from the sorted list rather than read from the stored
+`goalNumber`, which stayed as it was when an earlier goal was deleted; nothing
+writes that field any more. The type is three chips beside the scorer, not the
+fourth select in a row of four, because organisers were not finding Penalty at
+all.
+
+What the API does not check is who is named: `goals` and `cards` are in
+`MATCH_FIELDS` and travel whole, so the teamsheet rule is the screen's and not
+the server's. The teamsheet route itself refuses a player who may not be named
+(`nameableInMatch`); the events beside it do not, and a hand-made request can
+still credit a goal to anybody's player id.
+
 **The table is derived in one place too.** `src/utils/standings.ts` holds the
 tally, the group split and the elimination set; the season page and the match
 page both read it. They used to be about to hold a copy each, which is two
