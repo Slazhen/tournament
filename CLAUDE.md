@@ -591,6 +591,49 @@ Useful scripts, run with your own AWS credentials:
 - `server/scripts/list-users.mjs` — every account, its role and its state.
 - `server/scripts/set-password.mjs` — set a password directly and kill sessions.
 
+## What the site actually spends its time on
+
+Measured from a browser in Sydney, September 2026, so that the next person
+guesses less than the last one did.
+
+The static side is not the problem. HTML, JavaScript and CSS come from
+CloudFront edge hits in 30-50 ms, brotli-compressed, and the entry bundle is
+98 KB with a page chunk on top of it. Everything that feels slow is the API.
+
+**A cold Lambda answered in ten to eleven seconds.** That is what somebody
+arriving after a quiet period waits before the first data appears, and it is
+the whole of the "the site is slow" complaint. Four requests fired at once on a
+cold API are four containers starting, not one, which is why what a page asks
+for and what it does not ask for both matter. `MemorySize` and the source-map
+pair in `server/template.yaml` are set the way they are for this reason; the
+number to check before changing them again is Init Duration in a CloudWatch
+REPORT line.
+
+**A warm request costs 270-330 ms and almost all of it is distance.** The API
+and the image bucket are in us-east-1 and the audience is in Australia. No
+amount of code makes that number smaller: only CloudFront in front of the
+public routes, or moving the stack to ap-southeast-2, does. So the thing worth
+counting on a page is round trips, not bytes - the slug and season routes
+return the tournament, its teams, its seasons and the organiser in one answer
+for exactly this reason, and a page that needs a second dependent request
+should have the first one carry what it needs instead.
+
+**Scanning the tournaments table is not where the time goes.** It reads every
+match of every season, which sounds expensive and measured at 40-280 ms over
+the network baseline. Projecting the scan is also not available: `toSummary`
+derives `status` from the matches, so a summary needs them. Leave it alone
+until the table is much bigger than it is.
+
+**Nothing the admin store holds may be fetched on a public page.** A public
+address is a different branch of the router and never mounts the admin shell,
+so both `applyScope` and `setCurrentOrganizer` check `ADMIN_ROUTES` before
+loading the clubs and the competitions. Without that check a signed-in
+organiser reading a public page made three API calls where the page needed
+one, and on a cold API paid for three containers.
+
+One crest, fetched straight from S3 in us-east-1 with no CDN in front of it,
+took 796 ms. A page with a dozen clubs on it is doing that a dozen times.
+
 ## Traps
 
 - **Adding an import** to a file whose first imports are a multi-line `{ … }`

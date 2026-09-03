@@ -3,6 +3,7 @@ import { useAppStore } from './store'
 import { useEffect } from 'react'
 import AdminNavigation from './components/AdminNavigation'
 import { useSignedIn } from './contexts/AuthContext'
+import { isSignedIn } from './lib/api'
 
 /**
  * The shell around every page.
@@ -17,8 +18,14 @@ function App() {
   const loadOrganizers = useAppStore((s) => s.loadOrganizers)
   const location = useLocation()
 
+  // Only for somebody signed in. `organizerService.getAll` follows a token to
+  // /admin/organizers and a visitor without one to /public/organizers, and the
+  // landing page - the only page under this shell a visitor sees - already
+  // reads that list for itself. So for a visitor this was a second copy of a
+  // request the page had already made, on the slowest part of the load.
   useEffect(() => {
-    loadOrganizers()
+    if (!isSignedIn()) return
+    void loadOrganizers()
   }, [loadOrganizers])
 
   const signedIn = useSignedIn()

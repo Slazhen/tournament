@@ -297,10 +297,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     get().setCurrentOrganizer('')
-    if (superAdmin) {
-      // Unconditionally, unlike an organiser's load: the super admin's screens
-      // are reached from anywhere, and the alternative is an effect on every
-      // page that reads a club or a competition.
+    // The same guard an organiser's load has had since it was written. These
+    // two are a scan of every club and a scan of every competition, and a
+    // public page reads neither: /:orgSlug and everything under it is a
+    // different branch of the router, which does not even mount the admin
+    // shell. The super admin made both of them on every page they opened while
+    // signed in, so a public page they were reading as an organiser cost three
+    // API calls instead of one - and on a cold API, three containers starting
+    // rather than one. Every screen that shows the lists loads them itself:
+    // AdminPage for /dashboard, TeamsPage and TournamentsPage for their own,
+    // and the rest sit under ADMIN_ROUTES.
+    if (superAdmin && ADMIN_ROUTES.test(window.location.pathname)) {
       get().loadTeams()
       get().loadTournaments()
     }

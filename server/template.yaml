@@ -41,7 +41,16 @@ Globals:
   Function:
     Runtime: nodejs20.x
     Architectures: [arm64]
-    MemorySize: 512
+    # A cold start was measured at ten seconds from a browser in Sydney: what a
+    # visitor arriving after a quiet period waited before the first screenful of
+    # data. Lambda hands a function CPU in proportion to its memory, and
+    # initialisation - unpacking the code, parsing a bundle of this size,
+    # building the AWS clients - is the part of a request that is pure CPU. The
+    # memory here is bought for the speed and not for the space, so the bill is
+    # roughly flat: twice the price per millisecond over a duration that falls
+    # by about as much. Check Max Memory Used in a REPORT line before assuming
+    # it is enough or too much.
+    MemorySize: 1024
     Timeout: 15
     Tracing: Active
 
@@ -63,7 +72,13 @@ Resources:
         Format: esm
         Minify: true
         Target: node20
-        Sourcemap: true
+        # Off deliberately, together with the --enable-source-maps that used to
+        # sit in NODE_OPTIONS below. The map was 3.3 MB against a 861 KB
+        # bundle - four fifths of the package a cold container downloads before
+        # it can run - and the flag makes Node read and hold it. What the pair
+        # bought was readable line numbers in CloudWatch. Turn them back on
+        # together while chasing something that needs them.
+        Sourcemap: false
         OutExtension:
           - .js=.mjs
         EntryPoints:
@@ -81,7 +96,6 @@ Resources:
       Description: MFTournament HTTP API
       Environment:
         Variables:
-          NODE_OPTIONS: --enable-source-maps
           ALLOWED_ORIGINS: !Ref AllowedOrigins
           PUBLIC_CACHE_SECONDS: !Ref PublicCacheSeconds
           SERVER_CACHE_SECONDS: !Ref ServerCacheSeconds
