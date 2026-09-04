@@ -288,8 +288,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const superAdmin = user?.role === 'super_admin'
     // Signing out, or in as somebody else, must not leave the previous
     // account's clubs and competitions in the store for the next screen to
-    // render.
-    set({ superAdmin, teams: [], tournaments: [] })
+    // render. The organizers go only on the way out: a page load runs this
+    // alongside the shell's own load of that list, and clearing it here would
+    // sometimes throw away the answer that had just arrived.
+    set({
+      superAdmin,
+      teams: [],
+      tournaments: [],
+      ...(user ? {} : { organizers: [] }),
+    })
+
+    // The shell loads the organizers when it mounts holding a token, which is
+    // every visit except the one that starts at /login: there is no token then,
+    // and signing in navigates within the app, so the shell never mounts again.
+    // Every one of the organiser's screens resolves its own organizer out of
+    // this list, so an organizer who had just signed in - a new account above
+    // all, which is exactly how somebody arrives at /login - spent the whole
+    // session being told to select an organizer first, and a reload was the
+    // only way out of it. Loading only into an empty list keeps the ordinary
+    // page load at the one request it already made.
+    if (user && user.role !== 'team_manager' && get().organizers.length === 0) {
+      void get().loadOrganizers()
+    }
 
     if (user?.role === 'organizer' && user.organizerId) {
       get().setCurrentOrganizer(user.organizerId)
@@ -862,6 +882,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // AWS-specific actions
   loadOrganizers: async () => {
+    // Two callers now: the shell when it mounts holding a token, and
+    // `applyScope` when the session turns out to belong to somebody who
+    // administers organizers. On an ordinary page load both fire, and the
+    // second must not repeat the request the first has in flight - the same
+    // guard the club and competition loads have had since they were written.
+    if (get().loading.organizers) return
+
     set(state => ({ loading: { ...state.loading, organizers: true } }))
     
     try {

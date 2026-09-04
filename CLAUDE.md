@@ -801,6 +801,19 @@ took 796 ms. A page with a dozen clubs on it is doing that a dozen times.
   sides are written separately, so a reader that dereferences `lineups.away`
   because `lineups` exists will throw on a match only one manager has named.
   `setLineup` creates both sides empty for that reason; the type is the backstop.
+- **A list loaded once at mount is not loaded for the session that starts at
+  the sign-in screen.** The shell asked `isSignedIn()` in a mount effect and
+  loaded the organizers from it. Somebody arriving on `/login` holds no token
+  then, and signing in navigates within the app, so the shell never mounts
+  again and that list stayed empty for the whole session. Every organiser
+  screen resolves its own organizer out of it, so a freshly created organizer
+  account was told to "select an organizer first" on every one of them until
+  they reloaded the page - and the super admin never saw it, because
+  `superAdmin` passes the same guard without the list. `applyScope` loads it
+  too now, into an empty list only, and `loadOrganizers` carries the in-flight
+  guard the club and competition loads already had. The general shape: a
+  mount-time read of the session answers a question that changes after mount.
+
 - **Content-hashed chunks 404 after a deploy** for anyone holding the old
   `index.html`. `lazyPage()` reloads once, guarded by `sessionStorage`.
 - **CORS is answered in application code**, not in the template, so a new HTTP
