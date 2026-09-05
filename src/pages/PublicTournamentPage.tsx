@@ -16,7 +16,9 @@ import {
   eliminatedTeams as eliminatedTeamsOf,
   groupTables as groupTablesOf,
   leagueTable,
+  playoffCut,
 } from '../utils/standings'
+import type { PlayoffCut } from '../utils/standings'
 import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
@@ -322,20 +324,30 @@ export default function PublicTournamentPage() {
    * been played yet.
    */
   const calculateTable = () => {
-    if (!tournament) return { table: [], eliminatedTeams: new Set<string>(), groupTables: {} }
+    if (!tournament)
+      return {
+        table: [],
+        eliminatedTeams: new Set<string>(),
+        groupTables: {},
+        qualified: { teamIds: new Set<string>(), drawn: false },
+      }
 
     const groupTables = groupTablesOf(tournament)
     const grouped = Object.keys(groupTables).length > 0
+    const table = grouped ? [] : leagueTable(tournament)
 
     return {
-      table: grouped ? [] : leagueTable(tournament),
+      table,
       eliminatedTeams: grouped ? new Set<string>() : eliminatedTeamsOf(tournament),
       groupTables,
+      qualified: grouped
+        ? { teamIds: new Set<string>(), drawn: false }
+        : playoffCut(tournament, table),
     }
   }
 
   // Calculate table directly without useMemo to avoid infinite loops
-  const { table, eliminatedTeams, groupTables } = calculateTable()
+  const { table, eliminatedTeams, groupTables, qualified } = calculateTable()
 
   const venue = describeVenue(tournament.location)
 
@@ -694,25 +706,37 @@ export default function PublicTournamentPage() {
                   <tbody>
                     {table.map((row: any, index: number) => {
                       const team = teams.find((t: any) => t.id === row.id)
-                      const isTopThree = index < 3
+                      const isQualified = qualified.teamIds.has(row.id)
+                      // Gold, silver and bronze are a claim about who finished
+                      // first, second and third. A season that ends in a
+                      // knockout has not decided that here, so where there is a
+                      // cut the table marks everyone through it and nobody
+                      // above anybody else.
+                      const isTopThree = qualified.teamIds.size === 0 && index < 3
+                      const badge = isQualified
+                        ? 'bg-green-500 text-black'
+                        : !isTopThree
+                          ? ''
+                          : index === 0
+                            ? 'bg-yellow-500 text-black'
+                            : index === 1
+                              ? 'bg-gray-400 text-black'
+                              : 'bg-orange-500 text-black'
                       const isEliminated = eliminatedTeams.has(row.id)
                       return (
                         <tr 
                           key={row.id} 
-                          className={`border-b border-white/10 hover:bg-white/5 transition-all duration-300 ${isTopThree ? 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5' : ''} ${isEliminated ? 'opacity-50' : ''}`}
+                          className={`border-b border-white/10 hover:bg-white/5 transition-all duration-300 ${isQualified ? 'bg-gradient-to-r from-green-500/5 to-green-500/10' : isTopThree ? 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5' : ''} ${isEliminated ? 'opacity-50' : ''}`}
                         >
                           <td className="py-2 px-1 sm:px-6 text-white font-bold text-xs sm:text-lg">
                             <div className="flex items-center gap-1 sm:gap-2">
-                              {isTopThree && (
-                                <div className={`w-4 h-4 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                                  index === 0 ? 'bg-yellow-500 text-black' : 
-                                  index === 1 ? 'bg-gray-400 text-black' : 
-                                  'bg-orange-500 text-black'
-                                }`}>
+                              {badge ? (
+                                <div className={`w-4 h-4 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-bold ${badge}`}>
                                   {index + 1}
                                 </div>
+                              ) : (
+                                <span className="text-xs sm:text-base">{index + 1}</span>
                               )}
-                              {!isTopThree && <span className="text-xs sm:text-base">{index + 1}</span>}
                             </div>
                           </td>
                           <td className="py-2 px-1 sm:px-6">
@@ -762,6 +786,7 @@ export default function PublicTournamentPage() {
                   </tbody>
                 </table>
               </div>
+              <QualificationNote cut={qualified} />
               <StandingsLegend />
             </div>
           )}
@@ -1352,6 +1377,28 @@ export default function PublicTournamentPage() {
 
       </div>
     </div>
+  )
+}
+
+/**
+ * What the green rows mean.
+ *
+ * The colour is the only thing saying that these clubs go through, and a
+ * visitor who has not read the format has no way to know that from the table
+ * alone. Before the bracket is drawn this is a projection off the table as it
+ * stands, and the wording says so rather than announcing qualification that
+ * nothing has decided yet.
+ */
+function QualificationNote({ cut }: { cut: PlayoffCut }) {
+  if (cut.teamIds.size === 0) return null
+
+  return (
+    <p className="mt-4 text-center text-xs sm:text-sm text-gray-300">
+      <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 align-middle mr-2" />
+      {cut.drawn
+        ? 'Through to the playoffs'
+        : `Top ${cut.teamIds.size} qualify for the playoffs`}
+    </p>
   )
 }
 

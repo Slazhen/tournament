@@ -706,6 +706,18 @@ page's view of it: the group a fixture belongs to where there is one, nothing at
 all for a straight knockout, where every club has played the same single game
 and the bracket is the standing.
 
+**A league that ends in a knockout awards no medals.** Gold, silver and bronze
+on the top three rows are a claim about who finished first, second and third,
+and a season whose finals decide that has not decided it in the table. So
+`playoffCut` in `src/utils/standings.ts` answers who goes through, and the
+public table marks all of them in green and nobody above anybody else; the
+medals stay only where the table is the whole competition. Its answer is the
+drawn bracket wherever there is one — those are the clubs that actually
+qualified, whatever the format was configured to take — and the top of the
+table as it stands before that, which is a projection and is worded as one.
+`progressive_elimination` gets nothing: everybody carries on from the round
+robin, so marking every row would say nothing.
+
 **The public match page is five tabs, and every one of them is always there.**
 `PublicMatchPage.tsx`: Events, Video, Line-ups, Stats, Table, with the tab in
 `?tab=` so a link opens where it was sent. A tab that appears only when its data

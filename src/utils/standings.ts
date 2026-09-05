@@ -156,6 +156,72 @@ export function leagueTable(tournament: Tournament): StandingsRow[] {
   return tally(tournament.teamIds ?? [], allMatches(tournament))
 }
 
+export type PlayoffCut = {
+  /** The clubs the table shows as through. Empty where the format has no cut. */
+  teamIds: Set<string>
+  /** True once the bracket names them, false while it is still the top of the table. */
+  drawn: boolean
+}
+
+/**
+ * How many clubs the format takes into its playoffs.
+ *
+ * Null where the question does not apply. A plain league and a straight
+ * knockout have no cut at all, and neither does `progressive_elimination`:
+ * everybody carries on from the round robin and one club goes out each week
+ * instead, so there is no set of qualifiers to name.
+ */
+function configuredCut(tournament: Tournament): number | null {
+  const format = tournament.format
+  if (!format) return null
+  if (format.customPlayoffConfig?.preset === 'progressive_elimination') return null
+
+  const entered = (tournament.teamIds ?? []).length
+  if (entered === 0) return null
+
+  if (format.mode === 'league_playoff' || format.mode === 'swiss_elimination') {
+    return Math.min(format.playoffQualifiers || 4, entered)
+  }
+  if (format.mode === 'league_custom_playoff') {
+    const configured = format.customPlayoffConfig?.playoffTeams
+    return configured ? Math.min(configured, entered) : null
+  }
+  return null
+}
+
+/**
+ * Who is through to the playoffs.
+ *
+ * A league that ends in a knockout has no first, second and third to award: the
+ * table decides who plays the finals and the finals decide the rest, so the
+ * public table marks everyone who goes through and nobody in particular.
+ *
+ * The drawn bracket is the answer wherever there is one — those are the clubs
+ * that actually qualified, whatever the format was configured to take, and a
+ * seeding the organiser adjusted by hand is still the truth. Before it is drawn
+ * the cut is the top of the table as it stands, which is a projection and moves
+ * with every result.
+ */
+export function playoffCut(tournament: Tournament, table: StandingsRow[]): PlayoffCut {
+  const none: PlayoffCut = { teamIds: new Set<string>(), drawn: false }
+  if (!tournament.format) return none
+  if (tournament.format.customPlayoffConfig?.preset === 'progressive_elimination') return none
+
+  const drawn = new Set<string>()
+  for (const match of allMatches(tournament)) {
+    if (!match.isPlayoff) continue
+    // A fixture in a round being held back arrives with no clubs on it, so it
+    // contributes nothing rather than a pair of undefined ids.
+    if (match.homeTeamId) drawn.add(match.homeTeamId)
+    if (match.awayTeamId) drawn.add(match.awayTeamId)
+  }
+  if (drawn.size > 0) return { teamIds: drawn, drawn: true }
+
+  const cut = configuredCut(tournament)
+  if (!cut) return none
+  return { teamIds: new Set(table.slice(0, cut).map((row) => row.id)), drawn: false }
+}
+
 /**
  * Who has been knocked out.
  *
