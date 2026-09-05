@@ -693,7 +693,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
   const [youtube, setYoutube] = useState(team.socialMedia?.youtube ?? '')
   const [established, setEstablished] = useState(team.establishedDate ?? '')
   const [hideAges, setHideAges] = useState(team.hidePlayerAges === true)
-  const [discoverable, setDiscoverable] = useState(team.discoverable === true)
+  const [hidden, setHidden] = useState(team.hiddenFromPool === true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -707,7 +707,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
     setYoutube(team.socialMedia?.youtube ?? '')
     setEstablished(team.establishedDate ?? '')
     setHideAges(team.hidePlayerAges === true)
-    setDiscoverable(team.discoverable === true)
+    setHidden(team.hiddenFromPool === true)
   }, [team])
 
   const save = async () => {
@@ -730,7 +730,7 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
           youtube: youtube.trim(),
         },
         hidePlayerAges: hideAges,
-        discoverable,
+        hiddenFromPool: hidden,
       })
       await onReload()
       setEditing(false)
@@ -888,23 +888,24 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
                 </span>
               </label>
 
-              {/* Being findable is a separate decision from being public. The
-                  club's page has always been public; what this opens is being
-                  approached by an organiser who does not run any competition
-                  the club plays in. Off unless the club says otherwise — a club
-                  that has never been asked has not agreed to be. */}
+              {/* A club with a manager is in the pool unless it says otherwise.
+                  Being found is not being entered — an organiser who finds this
+                  club can only ask, and the answer is given on this page — so
+                  the decision on offer is the one worth making deliberately:
+                  leaving the pool. */}
               <label className="flex items-start gap-2 text-sm text-gray-300">
                 <input
                   type="checkbox"
-                  checked={discoverable}
-                  onChange={(event) => setDiscoverable(event.target.checked)}
+                  checked={hidden}
+                  onChange={(event) => setHidden(event.target.checked)}
                   className="mt-0.5"
                 />
                 <span>
-                  Let other organisers find this club
+                  Hide this club from organisers you do not play for
                   <span className="block text-xs text-gray-500">
-                    They can search for it by name and invite it to a competition. Nothing happens
-                    until you accept an invitation, and you can turn this off at any time.
+                    Other organisers can normally search for this club by name and invite it to a
+                    competition; nothing happens until you accept. Hiding it stops that. The
+                    competitions this club already plays in are not affected.
                   </span>
                 </span>
               </label>
@@ -955,9 +956,9 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
               {/* Worth saying without opening the form: it is the setting that
                   decides whether strangers may approach the club at all. */}
               <p className="text-xs text-gray-400">
-                {team.discoverable === true
-                  ? 'Other organisers can find this club and invite it to their competitions.'
-                  : 'Only organisers whose competitions this club already plays in can see it.'}
+                {team.hiddenFromPool === true
+                  ? 'Hidden: only organisers whose competitions this club already plays in can find it.'
+                  : 'Other organisers can find this club and invite it to their competitions.'}
               </p>
             </>
           )}

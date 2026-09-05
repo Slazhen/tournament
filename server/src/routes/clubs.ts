@@ -36,6 +36,7 @@ import {
   sideOfTeam,
 } from '../lib/lineups.js'
 import { locateMatch } from '../lib/matches.js'
+import { isInClubPool } from '../lib/pool.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { toPublicUser, type AuthUser, type Team, type Tournament } from '../lib/types.js'
 import type { Router } from '../lib/router.js'
@@ -509,20 +510,22 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
   /* ---------------- finding a club to invite ---------------- */
 
   /**
-   * The clubs that have said other organisers may find them.
+   * The pool: every club with a manager that has not hidden itself.
    *
-   * A club is nobody's to advertise but its own, so this list is opt-in and the
-   * flag is written by the same people who may edit the club — its managers, or
-   * the organiser who owns it while it has none. Everything else about a club
-   * is already reachable somewhere; what is new here is being *findable* by
-   * somebody who does not run the league it plays in.
+   * This was an opt-in list and almost nobody opted in, so the organiser who
+   * opened it found it empty and never opened it again. What decides membership
+   * now is a club having somebody to answer for it — `isInClubPool` says why —
+   * and the club's own ability to leave is a hide button rather than a box it
+   * had to find and tick before anyone could see it existed.
    *
    * The caller's own clubs are left out. They are already in `/admin/teams`,
    * and an organiser does not invite a club they can simply tick.
    *
-   * The whole directory in one answer rather than a query per keystroke: it is
-   * a short list, every round trip from here costs a third of a second, and the
-   * browser can narrow a list it already holds.
+   * The whole pool in one answer rather than a query per keystroke: every round
+   * trip from here costs a third of a second and the browser can narrow a list
+   * it already holds. This is now most of the clubs in the system rather than
+   * the handful that had opted in, so it is the read to watch as the table
+   * grows — a name and a crest each, but one scan behind it.
    */
   router.get('/admin/clubs/directory', async (ctx) => {
     const user = await ctx.user()
@@ -530,7 +533,7 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
 
     const all = (await teams.listAll(adminRead)) as Team[]
     const open = all.filter(
-      (team) => team.discoverable === true && team.organizerId !== user.organizerId,
+      (team) => isInClubPool(team) && team.organizerId !== user.organizerId,
     )
     if (open.length === 0) return []
 
@@ -543,7 +546,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
 
     const managerNames = new Map<string, string>()
     if (wanted.size > 0) {
-      for (const account of await scanAll<AuthUser>(TABLES.AUTH_USERS)) {
+      // Three fields, not the whole account: this now runs on nearly every
+      // call, and the rest of that row is a password hash.
+      const accounts = await scanAll<AuthUser>(TABLES.AUTH_USERS, ['id', 'displayName', 'isActive'])
+      for (const account of accounts) {
         if (!wanted.has(account.id) || account.isActive === false) continue
         if (account.displayName) managerNames.set(account.id, account.displayName)
       }
@@ -579,10 +585,24 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     if (!teamId) throw badRequest('teamId is required')
 
     const team = (await teams.getOrThrow(teamId)) as Team
-    // Being findable and being invitable are the same permission: the club said
-    // other organisers may approach it, and nothing else here did.
-    if (team.discoverable !== true) {
-      throw forbidden('That club is not open to invitations from other organisers')
+    // Being findable and being invitable are the same permission, with one
+    // exception the hide button creates. A club that hides itself leaves the
+    // pool but not the leagues it already plays in, and next season is asked
+    // for in exactly those leagues — so a club that has agreed to play for this
+    // organiser before can be asked again whatever the pool says. It is still
+    // the club that answers.
+    if (!isInClubPool(team)) {
+      // An organiser's own club is not invited — it is ticked on the settings
+      // screen — so there is deliberately no branch for it here, and none of
+      // the `a.organizerId === b.organizerId` comparison CLAUDE.md says has
+      // been got wrong twice.
+      const played = await entriesForTeam(teamId)
+      const known = played.some(
+        (row) => row.status === 'accepted' && row.organizerId === tournament.organizerId,
+      )
+      if (!known) {
+        throw forbidden('That club is not open to invitations from other organisers')
+      }
     }
 
     if ((tournament.teamIds ?? []).includes(teamId)) {
@@ -649,6 +669,91 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     })
 
     return entry
+  })
+
+  /* ---------------- an organiser's own list of pool clubs ---------------- */
+
+  /**
+   * Putting a club from the pool on this organiser's list.
+   *
+   * What it is not is an entry, and the difference is the whole design. The
+   * club appears on the organiser's own screens — a name, a crest, a row in the
+   * list they work from — and playing in one of their competitions is still a
+   * question only the club answers. So this asks the club nothing, writes
+   * nothing to the club's record, and gives the organiser nothing they could
+   * not already read off the pool.
+   *
+   * The squad is what it deliberately does not carry: `/admin/teams` hands the
+   * club over without its players until the club has agreed to play, because
+   * the squad is what a competition needs and this is not one.
+   */
+  router.post('/admin/clubs/shortlist', async (ctx) => {
+    const user = await ctx.user()
+    assertIsOrganizer(user)
+    // The super admin administers every organiser and is none of them. They
+    // already see every club there is, so there is nothing this list would add
+    // and no record of their own to keep it on.
+    if (!user.organizerId) throw badRequest('A list of clubs belongs to an organiser')
+
+    const teamId = typeof ctx.body.teamId === 'string' ? ctx.body.teamId : ''
+    if (!teamId) throw badRequest('teamId is required')
+
+    const team = (await teams.getOrThrow(teamId)) as Team
+    if (team.organizerId === user.organizerId) {
+      throw badRequest('That club is already one of yours')
+    }
+    // The same rule the pool itself applies, checked again here: the list the
+    // browser is holding was read at some point in the past, and a club that
+    // has hidden itself since must not be added off a stale screen.
+    if (!isInClubPool(team)) {
+      throw forbidden('That club is not in the pool')
+    }
+
+    const added = await organizers.addShortlistedTeam(user.organizerId, teamId)
+    if (added) {
+      await record(user, {
+        action: 'club.shortlist',
+        entity: 'team',
+        entityId: teamId,
+        summary: `Added ${team.name} to the club list`,
+        organizerId: user.organizerId,
+      })
+    }
+
+    return { teamId, added }
+  })
+
+  /**
+   * Taking one back off it.
+   *
+   * The club is read for its name and not for permission: a club deleted since
+   * it was added leaves an id on the list that nothing can resolve, and that is
+   * exactly the row an organiser needs to be able to remove.
+   */
+  router.delete('/admin/clubs/shortlist/:teamId', async (ctx, params) => {
+    const user = await ctx.user()
+    assertIsOrganizer(user)
+    if (!user.organizerId) throw badRequest('A list of clubs belongs to an organiser')
+
+    const teamId = params.teamId!
+    const removed = await organizers.removeShortlistedTeam(user.organizerId, teamId)
+
+    // Only a removal that happened is recorded. The repo answers false for a
+    // club that was never on the list and for a list that kept moving under it,
+    // and an audit line for neither of those is a log that says something
+    // untrue.
+    if (removed) {
+      const team = await teams.get(teamId)
+      await record(user, {
+        action: 'club.unshortlist',
+        entity: 'team',
+        entityId: teamId,
+        summary: `Removed ${team?.name ?? 'a club'} from the club list`,
+        organizerId: user.organizerId,
+      })
+    }
+
+    return { teamId, removed }
   })
 
   /* ---------------- a manager's own clubs ---------------- */

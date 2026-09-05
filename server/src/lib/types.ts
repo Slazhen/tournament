@@ -43,6 +43,16 @@ export type Organizer = {
   createdAtISO: string
   logo?: string
   description?: string
+  /**
+   * Clubs from the pool this organiser has put on their own list.
+   *
+   * Their own record and not the clubs': a club belongs to somebody else and
+   * has no business carrying a list of the leagues eyeing it. Being on the list
+   * is not a place in a competition — entering one still asks the club — so
+   * what it buys is the club having a name, a crest and a row on the screens
+   * this organiser works from before any of that has been decided.
+   */
+  shortlistedTeamIds?: string[]
 }
 
 export type Team = {

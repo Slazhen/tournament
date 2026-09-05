@@ -690,9 +690,25 @@ export const clubService = {
     return api.get(`/admin/tournaments/${encodeURIComponent(tournamentId)}/entries`)
   },
 
-  /** Every club that has listed itself, the caller's own left out. */
+  /** The pool: every club with a manager that has not hidden itself, the caller's own left out. */
   async directory(): Promise<DirectoryClub[]> {
     return api.get('/admin/clubs/directory')
+  },
+
+  /**
+   * Puts a club from the pool on this organiser's own list.
+   *
+   * It does not enter the club in anything and asks it nothing — the club
+   * appears in the organiser's list of clubs, and a place in a competition is
+   * still an invitation the club answers.
+   */
+  async addToPool(teamId: string): Promise<{ teamId: string; added: boolean }> {
+    return api.post('/admin/clubs/shortlist', { teamId })
+  },
+
+  /** Takes one back off the list. */
+  async removeFromPool(teamId: string): Promise<void> {
+    await api.delete(`/admin/clubs/shortlist/${encodeURIComponent(teamId)}`)
   },
 
   /** Offers a club a place. It is not in the competition until the club says yes. */

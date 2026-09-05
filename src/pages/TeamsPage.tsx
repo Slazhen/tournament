@@ -4,6 +4,8 @@ import { Link } from "react-router-dom"
 import LogoUploader from "../components/LogoUploader"
 import { canEditClub, checkTeamName, parseBulkNames } from "../utils/teams"
 import { useAuth } from "../contexts/AuthContext"
+import { clubService, type DirectoryClub } from "../lib/data"
+import { headerColor } from "../utils/crest"
 
 /**
  * The clubs.
@@ -22,7 +24,12 @@ export default function TeamsPage() {
   const [bulkTeams, setBulkTeams] = useState("")
   // Adding several teams at once was the quickest way to set up a season and it
   // sat below the single-team form looking like an afterthought.
-  const [addMode, setAddMode] = useState<'one' | 'many'>('one')
+  //
+  // The pool sits beside them because it answers the same question — which
+  // clubs are in this league — with a club that already exists, a crest, a
+  // squad and somebody who runs it. Typing the name of a club that is already
+  // in the system creates a second one, and the two then split their history.
+  const [addMode, setAddMode] = useState<'pool' | 'one' | 'many'>('one')
   // Creating a team used to happen in silence — no confirmation, and the new
   // card landed somewhere in a grid of thirty.
   const [result, setResult] = useState<string>("")
@@ -126,6 +133,12 @@ export default function TeamsPage() {
   const handleColorChange = (teamId: string, color: string) => {
     updateTeam(teamId, { colors: [color] })
   }
+
+  /** Takes a club off this organiser's list. It stays in the pool for everyone else. */
+  const removeFromPool = async (teamId: string) => {
+    await clubService.removeFromPool(teamId)
+    await loadTeams()
+  }
   
   // Removed unused functions and refs to fix TypeScript errors
 
@@ -156,7 +169,16 @@ export default function TeamsPage() {
       {/* Adding teams. One card, two ways in — pasting a list is how a season
           actually gets set up, so it is a tab rather than a separate box below. */}
       <div className="glass rounded-xl p-6 w-full max-w-md">
-        <div className="flex items-center gap-1 mb-5 p-1 rounded-lg bg-white/5 w-fit">
+        <div className="flex flex-wrap items-center gap-1 mb-5 p-1 rounded-lg bg-white/5 w-fit">
+          <button
+            type="button"
+            onClick={() => setAddMode('pool')}
+            className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+              addMode === 'pool' ? 'bg-white/15 font-medium' : 'opacity-60 hover:opacity-100'
+            }`}
+          >
+            From the pool
+          </button>
           <button
             type="button"
             onClick={() => setAddMode('one')}
@@ -178,8 +200,9 @@ export default function TeamsPage() {
         </div>
 
         {/* A club is owned by an organizer, and the super admin is not one, so
-            they have to say which. An organiser never sees this. */}
-        {!currentOrganizer && (
+            they have to say which. An organiser never sees this, and neither
+            does anybody taking a club off the pool: that club has an owner. */}
+        {!currentOrganizer && addMode !== 'pool' && (
           <div className="mb-5">
             <label className="block text-sm font-medium mb-2">Organizer</label>
             <select
@@ -199,7 +222,9 @@ export default function TeamsPage() {
           </div>
         )}
 
-        {addMode === 'one' ? (
+        {addMode === 'pool' ? (
+          <ClubPool mine={new Set(teams.map((team) => team.id))} onAdded={loadTeams} />
+        ) : addMode === 'one' ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">Team name</label>
@@ -361,8 +386,12 @@ export default function TeamsPage() {
                 <div>
                   <h3 className="text-xl font-semibold">{team.name}</h3>
                   <p className="text-sm opacity-80">
-                    {team.players.length} players
-                    {team.visiting && <span className="opacity-70"> · guest club</span>}
+                    {/* A club off the pool arrives without its squad, so the
+                        count would read as a fact about the club and is not. */}
+                    {team.poolOnly ? 'On your list' : `${team.players.length} players`}
+                    {team.visiting && !team.poolOnly && (
+                      <span className="opacity-70"> · guest club</span>
+                    )}
                   </p>
                   {!currentOrganizer && (
                     <p className="text-xs opacity-60">
@@ -421,6 +450,11 @@ export default function TeamsPage() {
                       />
                     </div>
                   </>
+                ) : team.poolOnly ? (
+                  <p className="text-sm opacity-70">
+                    From the club pool. Invite it from a competition's settings — its squad appears
+                    once its manager accepts.
+                  </p>
                 ) : team.visiting ? (
                   <p className="text-sm opacity-70">
                     Plays here as a guest from another organiser's league. Its crest, colours and
@@ -433,22 +467,36 @@ export default function TeamsPage() {
                 )}
                 
                 <div className="flex gap-2">
-                  <Link
-                    to={`/teams/${team.id}`}
-                    className="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-center"
-                  >
-                    Manage
-                  </Link>
-                  {/* Deleting a club another organiser owns is refused by the
-                      API, and it is not something this organiser should be
-                      offered: removing it from a season is on the season. */}
-                  {!team.visiting && (
+                  {/* A club off the pool has no page worth opening here: the
+                      squad is deliberately absent, and a club page showing an
+                      empty one reads as a club with no players. */}
+                  {team.poolOnly ? (
                     <button
-                      onClick={() => deleteTeam(team.id)}
-                      className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
+                      onClick={() => removeFromPool(team.id)}
+                      className="flex-1 px-3 py-2 rounded-lg glass hover:bg-white/10 transition-colors"
                     >
-                      Delete
+                      Remove from your list
                     </button>
+                  ) : (
+                    <>
+                      <Link
+                        to={`/teams/${team.id}`}
+                        className="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-center"
+                      >
+                        Manage
+                      </Link>
+                      {/* Deleting a club another organiser owns is refused by
+                          the API, and it is not something this organiser should
+                          be offered: removing it from a season is on the season. */}
+                      {!team.visiting && (
+                        <button
+                          onClick={() => deleteTeam(team.id)}
+                          className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -457,6 +505,172 @@ export default function TeamsPage() {
           })}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+/**
+ * The pool: clubs that exist already, run by their own managers.
+ *
+ * An organiser setting up a season types names, and every name typed for a club
+ * that is already in the system creates a second copy of it — two crests, two
+ * squads, and a history split between them. This is the other way in: search
+ * what is there, and put the club on your list.
+ *
+ * What adding does not do is enter the club in anything. The club has agreed to
+ * be found and nothing more, so it arrives as a name and a crest, and playing
+ * in a competition is an invitation its manager answers. The squad comes with
+ * that answer.
+ *
+ * The manager's name sits in brackets after the club's because that is the
+ * question the organiser is actually asking: two clubs called United are
+ * indistinguishable, and the one they mean is the one whose coach they have
+ * been talking to.
+ */
+function ClubPool({ mine, onAdded }: { mine: Set<string>; onAdded: () => Promise<void> }) {
+  const [clubs, setClubs] = useState<DirectoryClub[] | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [query, setQuery] = useState('')
+  const [adding, setAdding] = useState<string | null>(null)
+  const [failed, setFailed] = useState<{ id: string; message: string } | null>(null)
+
+  // Fetched once, when this tab is first opened: the whole pool in one answer
+  // is a third of a second, and a request per keystroke would be one each.
+  useEffect(() => {
+    let cancelled = false
+
+    clubService
+      .directory()
+      .then((list) => {
+        if (!cancelled) setClubs(list)
+      })
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const add = async (club: DirectoryClub) => {
+    setAdding(club.id)
+    setFailed(null)
+    try {
+      await clubService.addToPool(club.id)
+      await onAdded()
+    } catch (error) {
+      setFailed({
+        id: club.id,
+        message: error instanceof Error ? error.message : 'That club could not be added.',
+      })
+    } finally {
+      setAdding(null)
+    }
+  }
+
+  const needle = query.trim().toLowerCase()
+  const matching = (clubs ?? []).filter(
+    (club) =>
+      !needle ||
+      club.name.toLowerCase().includes(needle) ||
+      (club.ownerName ?? '').toLowerCase().includes(needle),
+  )
+  // Every club in the system is in this list. Showing all of them is a page
+  // nobody reads to the end, so the search is the way through it and the cap
+  // says so rather than silently stopping.
+  const shown = matching.slice(0, 40)
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm opacity-70">
+        Clubs run by their own managers. Adding one puts it on your list; it plays in a competition
+        once you invite it and its manager accepts.
+      </p>
+
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Club or manager"
+        className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
+      />
+
+      {loadFailed && (
+        <p className="text-sm text-red-300">That list could not be read. Reload the page.</p>
+      )}
+
+      {!loadFailed && clubs === null && <p className="text-sm opacity-60">Looking…</p>}
+
+      {clubs !== null && shown.length === 0 && (
+        <p className="text-sm opacity-60">
+          {clubs.length === 0
+            ? 'No club outside your own leagues is in the pool yet.'
+            : 'Nothing matches that search.'}
+        </p>
+      )}
+
+      <ul className="space-y-2">
+        {shown.map((club) => {
+          const already = mine.has(club.id)
+          return (
+            <li
+              key={club.id}
+              className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
+            >
+              <span className="flex items-center gap-3 min-w-0">
+                {club.logo ? (
+                  <img
+                    loading="lazy"
+                    decoding="async"
+                    src={club.logo}
+                    alt=""
+                    className="w-8 h-8 rounded-md object-cover shrink-0"
+                  />
+                ) : (
+                  <span
+                    className="w-8 h-8 rounded-md shrink-0"
+                    style={{ backgroundColor: headerColor(club) }}
+                  />
+                )}
+                <span className="min-w-0">
+                  <span className="block truncate">
+                    {club.name}{' '}
+                    <span className="opacity-60">({club.ownerName ?? 'manager not named'})</span>
+                  </span>
+                  <span className="block text-xs opacity-60">
+                    {club.squadSize} {club.squadSize === 1 ? 'player' : 'players'}
+                  </span>
+                </span>
+              </span>
+
+              {already ? (
+                <span className="text-xs opacity-60 shrink-0">already on your list</span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={adding === club.id}
+                  onClick={() => add(club)}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm transition-colors disabled:opacity-50 shrink-0"
+                >
+                  {adding === club.id ? 'Adding…' : 'Add'}
+                </button>
+              )}
+
+              {failed?.id === club.id && (
+                <p className="w-full text-xs text-red-300">{failed.message}</p>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+      {matching.length > shown.length && (
+        <p className="text-xs opacity-60">
+          {matching.length - shown.length} more — narrow the search to find them.
+        </p>
+      )}
     </div>
   )
 }

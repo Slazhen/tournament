@@ -1061,19 +1061,18 @@ function ClubManagers({
 /**
  * Finding a club that does not belong to this organiser, and asking it to play.
  *
- * The clubs listed here have each said other organisers may find them; nothing
- * else appears, and a club can take itself off the list at any time. What this
- * sends is an invitation and not an entry — the club's own manager accepts it,
- * on their own page — because a club agreeing to be approached has not agreed
- * to play.
+ * The clubs listed here are the pool: every club run by its own manager that
+ * has not hidden itself. What this sends is an invitation and not an entry —
+ * the club's own manager accepts it, on their own page — because a club being
+ * findable has not agreed to play.
  *
- * The owner's name sits beside every club on purpose. Two clubs called United
+ * The manager's name sits beside every club on purpose. Two clubs called United
  * are indistinguishable by name, and the question an organiser is actually
  * asking is "is this the one I have been talking to".
  *
- * Shut until asked for, and fetched once when it opens: the directory is a read
- * of every club in the system and most visits to this screen are about the
- * fixture list.
+ * Shut until asked for, and fetched once when it opens: the pool is a read of
+ * every club in the system and most visits to this screen are about the fixture
+ * list.
  */
 function InviteClubs({
   tournamentId,
@@ -1161,8 +1160,8 @@ function InviteClubs({
         </button>
       </div>
       <p className="text-sm opacity-70">
-        Clubs that have said other organisers may find them. Inviting one offers it a place; it
-        joins when its manager accepts.
+        Clubs run by their own managers, including the ones already on your list. Inviting one
+        offers it a place; it joins when its manager accepts.
       </p>
 
       {open && (
@@ -1184,7 +1183,7 @@ function InviteClubs({
           {clubs !== null && shown.length === 0 && (
             <p className="text-sm opacity-60">
               {clubs.length === 0
-                ? 'No club outside your own leagues has listed itself yet.'
+                ? 'No club outside your own leagues is in the pool yet.'
                 : 'Nothing matches that search.'}
             </p>
           )}
@@ -1213,16 +1212,23 @@ function InviteClubs({
                       />
                     )}
                     <span className="min-w-0">
-                      <span className="block truncate">{club.name}</span>
+                      {/* Who to ask, in brackets after the name — the pool is
+                          managers' clubs, so it is a person. `ownerKind` is
+                          still read: a club listed before the pool existed can
+                          have been put there by the league that owns it. */}
+                      <span className="block truncate">
+                        {club.name}{' '}
+                        <span className="opacity-60">
+                          (
+                          {club.ownerName
+                            ? club.ownerKind === 'manager'
+                              ? club.ownerName
+                              : `${club.ownerName}, league`
+                            : 'manager not named'}
+                          )
+                        </span>
+                      </span>
                       <span className="block text-xs opacity-60 truncate">
-                        {/* Who to ask. A person where the club has a manager,
-                            and the league that listed it where it has none. */}
-                        {club.ownerName
-                          ? club.ownerKind === 'manager'
-                            ? club.ownerName
-                            : `${club.ownerName} (league)`
-                          : 'Owner not named'}
-                        {' · '}
                         {club.squadSize} {club.squadSize === 1 ? 'player' : 'players'}
                       </span>
                     </span>

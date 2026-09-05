@@ -40,6 +40,7 @@ import { findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
 import { record, recent } from '../lib/audit.js'
+import { isInClubPool } from '../lib/pool.js'
 import { adminRead, liveRead } from '../lib/cache.js'
 import { issueResetToken } from '../lib/resets.js'
 import { SITE_URL } from '../lib/env.js'
@@ -92,11 +93,29 @@ const TEAM_FIELDS = [
   // Whether the public is told how old this club's players are. A club-wide
   // decision, so it lives here and not on each player.
   'hidePlayerAges',
-  // Whether other organisers may find this club and invite it. The club's own
-  // decision — `assertManagesTeam` guards the write, so it is the managers who
-  // set it, or the owning organiser while the club has none.
-  'discoverable',
+  // Whether this club has taken itself out of the pool other organisers search.
+  // The club's own decision — `assertManagesTeam` guards the write, so it is
+  // the managers who set it, or the owning organiser while the club has none.
+  //
+  // `discoverable`, which this replaces, is deliberately absent: it is stored on
+  // records that never chose it, `lib/pool.ts` says why, and a field nothing
+  // reads is one nothing should be able to write either.
+  'hiddenFromPool',
 ] as const
+
+/**
+ * What may be written about an organiser.
+ *
+ * This route passed its body through until the organiser record gained a field
+ * that is not display — `shortlistedTeamIds`, which the two routes in
+ * `clubs.ts` write under their own checks and their own audit line. A PATCH
+ * that could name it is a way to put any id on that list, unrecorded and
+ * uncapped, and the list is read on every admin request.
+ *
+ * The records are schemaless, so this is the same whitelist every other PATCH
+ * here has, arriving late for the same reason they all did.
+ */
+const ORGANIZER_FIELDS = ['name', 'email', 'logo', 'description'] as const
 
 /**
  * The club flags where a wrong value is not a wrong display but a wrong
@@ -108,7 +127,7 @@ const TEAM_FIELDS = [
  * The same rule `isPublic` follows on a player, and for the same reason.
  */
 function assertClubFlags(updates: Record<string, unknown>): void {
-  for (const field of ['discoverable', 'hidePlayerAges'] as const) {
+  for (const field of ['hiddenFromPool', 'hidePlayerAges'] as const) {
     if (updates[field] !== undefined && typeof updates[field] !== 'boolean') {
       throw badRequest(`${field} must be true or false`)
     }
@@ -313,7 +332,7 @@ async function managersOfTeams(list: Team[]): Promise<Record<string, ClubManager
  * A named list and not a deletion of the fields that are sensitive today, for
  * the reason every projection in this API is: these records are schemaless and
  * `PATCH` persists whatever `TEAM_FIELDS` and `PLAYER_FIELDS` admit, so a field
- * added next year — `discoverable` was added this year — would otherwise reach
+ * added next year — `hiddenFromPool` was added this year — would otherwise reach
  * every organiser this club visits on the day it is written.
  *
  * Players hidden with `isPublic: false` are kept, unlike in the public
@@ -455,6 +474,28 @@ export function toVisitingTeam(team: Team): Team {
   return out as Team
 }
 
+/**
+ * A club this organiser has picked off the pool and that plays in none of their
+ * competitions.
+ *
+ * The same whitelist as a visiting club with the squad taken off, and the squad
+ * is the point. What opens a club's players to another organiser is the club
+ * having agreed to play — that agreement is what makes them a teamsheet the
+ * organiser has to name — and nothing here has been agreed: the organiser
+ * pressed a button on a public list and the club has not been asked. So the
+ * record carries what the pool already showed, and the players arrive with the
+ * accepted entry or not at all.
+ *
+ * `poolOnly` is what the screens read to say so, rather than drawing a club
+ * with an empty squad and letting the organiser conclude it has none.
+ */
+export function toPoolTeam(team: Team): Team {
+  const out = toVisitingTeam(team) as unknown as Record<string, unknown>
+  out.players = []
+  out.poolOnly = true
+  return out as Team
+}
+
 export function registerAdminRoutes(router: Router<RequestContext>): void {
   /* ---------------- listings (include private data) ---------------- */
 
@@ -500,7 +541,15 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
         else visitors.set(id, [season.id])
       }
     }
-    if (visitors.size === 0) return own
+
+    // Clubs picked off the pool. Read from the organiser's own record rather
+    // than from the clubs, and read here rather than at the top: it is one
+    // more request on the read every admin screen starts with, and an
+    // organiser who has never opened the pool pays for a single get.
+    const organizer = await organizers.get(user.organizerId)
+    const listed = (organizer?.shortlistedTeamIds ?? []).filter((id) => !mine.has(id))
+
+    if (visitors.size === 0 && listed.length === 0) return own
 
     // What opens another organiser's club is the club having agreed to play
     // here, not its id appearing in a list this organiser writes. `PATCH
@@ -523,11 +572,24 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
           : null
       }),
     )
-    const agreed = checked.filter((id): id is string => id !== null)
-    if (agreed.length === 0) return own
+    const agreed = new Set(checked.filter((id): id is string => id !== null))
 
-    const visiting = (await teams.getMany(agreed)) as Team[]
-    return [...own, ...visiting.map(toVisitingTeam)]
+    // A club that has agreed to play comes back whole, whether or not it is
+    // also on the list — the accepted entry is the stronger claim and carries
+    // the squad the organiser needs to name a teamsheet.
+    const onlyListed = listed.filter((id) => !agreed.has(id))
+    if (agreed.size === 0 && onlyListed.length === 0) return own
+
+    const visiting = agreed.size > 0 ? ((await teams.getMany([...agreed])) as Team[]) : []
+    // Filtered again on the way out: a club that has hidden itself since being
+    // added is out of the pool, and the list is not a way to keep looking at it.
+    // What that does not touch is a club playing here, which is in `visiting`.
+    const pool =
+      onlyListed.length > 0
+        ? ((await teams.getMany(onlyListed)) as Team[]).filter(isInClubPool)
+        : []
+
+    return [...own, ...visiting.map(toVisitingTeam), ...pool.map(toPoolTeam)]
   })
 
   router.get('/admin/tournaments', async (ctx) => {
@@ -557,7 +619,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertCanAccessOrganizer(user, params.id!)
     const existing = await organizers.get(params.id!)
     if (!existing) throw notFound('Organizer not found')
-    await organizers.update(params.id!, ctx.body)
+    await organizers.update(params.id!, pick(ctx.body, ORGANIZER_FIELDS))
     return { ok: true }
   })
 

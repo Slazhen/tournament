@@ -60,6 +60,83 @@ export const organizers = {
     await ddb.send(new DeleteCommand({ TableName: TABLES.ORGANIZERS, Key: { id } }))
     invalidate('organizers:')
   },
+
+  /**
+   * Puts a club from the pool on this organiser's own list.
+   *
+   * Appended under a condition rather than read, concatenated and written back:
+   * the list belongs to a record two of this organiser's screens can be writing
+   * at once, and a whole-list write loses whatever the other one added. Answers
+   * false when the club is already there, so pressing the button twice is not
+   * an error the organiser has to read.
+   */
+  async addShortlistedTeam(organizerId: string, teamId: string): Promise<boolean> {
+    // The list is read on every admin request and every id on it costs a read,
+    // so it has a ceiling. It is not a rule about football: it is what stops
+    // one screen making the request every other screen starts with expensive.
+    const organizer = await organizers.get(organizerId)
+    if ((organizer?.shortlistedTeamIds ?? []).length >= 200) {
+      throw badRequest('That is as many clubs as one list can hold')
+    }
+
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.ORGANIZERS,
+          Key: { id: organizerId },
+          UpdateExpression: 'SET #shortlist = list_append(if_not_exists(#shortlist, :empty), :one)',
+          ConditionExpression:
+            'attribute_exists(id) AND (attribute_not_exists(#shortlist) OR NOT contains(#shortlist, :teamId))',
+          ExpressionAttributeNames: { '#shortlist': 'shortlistedTeamIds' },
+          ExpressionAttributeValues: { ':empty': [], ':one': [teamId], ':teamId': teamId },
+        }),
+      )
+      invalidate('organizers:')
+      return true
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      return false
+    }
+  },
+
+  /**
+   * Takes a club back off it.
+   *
+   * By index, with the index checked in the same request: the position came
+   * from a list read a moment ago, and another tab removing an earlier entry
+   * shifts everything after it up by one. A failed condition means the list
+   * moved, so it is read again rather than removing whatever now sits there.
+   */
+  async removeShortlistedTeam(organizerId: string, teamId: string): Promise<boolean> {
+    let current = await organizers.get(organizerId)
+
+    for (let attempt = 0; attempt < 3 && current; attempt++) {
+      const index = (current.shortlistedTeamIds ?? []).indexOf(teamId)
+      if (index === -1) return false
+
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.ORGANIZERS,
+            Key: { id: organizerId },
+            UpdateExpression: `REMOVE #shortlist[${index}]`,
+            ConditionExpression: `#shortlist[${index}] = :teamId`,
+            ExpressionAttributeNames: { '#shortlist': 'shortlistedTeamIds' },
+            ExpressionAttributeValues: { ':teamId': teamId },
+          }),
+        )
+        invalidate('organizers:')
+        return true
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+        current = await organizers.get(organizerId)
+      }
+    }
+
+    // Three writers moved the list under this one. Answering true would have
+    // the screen drop a row that is still stored.
+    return false
+  },
 }
 
 /* ------------------------------------------------------------------ *

@@ -5,6 +5,16 @@ export type Organizer = {
   createdAtISO: string
   logo?: string
   description?: string
+  /**
+   * Clubs from the pool this organiser has put on their own list.
+   *
+   * Their own record and not the clubs': a club belongs to somebody else and
+   * has no business carrying a list of the leagues eyeing it. Being on the list
+   * is not a place in a competition — entering one still asks the club — so
+   * what it buys is the club having a name, a crest and a row on the screens
+   * this organiser works from before any of that has been decided.
+   */
+  shortlistedTeamIds?: string[]
 }
 
 export type Player = {
@@ -97,11 +107,23 @@ export type Team = {
    */
   managerUserIds?: string[]
   /**
-   * Whether organisers who do not run this club may find it and invite it.
+   * Set by a club that does not want organisers it does not play for to find it.
    *
-   * The club's own decision, set by its managers or — while nobody has taken it
-   * on — by the organiser who owns it. Absent means no: a club that has never
-   * been asked has not agreed to be approached by strangers.
+   * The club's own decision, written by its managers or — while nobody has
+   * taken it on — by the organiser who owns it. Absent means findable: a club
+   * with a manager is in the pool every organiser searches unless it says
+   * otherwise, because the opt-in this replaced left the pool empty and the
+   * organiser looking through it learnt nothing.
+   *
+   * Hiding does not reach a competition the club is already in. Those
+   * organisers see it through its accepted entry, which this does not touch.
+   */
+  hiddenFromPool?: boolean
+  /**
+   * The opt-in `hiddenFromPool` replaced. Read by nothing and written by
+   * nothing — the club form sent it on every save, so `false` sits on records
+   * whose managers never decided anything, and reading it as "hide me" would
+   * take clubs out of the pool on the strength of a box they never saw.
    */
   discoverable?: boolean
   /**
@@ -113,6 +135,16 @@ export type Team = {
    * because the super admin's copy of the list carries neither.
    */
   visiting?: boolean
+  /**
+   * A club on this organiser's list that plays in none of their competitions.
+   *
+   * Always `visiting` as well, so nothing offers to edit it. What it carries
+   * beyond that is that the squad is deliberately absent rather than empty:
+   * this organiser has picked the club off the pool, which the club has not
+   * been asked about, and a squad is what a competition needs — the record
+   * arrives whole once the club accepts an invitation.
+   */
+  poolOnly?: boolean
 }
 
 export type Match = {

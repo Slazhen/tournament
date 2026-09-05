@@ -20,14 +20,31 @@ export const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 
 export { BatchGetCommand, DeleteCommand, GetCommand, PutCommand, QueryCommand, ScanCommand, UpdateCommand }
 
-/** Reads an entire table, following pagination to the end. */
-export async function scanAll<T>(tableName: string): Promise<T[]> {
+/**
+ * Reads an entire table, following pagination to the end.
+ *
+ * `fields` narrows what comes back. A scan with no projection pulls every
+ * attribute of every row into Lambda memory, which on the accounts table means
+ * every password hash and salt — read to find one display name, and read on a
+ * path an organiser can trigger. Nothing goes out, because the routes project
+ * what they return; the point is not holding it in the first place. The names
+ * are aliased, since an ordinary word like `name` or `status` is a reserved
+ * word in an expression.
+ */
+export async function scanAll<T>(tableName: string, fields?: readonly string[]): Promise<T[]> {
   const items: T[] = []
   let lastEvaluatedKey: Record<string, unknown> | undefined
 
+  const projection = fields?.length
+    ? {
+        ProjectionExpression: fields.map((field) => `#${field}`).join(', '),
+        ExpressionAttributeNames: Object.fromEntries(fields.map((field) => [`#${field}`, field])),
+      }
+    : {}
+
   do {
     const result = await ddb.send(
-      new ScanCommand({ TableName: tableName, ExclusiveStartKey: lastEvaluatedKey }),
+      new ScanCommand({ TableName: tableName, ExclusiveStartKey: lastEvaluatedKey, ...projection }),
     )
     if (result.Items) items.push(...(result.Items as T[]))
     lastEvaluatedKey = result.LastEvaluatedKey

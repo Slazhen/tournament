@@ -11,7 +11,8 @@ import { toPublicUser, type AuthUser } from '../src/lib/types.js'
 import { buildUpdate } from '../src/lib/ddb.js'
 import { corsHeaders, parseJsonBody, HttpError } from '../src/lib/http.js'
 import { organiserMayDecide, toClubTournament, toDirectoryClub } from '../src/routes/clubs.js'
-import { toVisitingTeam } from '../src/routes/admin.js'
+import { toPoolTeam, toVisitingTeam } from '../src/routes/admin.js'
+import { isInClubPool } from '../src/lib/pool.js'
 import type { Team } from '../src/lib/types.js'
 
 const organizerUser: AuthUser = {
@@ -458,5 +459,56 @@ describe('answering an entry', () => {
   it('leaves an application alone', () => {
     expect(organiserMayDecide('pending', 'accepted')).toBe(true)
     expect(organiserMayDecide('pending', 'declined')).toBe(true)
+  })
+})
+
+describe('the club pool', () => {
+  it('carries a club that has a manager and has not hidden itself', () => {
+    expect(isInClubPool({ managerUserIds: ['u-9'] })).toBe(true)
+    expect(isInClubPool({ managerUserIds: ['u-9'], hiddenFromPool: false })).toBe(true)
+    // The opt-in this replaced is stored on records whose managers never chose
+    // it, either way round, and nothing reads it any more — it is not even a
+    // field the check accepts.
+    expect(isInClubPool({ managerUserIds: ['u-9'], ...{ discoverable: false } })).toBe(true)
+  })
+
+  it('leaves out a club nobody has taken on', () => {
+    // There is nobody to answer the invitation, and the league that owns the
+    // record has not offered it to anybody.
+    expect(isInClubPool({})).toBe(false)
+    expect(isInClubPool({ managerUserIds: [] })).toBe(false)
+    expect(isInClubPool({ managerUserIds: [] })).toBe(false)
+  })
+
+  it('leaves out a club that has hidden itself', () => {
+    expect(isInClubPool({ managerUserIds: ['u-9'], hiddenFromPool: true })).toBe(false)
+  })
+})
+
+describe('a club taken off the pool', () => {
+  const club = {
+    id: 'team-theirs',
+    name: 'Sydney United',
+    organizerId: 'org-2',
+    colors: ['#123456'],
+    managerUserIds: ['u-8'],
+    players: [
+      { id: 'p-1', firstName: 'A', lastName: 'B', dateOfBirth: '1999-01-01', isPublic: true },
+    ],
+  } as unknown as Team
+
+  it('arrives without its squad', () => {
+    const out = toPoolTeam(club)
+    expect(out.players).toEqual([])
+    expect(out.poolOnly).toBe(true)
+    // Nothing offers to edit it: the API refuses those writes either way.
+    expect(out.visiting).toBe(true)
+    expect(out.name).toBe('Sydney United')
+  })
+
+  it('carries no date of birth and no list of accounts', () => {
+    const out = toPoolTeam(club) as unknown as Record<string, unknown>
+    expect(out.managerUserIds).toBeUndefined()
+    expect(JSON.stringify(out)).not.toContain('1999-01-01')
   })
 })

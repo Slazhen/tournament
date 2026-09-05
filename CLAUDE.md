@@ -209,14 +209,70 @@ row as `previousNote` and `previousDecidedAt` — but a pending application is
 returned rather than rewritten, so every repeat costs the organiser one
 deliberate answer.
 
-**A club is found only if it says so.** `team.discoverable` is opt-in and
-written by the people who may edit the club — its managers, or the owning
-organiser while nobody has taken it on. `GET /admin/clubs/directory` returns the
-clubs that have set it, the caller's own left out, projected through
-`toDirectoryClub`: a crest, a name, the squad size and who to ask. Who to ask is
-a person where the club has a manager and the owning league where it has none,
-and it is never an email address — an organiser who wants the club invites it
-through the API, and the club decides whether to answer.
+**A club with a manager is in the pool unless it says otherwise.**
+`isInClubPool` in `server/src/lib/pool.ts` is the one place that decides: at
+least one manager, and `hiddenFromPool` not set. Both halves matter. The manager
+is who answers the invitation — a club nobody has taken on has nobody to answer
+for it, and the league that owns the record would be offering a club it may only
+be storing — and the flag is the club's own way out, written by the people who
+may edit it.
+
+It replaced an opt-in, `discoverable`, and it is a new field rather than that one
+read the other way round. The club form sent `discoverable` on every save, so
+`false` sits on records whose managers never decided anything; reading that as
+"hide me" would take clubs out of the pool on the strength of a box they never
+saw. The old field is left where it is, read by nothing, and absent from
+`TEAM_FIELDS` so nothing can write it either. The opt-in itself failed for the
+ordinary reason: almost nobody found the box, so the pool was empty and the
+organiser who opened it never opened it again.
+
+Hiding does not reach a competition the club is already in. Those organisers see
+it through its accepted entry, which the pool check is not consulted for, and the
+invitation route lets an organiser ask again a club that has accepted for them
+before — next season is asked for in exactly the league the club has just left
+the pool from.
+
+`GET /admin/clubs/directory` returns the pool, the caller's own clubs left out,
+projected through `toDirectoryClub`: a crest, a name, the squad size and who to
+ask. Who to ask is a person where the club has a manager and the owning league on
+a record from before the pool existed, and it is never an email address — an
+organiser who wants the club invites it through the API, and the club decides
+whether to answer. That listing is now most of the clubs in the system rather
+than the handful that had opted in, which is why the accounts scan behind it
+takes a `ProjectionExpression`: it ran on a rare route and now runs on a common
+one, and the rest of that row is a password hash.
+
+**An organiser's list of pool clubs is theirs, and it is not an entry.**
+`shortlistedTeamIds` on the *organizer* record — a club belongs to somebody else
+and has no business carrying a list of the leagues eyeing it — written by `POST`
+and `DELETE /admin/clubs/shortlist`, appended under a `NOT contains` condition
+and removed by a checked index like every other list here, and capped, because
+`/admin/teams` reads it on every admin request and every id on it costs a read.
+It exists so that an organiser setting up a season can find a club that already
+has a crest, a squad and a coach instead of typing its name and creating a second
+copy of it.
+
+What it buys is a name and a crest on the organiser's own screens and nothing
+else. `toPoolTeam` is `toVisitingTeam` with the squad taken off, and the squad is
+the point: what opens a club's players to another organiser is the club having
+agreed to play, and nothing here has been agreed. `poolOnly` is what the screens
+read to say so, rather than drawing a club with an empty squad and letting the
+organiser conclude it has none. A club with an accepted entry comes back whole
+whether or not it is also on the list — the entry is the stronger claim — and a
+club that hides itself after being added drops off the list on the way out, since
+the list is not a way to keep looking at a club that has left the pool.
+
+Nothing about the list enters a club in anything: `assertEnterableTeams` and the
+decide route never consult it, and both team pickers filter to clubs the
+organiser owns, so a club that has not agreed is never offered a tick that would
+save into a refusal. It is invited from the competition's settings screen, and
+its manager answers.
+
+That list is also why `PATCH /admin/organizers/:id` finally has an
+`ORGANIZER_FIELDS` whitelist. It passed its body through for as long as the
+record held nothing but display; the moment it held a field two other routes
+write under their own checks, passing the body through was a way to put any id
+on that list, unrecorded and uncapped.
 
 **An invitation is a question, and only the club answers it.** `POST
 /admin/tournaments/:id/invitations` writes an entry with status `invited` and
