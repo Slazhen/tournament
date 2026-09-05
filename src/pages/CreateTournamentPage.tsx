@@ -67,7 +67,12 @@ export default function CreateTournamentPage() {
   const [chosenOrganizerId, setChosenOrganizerId] = useState("")
   const ownerId = currentOrganizerId ?? chosenOrganizerId
   const owner = getOrganizerById(ownerId)
-  const teams = getOrganizerTeams().filter((team) => team.organizerId === ownerId)
+  // The organiser's own clubs, plus every club the API says they may enter —
+  // one taken off the pool, or one that has played for them before. The super
+  // admin's copy of the list carries no such flag, so their picker is unchanged.
+  const teams = getOrganizerTeams().filter(
+    (team) => team.organizerId === ownerId || team.enterable === true,
+  )
 
   const previousSeason = previousSeasonId
     ? tournaments.find((candidate) => candidate.id === previousSeasonId)

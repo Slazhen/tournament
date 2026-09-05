@@ -35,11 +35,13 @@ export default function TeamsPage() {
   const [result, setResult] = useState<string>("")
   // With thirty-odd teams in an unordered grid, finding one meant scrolling.
   const [teamSearch, setTeamSearch] = useState("")
+  const [removeFailed, setRemoveFailed] = useState<{ id: string; message: string } | null>(null)
   
   const {
     getCurrentOrganizer,
     getOrganizerById,
     getOrganizerTeams,
+    getOrganizerTournaments,
     createTeam,
     updateTeam,
     deleteTeam,
@@ -55,6 +57,14 @@ export default function TeamsPage() {
 
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
+
+  // Which clubs are playing somewhere. Taking one of those off the list is
+  // refused by the API — the list is the only record that a club from the pool
+  // is this organiser's to work with — so the button comes off rather than
+  // saving into a refusal.
+  const playing = new Set(
+    getOrganizerTournaments().flatMap((tournament) => tournament.teamIds ?? []),
+  )
 
   /** Which organizer a new club belongs to. Only the super admin gets a choice. */
   const [newTeamOrganizerId, setNewTeamOrganizerId] = useState("")
@@ -136,8 +146,16 @@ export default function TeamsPage() {
 
   /** Takes a club off this organiser's list. It stays in the pool for everyone else. */
   const removeFromPool = async (teamId: string) => {
-    await clubService.removeFromPool(teamId)
-    await loadTeams()
+    setRemoveFailed(null)
+    try {
+      await clubService.removeFromPool(teamId)
+      await loadTeams()
+    } catch (error) {
+      setRemoveFailed({
+        id: teamId,
+        message: error instanceof Error ? error.message : 'That club could not be removed.',
+      })
+    }
   }
   
   // Removed unused functions and refs to fix TypeScript errors
@@ -386,12 +404,8 @@ export default function TeamsPage() {
                 <div>
                   <h3 className="text-xl font-semibold">{team.name}</h3>
                   <p className="text-sm opacity-80">
-                    {/* A club off the pool arrives without its squad, so the
-                        count would read as a fact about the club and is not. */}
-                    {team.poolOnly ? 'On your list' : `${team.players.length} players`}
-                    {team.visiting && !team.poolOnly && (
-                      <span className="opacity-70"> · guest club</span>
-                    )}
+                    {team.players.length} players
+                    {team.visiting && <span className="opacity-70"> · guest club</span>}
                   </p>
                   {!currentOrganizer && (
                     <p className="text-xs opacity-60">
@@ -450,15 +464,13 @@ export default function TeamsPage() {
                       />
                     </div>
                   </>
-                ) : team.poolOnly ? (
-                  <p className="text-sm opacity-70">
-                    From the club pool. Invite it from a competition's settings — its squad appears
-                    once its manager accepts.
-                  </p>
                 ) : team.visiting ? (
                   <p className="text-sm opacity-70">
-                    Plays here as a guest from another organiser's league. Its crest, colours and
-                    squad are theirs.
+                    {team.listed && team.enterable === false
+                      ? 'This club has taken itself out of the pool. It stays in the competitions it already plays in and cannot be added to new ones.'
+                      : team.listed
+                        ? 'From the club pool. Pick it for a competition like any of your own — its crest, colours and squad stay theirs.'
+                        : "Plays here as a guest from another organiser's league. Its crest, colours and squad are theirs."}
                   </p>
                 ) : (
                   <p className="text-sm opacity-70">
@@ -466,37 +478,39 @@ export default function TeamsPage() {
                   </p>
                 )}
                 
+                {removeFailed?.id === team.id && (
+                  <p className="text-sm text-red-300">{removeFailed.message}</p>
+                )}
+
                 <div className="flex gap-2">
-                  {/* A club off the pool has no page worth opening here: the
-                      squad is deliberately absent, and a club page showing an
-                      empty one reads as a club with no players. */}
-                  {team.poolOnly ? (
+                  <Link
+                    to={`/teams/${team.id}`}
+                    className="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-center"
+                  >
+                    Manage
+                  </Link>
+                  {/* Taking a club off your list does not take it out of a
+                      season it is already in: the competition's team list is
+                      written on the competition, which says what changing it
+                      costs the fixtures first. */}
+                  {team.listed && !playing.has(team.id) && (
                     <button
                       onClick={() => removeFromPool(team.id)}
-                      className="flex-1 px-3 py-2 rounded-lg glass hover:bg-white/10 transition-colors"
+                      className="px-3 py-2 rounded-lg glass hover:bg-white/10 transition-colors"
                     >
-                      Remove from your list
+                      Remove
                     </button>
-                  ) : (
-                    <>
-                      <Link
-                        to={`/teams/${team.id}`}
-                        className="flex-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors text-center"
-                      >
-                        Manage
-                      </Link>
-                      {/* Deleting a club another organiser owns is refused by
-                          the API, and it is not something this organiser should
-                          be offered: removing it from a season is on the season. */}
-                      {!team.visiting && (
-                        <button
-                          onClick={() => deleteTeam(team.id)}
-                          className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </>
+                  )}
+                  {/* Deleting a club another organiser owns is refused by the
+                      API, and it is not something this organiser should be
+                      offered: removing it from a season is on the season. */}
+                  {!team.visiting && (
+                    <button
+                      onClick={() => deleteTeam(team.id)}
+                      className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
+                    >
+                      Delete
+                    </button>
                   )}
                 </div>
               </div>
@@ -516,12 +530,13 @@ export default function TeamsPage() {
  * An organiser setting up a season types names, and every name typed for a club
  * that is already in the system creates a second copy of it — two crests, two
  * squads, and a history split between them. This is the other way in: search
- * what is there, and put the club on your list.
+ * what is there, and take the club.
  *
- * What adding does not do is enter the club in anything. The club has agreed to
- * be found and nothing more, so it arrives as a name and a crest, and playing
- * in a competition is an invitation its manager answers. The squad comes with
- * that answer.
+ * Adding one is the whole transaction. There is no invitation to send and no
+ * answer to wait for: a club in the pool has said it may be taken, and the
+ * answer it keeps is the hide button on its own page. From here it behaves like
+ * any of this organiser's clubs — it is picked for a competition with a tick —
+ * except that its name, crest and squad stay its own to edit.
  *
  * The manager's name sits in brackets after the club's because that is the
  * question the organiser is actually asking: two clubs called United are
@@ -585,8 +600,8 @@ function ClubPool({ mine, onAdded }: { mine: Set<string>; onAdded: () => Promise
   return (
     <div className="space-y-3">
       <p className="text-sm opacity-70">
-        Clubs run by their own managers. Adding one puts it on your list; it plays in a competition
-        once you invite it and its manager accepts.
+        Clubs run by their own managers. Adding one puts it among your clubs, ready to pick for a
+        competition. Its name, crest and squad stay theirs to edit.
       </p>
 
       <input

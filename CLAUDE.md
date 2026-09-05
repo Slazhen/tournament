@@ -289,37 +289,67 @@ than the handful that had opted in, which is why the accounts scan behind it
 takes a `ProjectionExpression`: it ran on a rare route and now runs on a common
 one, and the rest of that row is a password hash.
 
-**An organiser's list of pool clubs is theirs, and it is not an entry.**
-`shortlistedTeamIds` on the *organizer* record — a club belongs to somebody else
-and has no business carrying a list of the leagues eyeing it — written by `POST`
-and `DELETE /admin/clubs/shortlist`, appended under a `NOT contains` condition
-and removed by a checked index like every other list here, and capped, because
-`/admin/teams` reads it on every admin request and every id on it costs a read.
-It exists so that an organiser setting up a season can find a club that already
-has a crest, a squad and a coach instead of typing its name and creating a second
-copy of it.
+**Taking a club out of the pool is the whole transaction.** `shortlistedTeamIds`
+on the *organizer* record — a club belongs to somebody else and has no business
+carrying a list of the leagues eyeing it — written by `POST` and `DELETE
+/admin/clubs/shortlist`, appended under a `NOT contains` condition and removed by
+a checked index like every other list here, and capped, because `/admin/teams`
+reads it on every admin request and every id on it costs a read.
 
-What it buys is a name and a crest on the organiser's own screens and nothing
-else. `toPoolTeam` is `toVisitingTeam` with the squad taken off, and the squad is
-the point: what opens a club's players to another organiser is the club having
-agreed to play, and nothing here has been agreed. `poolOnly` is what the screens
-read to say so, rather than drawing a club with an empty squad and letting the
-organiser conclude it has none. A club with an accepted entry comes back whole
-whether or not it is also on the list — the entry is the stronger claim — and a
-club that hides itself after being added drops off the list on the way out, since
-the list is not a way to keep looking at a club that has left the pool.
+It is a permission and not a bookmark. A club in the pool has said it may be
+taken; the organiser who adds it may enter it in their competitions, name its
+teamsheets and register its squad, with nothing to send and nobody to wait for.
+So `assertEnterableTeams` consults the list, `/admin/teams` returns the club in
+full through `toVisitingTeam` — the squad included, because a club that can be
+put in a season is a club whose eleven has to be named — and the team pickers on
+both the create and the settings screens offer any club marked `visiting`.
 
-Nothing about the list enters a club in anything: `assertEnterableTeams` and the
-decide route never consult it, and both team pickers filter to clubs the
-organiser owns, so a club that has not agreed is never offered a tick that would
-save into a refusal. It is invited from the competition's settings screen, and
-its manager answers.
+What the organiser does not get is the club: `managerUserIds` and every date of
+birth stay behind the projection, `assertManagesTeam` refuses every write, and
+`visiting` is what the screens read to draw no editing controls. The club's own
+answer is the hide button, and it is the only one — which is why the manager's
+page says in as many words that other organisers can enter this club in their
+competitions, rather than implying an invitation that no longer exists.
+
+Pool membership is checked again when a club is entered in a competition, and on
+the way out only for a club this organiser is not already playing. A club taken
+from the pool has no entry, so what records that it is playing here is the
+season's `teamIds` together with this organiser's list — both halves, because an
+id in a season that is nobody's pick is exactly the arbitrary id the entry check
+refuses. A club that hides itself, or whose last manager leaves, therefore joins
+no new season of this organiser's and keeps arriving for the ones it is already
+in: that record is the only thing giving it a name in the table, a squad on the
+teamsheet and a tick in the picker, and without it the next save of the team list
+would drop it from the season along with its played matches. A club on the list
+that plays in none of their competitions disappears the moment it hides, which is
+what hiding is for. `enterable` on the projection is the API's answer to "may
+this be put in a competition", worked out with the same rule the write is refused
+by, and it is what the pickers read: the browser cannot see the pool, and a tick
+that saves into a refusal is worse than no tick.
+
+The same asymmetry is why `DELETE /admin/clubs/shortlist/:teamId` refuses while
+the club is playing in one of this organiser's competitions. A club taken from
+the pool has no entry, so the list is the only record that it is theirs to work
+with, and removing it mid-season would take the club off every screen that names
+it. Taking it out of the competition is done on the competition, which shows what
+that costs the fixtures first.
+
+A club that has agreed once never has to agree again: the accepted entry is read
+across all of this organiser's seasons, so next season is the same clubs as last
+time without asking, and a club that has since left the pool can still be carried
+over by the league it already plays in.
+
+The invitation route is still there and no screen calls it any more. Entries
+remain the other direction — a club applying to a competition it found, and the
+clubs that agreed before the pool existed — and `/admin/teams` still resolves
+them, so nothing written under the old rules stops working.
 
 That list is also why `PATCH /admin/organizers/:id` finally has an
 `ORGANIZER_FIELDS` whitelist. It passed its body through for as long as the
-record held nothing but display; the moment it held a field two other routes
-write under their own checks, passing the body through was a way to put any id
-on that list, unrecorded and uncapped.
+record held nothing but display; the moment it held a field that decides which
+clubs an organiser may enter, passing the body through was a way to put any id
+on that list, unrecorded and uncapped — and now it is not a bookmark that would
+have bought, but a permission.
 
 **An invitation is a question, and only the club answers it.** `POST
 /admin/tournaments/:id/invitations` writes an entry with status `invited` and
@@ -363,18 +393,18 @@ date of birth. `visiting` is what the screens read to know they may not edit it
 (`canEditClub`, `clubIsMineToEdit` on `TeamPage`), because the API refuses those
 writes and a control that saves into a refusal is worse than no control.
 
-What opens that record is the club having agreed — an entry marked `accepted` —
-and not its id appearing in `teamIds`. Both halves matter: `POST
-/admin/tournaments` and `PATCH /admin/tournaments/:id` pass their bodies
-through, so an organiser could type any club id in the system into their own
-season, and once `/admin/teams` resolved those ids that would have handed over
-the club's squad. `assertEnterableTeams` refuses to *add* a club this organiser
-neither owns nor has an accepted entry for — ids already in the season are left
-alone, because some of them predate entries and refusing them would leave a live
-season nobody can save — and `/admin/teams` applies the same rule on the way
-out. The design problem underneath is that a tournament has never had a
-`TEAM_FIELDS` of its own; this closes the field that names other people's
-records and does not pay the debt.
+What opens that record is the club being on this organiser's list from the pool,
+or having agreed to play for them — an entry marked `accepted`, in any of their
+seasons — and never its id appearing in `teamIds`. That last part is what
+matters: `POST /admin/tournaments` and `PATCH /admin/tournaments/:id` pass their
+bodies through, so an organiser could type any club id in the system into their
+own season, and once `/admin/teams` resolved those ids that would have handed
+over the club's squad. `assertEnterableTeams` refuses to *add* a club this
+organiser neither owns, nor has on their list, nor has ever had agree to play —
+ids already in the season are left alone, because some of them predate entries
+and refusing them would leave a live season nobody can save. The design problem
+underneath is that a tournament has never had a `TEAM_FIELDS` of its own; this
+closes the field that names other people's records and does not pay the debt.
 
 Still open, and older than any of this: `matches` is passed through by the same
 two routes. `assertClubsAreInTournament` guards the playoff-round and match

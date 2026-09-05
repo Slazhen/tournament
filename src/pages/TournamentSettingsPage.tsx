@@ -10,10 +10,10 @@ import { findFormat, formatOptionFor } from '../utils/formats'
 import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
 import type { TournamentFormat } from '../utils/fixtures'
 import { clubService, tournamentService } from '../lib/data'
-import type { ClubManager, DirectoryClub, Entry } from '../lib/data'
+import type { ClubManager, Entry } from '../lib/data'
 import type { Team, Tournament } from '../types'
 import { hasSquadEntry, registeredPlayers } from '../utils/squads'
-import { competitionColor, headerColor } from '../utils/crest'
+import { competitionColor } from '../utils/crest'
 import Trophy from '../components/Trophy'
 import { IconLink, IconUser, IconUsers } from '../components/icons'
 import {
@@ -57,14 +57,20 @@ export default function TournamentSettingsPage() {
 
   // Every club this page might have to name — an applicant from outside the
   // league included — and, separately, the ones it may put in the competition.
-  // (The super admin sees every organizer's clubs, hence the split.)
-  // The super admin sees every club there is, and offering another organizer's
-  // in the picker is how one would end up in a league it never applied to.
+  //
+  // `enterable` is the API's answer to "may this organiser put this club in a
+  // competition", worked out with the same rule the write is refused by — a
+  // club on their list and still in the pool, or one that has played for them
+  // before. Asked rather than guessed, because the browser cannot see the pool.
+  // A club already in the season stays offered whatever the answer, or removing
+  // it would be the only thing this screen could still do with it.
   const teams = getOrganizerTeams()
   const pickableTeams = tournament
     ? teams.filter(
         (team) =>
-          team.organizerId === tournament.organizerId || tournament.teamIds.includes(team.id),
+          team.organizerId === tournament.organizerId ||
+          team.enterable === true ||
+          tournament.teamIds.includes(team.id),
       )
     : teams
 
@@ -594,14 +600,6 @@ export default function TournamentSettingsPage() {
         </section>
       )}
 
-      {/* ---------- Clubs from other leagues ---------- */}
-      <InviteClubs
-        tournamentId={tournament.id}
-        teamIds={tournament.teamIds}
-        entries={entries}
-        onInvited={reloadEntries}
-      />
-
       {/* ---------- Squads ---------- */}
       <SquadsSection
         tournament={tournament}
@@ -1050,212 +1048,6 @@ function ClubManagers({
       )}
 
       {failed && <p className="text-sm text-red-300">{failed}</p>}
-    </section>
-  )
-}
-
-/* ================================================================== *
- * Clubs from other leagues
- * ================================================================== */
-
-/**
- * Finding a club that does not belong to this organiser, and asking it to play.
- *
- * The clubs listed here are the pool: every club run by its own manager that
- * has not hidden itself. What this sends is an invitation and not an entry —
- * the club's own manager accepts it, on their own page — because a club being
- * findable has not agreed to play.
- *
- * The manager's name sits beside every club on purpose. Two clubs called United
- * are indistinguishable by name, and the question an organiser is actually
- * asking is "is this the one I have been talking to".
- *
- * Shut until asked for, and fetched once when it opens: the pool is a read of
- * every club in the system and most visits to this screen are about the fixture
- * list.
- */
-function InviteClubs({
-  tournamentId,
-  teamIds,
-  entries,
-  onInvited,
-}: {
-  tournamentId: string
-  teamIds: string[]
-  entries: Entry[]
-  onInvited: () => Promise<void>
-}) {
-  const [open, setOpen] = useState(false)
-  const [clubs, setClubs] = useState<DirectoryClub[] | null>(null)
-  const [loadFailed, setLoadFailed] = useState(false)
-  const [query, setQuery] = useState('')
-  const [inviting, setInviting] = useState<string | null>(null)
-  const [failed, setFailed] = useState<{ id: string; message: string } | null>(null)
-
-  useEffect(() => {
-    if (!open || clubs !== null) return
-    let cancelled = false
-
-    clubService
-      .directory()
-      .then((list) => {
-        if (!cancelled) setClubs(list)
-      })
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [open, clubs])
-
-  const statusOf = (teamId: string): string | null => {
-    if (teamIds.includes(teamId)) return 'already in this competition'
-    const entry = entries.find((candidate) => candidate.teamId === teamId)
-    if (!entry) return null
-    if (entry.status === 'invited') return 'invited, waiting on them'
-    if (entry.status === 'pending') return 'has applied — answer above'
-    if (entry.status === 'declined') return 'turned down before'
-    if (entry.status === 'refused') return 'turned your invitation down'
-    // `withdrawn` is this organiser's own change of mind, so the club is
-    // invitable again and gets a button rather than a note.
-    return null
-  }
-
-  const invite = async (club: DirectoryClub) => {
-    setInviting(club.id)
-    setFailed(null)
-    try {
-      await clubService.inviteToTournament(tournamentId, club.id)
-      await onInvited()
-    } catch (error) {
-      setFailed({
-        id: club.id,
-        message: error instanceof Error ? error.message : 'That invitation could not be sent.',
-      })
-    } finally {
-      setInviting(null)
-    }
-  }
-
-  const needle = query.trim().toLowerCase()
-  const shown = (clubs ?? []).filter(
-    (club) =>
-      !needle ||
-      club.name.toLowerCase().includes(needle) ||
-      (club.ownerName ?? '').toLowerCase().includes(needle),
-  )
-
-  return (
-    <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="font-semibold">Clubs from other leagues</h2>
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="text-sm px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all"
-        >
-          {open ? 'Close' : 'Find a club'}
-        </button>
-      </div>
-      <p className="text-sm opacity-70">
-        Clubs run by their own managers, including the ones already on your list. Inviting one
-        offers it a place; it joins when its manager accepts.
-      </p>
-
-      {open && (
-        <>
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Club or owner"
-            className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
-          />
-
-          {loadFailed && (
-            <p className="text-sm text-red-300">That list could not be read. Reload the page.</p>
-          )}
-
-          {!loadFailed && clubs === null && <p className="text-sm opacity-60">Looking…</p>}
-
-          {clubs !== null && shown.length === 0 && (
-            <p className="text-sm opacity-60">
-              {clubs.length === 0
-                ? 'No club outside your own leagues is in the pool yet.'
-                : 'Nothing matches that search.'}
-            </p>
-          )}
-
-          <ul className="space-y-2">
-            {shown.map((club) => {
-              const already = statusOf(club.id)
-              return (
-                <li
-                  key={club.id}
-                  className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
-                >
-                  <span className="flex items-center gap-3 min-w-0">
-                    {club.logo ? (
-                      <img
-                        loading="lazy"
-                        decoding="async"
-                        src={club.logo}
-                        alt=""
-                        className="w-8 h-8 rounded-md object-cover shrink-0"
-                      />
-                    ) : (
-                      <span
-                        className="w-8 h-8 rounded-md shrink-0"
-                        style={{ backgroundColor: headerColor(club) }}
-                      />
-                    )}
-                    <span className="min-w-0">
-                      {/* Who to ask, in brackets after the name — the pool is
-                          managers' clubs, so it is a person. `ownerKind` is
-                          still read: a club listed before the pool existed can
-                          have been put there by the league that owns it. */}
-                      <span className="block truncate">
-                        {club.name}{' '}
-                        <span className="opacity-60">
-                          (
-                          {club.ownerName
-                            ? club.ownerKind === 'manager'
-                              ? club.ownerName
-                              : `${club.ownerName}, league`
-                            : 'manager not named'}
-                          )
-                        </span>
-                      </span>
-                      <span className="block text-xs opacity-60 truncate">
-                        {club.squadSize} {club.squadSize === 1 ? 'player' : 'players'}
-                      </span>
-                    </span>
-                  </span>
-
-                  {already ? (
-                    <span className="text-xs opacity-60 shrink-0">{already}</span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={inviting === club.id}
-                      onClick={() => invite(club)}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm transition-colors disabled:opacity-50 shrink-0"
-                    >
-                      {inviting === club.id ? 'Inviting…' : 'Invite'}
-                    </button>
-                  )}
-
-                  {failed?.id === club.id && (
-                    <p className="w-full text-xs text-red-300">{failed.message}</p>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </>
-      )}
     </section>
   )
 }

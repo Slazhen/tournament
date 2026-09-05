@@ -22,7 +22,6 @@ import {
   deleteEntriesForTournament,
   deleteInvitesOfOrganizer,
   entriesForTeam,
-  getEntry,
   linkManagerToTeam,
   unlinkManagerFromTeam,
   unlinkOwnerManagers,
@@ -400,11 +399,18 @@ const VISITING_PLAYER_FIELDS = [
  * same request would then have handed over that club's squad, and the club's
  * own page would have shown it playing in a competition it never joined.
  *
- * A club is enterable if this organiser owns it, or if the club has agreed —
- * an entry marked accepted, whether the club applied or answered an invitation.
- * Ids already in the season are left where they are: some of them predate
- * entries altogether, and refusing them would leave a live season nobody can
- * save.
+ * A club is enterable if this organiser owns it, if it is on their list and
+ * still in the pool, or if it has ever agreed to play for them — an accepted
+ * entry in any of their seasons, not only this one. Ids already in the season
+ * are left where they are: some of them predate entries altogether, and
+ * refusing them would leave a live season nobody can save.
+ *
+ * The list is a permission and not a shortcut past one. What a club puts in the
+ * pool is itself, to be taken by any organiser who wants it — that is what the
+ * hide button on the club's own page is the answer to — so an organiser who has
+ * added it may enter it, and there is nobody left to ask. The entries route
+ * still exists for the other direction, a club applying to a competition it
+ * found, and for the clubs that agreed before the pool existed.
  *
  * The design problem underneath is that a tournament has never had a
  * `TEAM_FIELDS` of its own and this route writes what it is given. This closes
@@ -412,7 +418,6 @@ const VISITING_PLAYER_FIELDS = [
  */
 async function assertEnterableTeams(
   organizerId: string,
-  tournamentId: string | null,
   wanted: unknown,
   already: string[],
 ): Promise<void> {
@@ -433,16 +438,36 @@ async function assertEnterableTeams(
   const records = (await teams.getMany(added)) as Team[]
   const byId = new Map(records.map((team) => [team.id, team]))
 
-  for (const id of added) {
+  const foreign = added.filter((id) => {
     const club = byId.get(id)
-    // An id naming no club leaks nothing and is refused by the routes that
-    // would act on it. Answering for it here would be a second opinion.
-    if (!club || club.organizerId === organizerId) continue
+    return Boolean(club) && club!.organizerId !== organizerId
+  })
+  if (foreign.length === 0) return
 
-    const entry = tournamentId ? await getEntry(tournamentId, id) : null
-    if (entry?.status !== 'accepted') {
-      throw forbidden(`${club.name} has not agreed to play in this competition`)
+  // One read for the whole request rather than one per club, and none at all
+  // for a season made up of this organiser's own clubs.
+  const listed = new Set((await organizers.get(organizerId))?.shortlistedTeamIds ?? [])
+
+  for (const id of foreign) {
+    const club = byId.get(id)!
+    // Checked again on the way in, not taken from the list alone: a club that
+    // has hidden itself since being added has left the pool, and the list is
+    // not a way to keep entering it in new competitions.
+    if (listed.has(id) && isInClubPool(club)) continue
+
+    // Or the club has agreed to play for this organiser at some point — it
+    // applied and was accepted. Any season of theirs, not this one: next season
+    // is the same clubs as last time, and a club that agreed once should not
+    // have to agree again to be carried over. It is also what lets a club that
+    // has since hidden itself be entered by the league it already plays in,
+    // which is the whole meaning of "hiding does not reach the competitions you
+    // are already in".
+    const played = await entriesForTeam(id)
+    if (played.some((row) => row.status === 'accepted' && row.organizerId === organizerId)) {
+      continue
     }
+
+    throw forbidden(`${club.name} is not one of yours and is not on your club list`)
   }
 }
 
@@ -471,28 +496,6 @@ export function toVisitingTeam(team: Team): Team {
     : []
 
   out.players = players
-  return out as Team
-}
-
-/**
- * A club this organiser has picked off the pool and that plays in none of their
- * competitions.
- *
- * The same whitelist as a visiting club with the squad taken off, and the squad
- * is the point. What opens a club's players to another organiser is the club
- * having agreed to play — that agreement is what makes them a teamsheet the
- * organiser has to name — and nothing here has been agreed: the organiser
- * pressed a button on a public list and the club has not been asked. So the
- * record carries what the pool already showed, and the players arrive with the
- * accepted entry or not at all.
- *
- * `poolOnly` is what the screens read to say so, rather than drawing a club
- * with an empty squad and letting the organiser conclude it has none.
- */
-export function toPoolTeam(team: Team): Team {
-  const out = toVisitingTeam(team) as unknown as Record<string, unknown>
-  out.players = []
-  out.poolOnly = true
   return out as Team
 }
 
@@ -555,8 +558,8 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // here, not its id appearing in a list this organiser writes. `PATCH
     // /admin/tournaments/:id` still passes its body through, so `teamIds` can
     // name any club in the system; `assertEnterableTeams` refuses to add one
-    // that has not agreed, and this is the same rule on the way out — it also
-    // covers the seasons written before that check existed.
+    // this organiser has no claim on, and this is the same rule on the way out
+    // — it also covers the seasons written before that check existed.
     //
     // One query per visiting club, on the `teamId-index`, rather than a read
     // per club-and-season pair: `visitors` collects every id in every season
@@ -573,23 +576,50 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       }),
     )
     const agreed = new Set(checked.filter((id): id is string => id !== null))
+    const onList = new Set(listed)
 
-    // A club that has agreed to play comes back whole, whether or not it is
-    // also on the list — the accepted entry is the stronger claim and carries
-    // the squad the organiser needs to name a teamsheet.
-    const onlyListed = listed.filter((id) => !agreed.has(id))
-    if (agreed.size === 0 && onlyListed.length === 0) return own
+    // A club taken from the pool has no entry — taking it is the whole
+    // transaction — so playing here is recorded by nothing but the season's own
+    // `teamIds` and this organiser's list. Both halves are required: an id in a
+    // season that is not on the list is the arbitrary id the entry check above
+    // exists to refuse, and a club on the list that is in no season of theirs
+    // has to still be in the pool, or hiding would not take it back off the
+    // screens of an organiser it never played for.
+    const playingHere = [...visitors.keys()].filter((id) => onList.has(id))
 
-    const visiting = agreed.size > 0 ? ((await teams.getMany([...agreed])) as Team[]) : []
-    // Filtered again on the way out: a club that has hidden itself since being
-    // added is out of the pool, and the list is not a way to keep looking at it.
-    // What that does not touch is a club playing here, which is in `visiting`.
-    const pool =
-      onlyListed.length > 0
-        ? ((await teams.getMany(onlyListed)) as Team[]).filter(isInClubPool)
-        : []
+    const wanted = [...new Set([...agreed, ...playingHere, ...listed])]
+    if (wanted.length === 0) return own
 
-    return [...own, ...visiting.map(toVisitingTeam), ...pool.map(toPoolTeam)]
+    const keep = new Set([...agreed, ...playingHere])
+    const records = ((await teams.getMany(wanted)) as Team[]).filter(
+      (team) => keep.has(team.id) || isInClubPool(team),
+    )
+
+    return [
+      ...own,
+      ...records.map((team) => {
+        const out = toVisitingTeam(team) as unknown as Record<string, unknown>
+
+        // Being on the list is not the same question as playing here — a club
+        // is often both — and the screens read them separately. `listed` is
+        // what offers taking it back off the list.
+        if (onList.has(team.id)) out.listed = true
+
+        // Whether this organiser may put it in a competition, decided here
+        // rather than in the browser so that it cannot drift from
+        // `assertEnterableTeams`: a control that saves into a refusal is worse
+        // than no control, and the browser cannot see the pool.
+        //
+        // Note what is deliberately not required: still being in the pool. A
+        // club that hides itself, or whose last manager leaves, stops being
+        // enterable in a *new* season, and stays exactly where it is in the
+        // ones it is already in — the record has to keep arriving, or the
+        // organiser loses its name in the table, its squad on the teamsheet,
+        // and the club itself the next time the team list is saved.
+        out.enterable = agreed.has(team.id) || (onList.has(team.id) && isInClubPool(team))
+        return out
+      }),
+    ]
   })
 
   router.get('/admin/tournaments', async (ctx) => {
@@ -1068,7 +1098,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertCompetitionColours(ctx.body)
     // Nothing has agreed to anything yet, so a club this organiser does not own
     // cannot be in a competition on the day it is created.
-    await assertEnterableTeams(organizerId, null, ctx.body.teamIds, [])
+    await assertEnterableTeams(organizerId, ctx.body.teamIds, [])
     const tournament = await tournaments.create({ ...ctx.body, name, organizerId })
     await record(user, {
       action: 'tournament.create',
@@ -1118,7 +1148,6 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertCompetitionColours(ctx.body)
     await assertEnterableTeams(
       tournament.organizerId,
-      params.id!,
       ctx.body.teamIds,
       (tournament.teamIds ?? []) as string[],
     )

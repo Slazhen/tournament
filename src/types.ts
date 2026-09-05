@@ -9,10 +9,9 @@ export type Organizer = {
    * Clubs from the pool this organiser has put on their own list.
    *
    * Their own record and not the clubs': a club belongs to somebody else and
-   * has no business carrying a list of the leagues eyeing it. Being on the list
-   * is not a place in a competition — entering one still asks the club — so
-   * what it buys is the club having a name, a crest and a row on the screens
-   * this organiser works from before any of that has been decided.
+   * has no business carrying a list of the leagues eyeing it. It is a
+   * permission and not a bookmark — a club on it may be put in this organiser's
+   * competitions, which is what a club in the pool has agreed to by being there.
    */
   shortlistedTeamIds?: string[]
 }
@@ -136,15 +135,23 @@ export type Team = {
    */
   visiting?: boolean
   /**
-   * A club on this organiser's list that plays in none of their competitions.
+   * Whether this club is on the reader's own list of clubs from the pool.
    *
-   * Always `visiting` as well, so nothing offers to edit it. What it carries
-   * beyond that is that the squad is deliberately absent rather than empty:
-   * this organiser has picked the club off the pool, which the club has not
-   * been asked about, and a squad is what a competition needs — the record
-   * arrives whole once the club accepts an invitation.
+   * A different question from `visiting`, and both can be true: a club is on
+   * the list because the organiser took it off the pool, and it is visiting
+   * because it does not belong to them. The screens read this only to offer
+   * taking it back off the list.
    */
-  poolOnly?: boolean
+  listed?: boolean
+  /**
+   * Whether the reader may put this club in one of their competitions.
+   *
+   * Worked out by the API with the same rule the write is refused by, because
+   * the browser cannot see the pool and a tick that saves into a refusal is
+   * worse than no tick. False for a club on the list that has since hidden
+   * itself: it stays in the seasons it is already in and joins no new ones.
+   */
+  enterable?: boolean
 }
 
 export type Match = {

@@ -888,11 +888,12 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
                 </span>
               </label>
 
-              {/* A club with a manager is in the pool unless it says otherwise.
-                  Being found is not being entered — an organiser who finds this
-                  club can only ask, and the answer is given on this page — so
-                  the decision on offer is the one worth making deliberately:
-                  leaving the pool. */}
+              {/* A club with a manager is in the pool unless it says otherwise,
+                  and being in it means an organiser may enter this club in their
+                  competition without asking first. That is the point of the
+                  pool, and it is why the copy below says so plainly: this box is
+                  the club's only answer, so the manager has to know what they
+                  are leaving unticked. */}
               <label className="flex items-start gap-2 text-sm text-gray-300">
                 <input
                   type="checkbox"
@@ -903,9 +904,10 @@ function ClubIdentity({ team, onReload }: { team: Team; onReload: () => Promise<
                 <span>
                   Hide this club from organisers you do not play for
                   <span className="block text-xs text-gray-500">
-                    Other organisers can normally search for this club by name and invite it to a
-                    competition; nothing happens until you accept. Hiding it stops that. The
-                    competitions this club already plays in are not affected.
+                    Other organisers can normally find this club by name and enter it in their
+                    competitions. They never get to edit it — the crest, the colours and the squad
+                    stay yours. Hiding it stops them finding it; the competitions this club already
+                    plays in are not affected.
                   </span>
                 </span>
               </label>

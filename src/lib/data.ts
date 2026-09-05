@@ -714,11 +714,12 @@ export const clubService = {
   },
 
   /**
-   * Puts a club from the pool on this organiser's own list.
+   * Takes a club from the pool into this organiser's own clubs.
    *
-   * It does not enter the club in anything and asks it nothing — the club
-   * appears in the organiser's list of clubs, and a place in a competition is
-   * still an invitation the club answers.
+   * Nothing is asked of the club: being in the pool is the club saying it may
+   * be taken, and hiding itself is how it stops that. From here the club can be
+   * picked for a competition like any of the organiser's own — what stays with
+   * its manager is the record itself, the crest and the squad.
    */
   async addToPool(teamId: string): Promise<{ teamId: string; added: boolean }> {
     return api.post('/admin/clubs/shortlist', { teamId })

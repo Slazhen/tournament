@@ -758,9 +758,18 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
   /**
    * Taking one back off it.
    *
-   * The club is read for its name and not for permission: a club deleted since
-   * it was added leaves an id on the list that nothing can resolve, and that is
-   * exactly the row an organiser needs to be able to remove.
+   * Refused while the club is playing in one of this organiser's competitions,
+   * and that refusal is load-bearing rather than tidy. The list is the only
+   * record that this club is theirs to work with — a club taken from the pool
+   * has no entry — so removing it would take the club out of `/admin/teams`,
+   * and with it the name in the table, the squad on the teamsheet, and the tick
+   * that keeps the club in the season the next time the team list is saved.
+   * Removing it from the competition is done on the competition, which says
+   * what that costs the fixtures first.
+   *
+   * The club is otherwise read for its name and not for permission: one deleted
+   * since it was added leaves an id on the list that nothing can resolve, and
+   * that is exactly the row an organiser needs to be able to remove.
    */
   router.delete('/admin/clubs/shortlist/:teamId', async (ctx, params) => {
     const user = await ctx.user()
@@ -768,6 +777,15 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     if (!user.organizerId) throw badRequest('A list of clubs belongs to an organiser')
 
     const teamId = params.teamId!
+
+    const seasons = await tournaments.listByOrganizer(user.organizerId, adminRead)
+    const playing = seasons.find((season) => (season.teamIds ?? []).includes(teamId))
+    if (playing) {
+      throw badRequest(
+        `That club is playing in ${playing.name}. Take it out of the competition first.`,
+      )
+    }
+
     const removed = await organizers.removeShortlistedTeam(user.organizerId, teamId)
 
     // Only a removal that happened is recorded. The repo answers false for a

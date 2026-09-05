@@ -11,7 +11,7 @@ import { toPublicUser, type AuthUser } from '../src/lib/types.js'
 import { buildUpdate } from '../src/lib/ddb.js'
 import { corsHeaders, parseJsonBody, HttpError } from '../src/lib/http.js'
 import { organiserMayDecide, toClubTournament, toDirectoryClub } from '../src/routes/clubs.js'
-import { toPoolTeam, toVisitingTeam } from '../src/routes/admin.js'
+import { toVisitingTeam } from '../src/routes/admin.js'
 import { isInClubPool } from '../src/lib/pool.js'
 import type { Team } from '../src/lib/types.js'
 
@@ -582,17 +582,16 @@ describe('a club taken off the pool', () => {
     ],
   } as unknown as Team
 
-  it('arrives without its squad', () => {
-    const out = toPoolTeam(club)
-    expect(out.players).toEqual([])
-    expect(out.poolOnly).toBe(true)
+  it('arrives with its squad, because the organiser names its teamsheets', () => {
+    const out = toVisitingTeam(club)
+    expect(out.players).toHaveLength(1)
     // Nothing offers to edit it: the API refuses those writes either way.
     expect(out.visiting).toBe(true)
     expect(out.name).toBe('Sydney United')
   })
 
   it('carries no date of birth and no list of accounts', () => {
-    const out = toPoolTeam(club) as unknown as Record<string, unknown>
+    const out = toVisitingTeam(club) as unknown as Record<string, unknown>
     expect(out.managerUserIds).toBeUndefined()
     expect(JSON.stringify(out)).not.toContain('1999-01-01')
   })

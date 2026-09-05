@@ -499,9 +499,10 @@ export default function TeamPage() {
 
             {visitingClub && (
               <p className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl text-left text-sm opacity-70">
-                {team.name} is run in another organiser's league and plays here as a guest. Its
-                name, crest and squad are theirs. You still choose who is registered for your
-                competitions, name the teamsheets, and decide whether the club plays at all.
+                {team.name} belongs to somebody else — its own manager, in another organiser's
+                league. Its name, crest and squad are theirs. You still choose who is registered
+                for your competitions, name the teamsheets, and decide whether the club plays at
+                all.
               </p>
             )}
           </div>
