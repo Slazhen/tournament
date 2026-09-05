@@ -911,8 +911,33 @@ loading the clubs and the competitions. Without that check a signed-in
 organiser reading a public page made three API calls where the page needed
 one, and on a cold API paid for three containers.
 
-One crest, fetched straight from S3 in us-east-1 with no CDN in front of it,
-took 796 ms. A page with a dozen clubs on it is doing that a dozen times.
+**The images were the whole of the incognito complaint.** A crest fetched
+straight from S3 in us-east-1 measured between 250 and 1100 ms from Sydney, and
+a public organiser page draws thirty-two of them. They carry a year of
+`immutable`, so a second visit costs nothing and only a first one — an incognito
+window, or anybody arriving for the first time — pays: 1.6 MB over 32 requests,
+2.7 seconds of wall clock even in parallel, because the S3 REST endpoint speaks
+HTTP/1.1 and the browser opens six connections to a host.
+
+Two things were wrong and both are fixed. The bucket now has `ImagesCdn` in
+front of it, and the site swaps the host in as it draws an image —
+`cdnUrl` in `src/utils/images.ts`, applied at every `src=` that comes from a
+record. The swap is deliberately not in the records: everything in DynamoDB
+still names the bucket, so `S3_PUBLIC_BASE_URL`, the presigned upload and the
+delete route are all untouched, the keys from the browser-side era are covered
+without migrating anything, and turning the distribution off again is one
+environment variable (`VITE_IMAGE_CDN_URL`, set in Amplify) on the site. A new
+`<img src={team.logo}>` written later is not wrong, it just quietly pays the old
+price.
+
+And the weight was in seven images, not spread across them: the ones keyed
+`<32 hex>` rather than `logo-<timestamp>` averaged 177 KB against 15 KB for
+everything uploaded since the browser started compressing, and ran to 337 KB for
+a crest drawn at 40 pixels. `optimize-images.mjs` had left them alone because it
+runs at 1200px for the whole bucket — a club's team photo lives under the same
+prefix as its crest and nothing in the key tells them apart. It now asks
+DynamoDB which keys are somebody's `logo` and shrinks those to 400, so the
+photographs it was protecting keep their size.
 
 ## Traps
 
@@ -959,6 +984,12 @@ took 796 ms. A page with a dozen clubs on it is doing that a dozen times.
   guard the club and competition loads already had. The general shape: a
   mount-time read of the session answers a question that changes after mount.
 
+- **Deleting an image no longer takes it off the internet at once.** The object
+  goes from the bucket, but `ImagesCdn` has it at an edge and nothing
+  invalidates that, so it stays fetchable at the CDN host for up to the cache
+  policy's day. `ImagesCachePolicy` exists to bound it to a day rather than the
+  year the objects themselves claim; if that ever has to be immediate, the fix is
+  `cloudfront:CreateInvalidation` on the delete route and not a shorter TTL.
 - **Content-hashed chunks 404 after a deploy** for anyone holding the old
   `index.html`. `lazyPage()` reloads once, guarded by `sessionStorage`.
 - **CORS is answered in application code**, not in the template, so a new HTTP

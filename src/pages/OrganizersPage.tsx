@@ -15,6 +15,7 @@ import {
   IconLink,
   IconTrash,
 } from '../components/icons'
+import { cdnUrl } from '../utils/images'
 
 interface Organizer {
   id: string
@@ -457,7 +458,7 @@ export default function OrganizersPage() {
                         <img
               loading="lazy"
               decoding="async" 
-                          src={organizer.logo} 
+                          src={cdnUrl(organizer.logo)} 
                           alt={`${organizer.name} logo`}
                           className="w-12 h-12 rounded-full object-cover border border-white/20"
                         />

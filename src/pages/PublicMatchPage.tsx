@@ -24,6 +24,7 @@ import {
 import PublicHeader from '../components/PublicHeader'
 import MatchScoreboard from '../components/MatchScoreboard'
 import { youtubeEmbedUrl } from '../utils/video'
+import { cdnUrl } from '../utils/images'
 
 /**
  * One fixture, as the five things a visitor comes here for.
@@ -836,7 +837,7 @@ function TablePanel({
                         <img
                           loading="lazy"
                           decoding="async"
-                          src={team.logo}
+                          src={cdnUrl(team.logo)}
                           alt=""
                           className="w-5 h-5 object-contain shrink-0"
                         />

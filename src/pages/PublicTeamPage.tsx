@@ -19,6 +19,7 @@ import { allMatches, isPlayed, playerRecords } from '../utils/matches'
 import { hasSquadEntry, squadInTournament } from '../utils/squads'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { formatOptionFor } from '../utils/formats'
+import { cdnUrl } from '../utils/images'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
@@ -185,7 +186,7 @@ export default function PublicTeamPage() {
           >
             <img
               decoding="async"
-              src={team.logo}
+              src={cdnUrl(team.logo)}
               alt=""
               className="w-full h-full object-contain"
             />
@@ -220,7 +221,7 @@ export default function PublicTeamPage() {
             {team.logo ? (
               <img
                 decoding="async"
-                src={team.logo}
+                src={cdnUrl(team.logo)}
                 alt={`${team.name} logo`}
                 className="w-full h-full object-contain rounded-xl"
               />
@@ -314,7 +315,7 @@ export default function PublicTeamPage() {
           >
             <img
               decoding="async"
-              src={team.photo}
+              src={cdnUrl(team.photo)}
               alt={`${team.name} team photo`}
               className="mx-auto w-auto h-auto max-w-full max-h-[70vh]"
             />
@@ -417,7 +418,7 @@ export default function PublicTeamPage() {
                             <img
               loading="lazy"
               decoding="async"
-                              src={player.photo}
+                              src={cdnUrl(player.photo)}
                                                              alt={`${player.firstName} ${player.lastName} photo`}
                               className="w-full h-full object-cover rounded-full"
                             />
@@ -643,7 +644,7 @@ export default function PublicTeamPage() {
                             <img
               loading="lazy"
               decoding="async" 
-                              src={tournament.logo} 
+                              src={cdnUrl(tournament.logo)} 
                               alt={`${tournament.name} logo`} 
                               className="w-full h-full object-cover" 
                             />
@@ -745,7 +746,7 @@ export default function PublicTeamPage() {
             <img
               loading="lazy"
               decoding="async"
-              src={team.photo}
+              src={cdnUrl(team.photo)}
               alt={`${team.name} photo`}
               className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
             />

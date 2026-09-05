@@ -22,6 +22,7 @@ import type { PlayoffCut } from '../utils/standings'
 import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
+import { cdnUrl } from '../utils/images'
 
 const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
 
@@ -642,7 +643,7 @@ export default function PublicTournamentPage() {
                                           <img
               loading="lazy"
               decoding="async" 
-                                            src={team.logo} 
+                                            src={cdnUrl(team.logo)} 
                                             alt={`${team.name} logo`}
                                             className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
                                           />
@@ -749,7 +750,7 @@ export default function PublicTournamentPage() {
                                   <img
               loading="lazy"
               decoding="async" 
-                                    src={team.logo} 
+                                    src={cdnUrl(team.logo)} 
                                     alt={`${team.name} logo`}
                                     className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
                                   />
@@ -1241,7 +1242,7 @@ export default function PublicTournamentPage() {
                                   <img
                                     loading="lazy"
                                     decoding="async"
-                                    src={player.photo}
+                                    src={cdnUrl(player.photo)}
                                     alt={`${player.firstName} ${player.lastName}`}
                                     className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover border border-white/20"
                                   />
@@ -1280,7 +1281,7 @@ export default function PublicTournamentPage() {
                                   <img
                                     loading="lazy"
                                     decoding="async"
-                                    src={team.logo}
+                                    src={cdnUrl(team.logo)}
                                     alt={`${team.name} logo`}
                                     className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover"
                                   />
@@ -1745,7 +1746,7 @@ function SeasonHeader({
               WebkitMaskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
             }}
           >
-            <img decoding="async" src={tournament.logo} alt="" className="w-full h-full object-contain" />
+            <img decoding="async" src={cdnUrl(tournament.logo)} alt="" className="w-full h-full object-contain" />
           </div>
         )}
 
@@ -1767,7 +1768,7 @@ function SeasonHeader({
             {tournament.logo ? (
               <img
                 decoding="async"
-                src={tournament.logo}
+                src={cdnUrl(tournament.logo)}
                 alt={`${competition} logo`}
                 className="w-full h-full object-contain rounded-xl"
               />
@@ -1790,7 +1791,7 @@ function SeasonHeader({
                 {organizer.logo && (
                   <img
                     decoding="async"
-                    src={organizer.logo}
+                    src={cdnUrl(organizer.logo)}
                     alt=""
                     className="w-5 h-5 rounded-full object-cover border border-white/25"
                   />
@@ -1976,7 +1977,7 @@ function SideWash({ team, side }: { team: any; side: 'home' | 'away' }) {
             WebkitMaskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
           }}
         >
-          <img loading="lazy" decoding="async" src={team.logo} alt="" className="w-full h-full object-contain" />
+          <img loading="lazy" decoding="async" src={cdnUrl(team.logo)} alt="" className="w-full h-full object-contain" />
         </div>
       )}
       {/* The colour as an edge, so a club with no crest to wash still has one. */}
@@ -2002,7 +2003,7 @@ function ClubBadge({ team, fallback }: { team: any; fallback: string }) {
     <img
       loading="lazy"
       decoding="async"
-      src={team.logo}
+      src={cdnUrl(team.logo)}
       alt=""
       className="w-9 h-9 sm:w-11 sm:h-11 shrink-0 rounded-full object-cover border border-white/25"
     />

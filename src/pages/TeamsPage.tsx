@@ -6,6 +6,7 @@ import { canEditClub, checkTeamName, parseBulkNames } from "../utils/teams"
 import { useAuth } from "../contexts/AuthContext"
 import { clubService, type DirectoryClub } from "../lib/data"
 import { headerColor } from "../utils/crest"
+import { cdnUrl } from '../utils/images'
 
 /**
  * The clubs.
@@ -392,7 +393,7 @@ export default function TeamsPage() {
                 {team.logo ? (
                   <img
               loading="lazy"
-              decoding="async" src={team.logo} alt={team.name} className="w-16 h-16 rounded-lg object-cover" />
+              decoding="async" src={cdnUrl(team.logo)} alt={team.name} className="w-16 h-16 rounded-lg object-cover" />
                 ) : (
                   <div 
                     className="w-16 h-16 rounded-lg flex items-center justify-center text-white font-bold text-xl"
@@ -639,7 +640,7 @@ function ClubPool({ mine, onAdded }: { mine: Set<string>; onAdded: () => Promise
                   <img
                     loading="lazy"
                     decoding="async"
-                    src={club.logo}
+                    src={cdnUrl(club.logo)}
                     alt=""
                     className="w-8 h-8 rounded-md object-cover shrink-0"
                   />

@@ -3,6 +3,7 @@ import type { Match, Team } from '../types'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { isPlayed } from '../utils/matches'
 import { publicTeamUrl } from '../utils/teams'
+import { cdnUrl } from '../utils/images'
 
 /**
  * The two clubs and the score, as one plate split down the middle.
@@ -107,7 +108,7 @@ function Half({ team, side }: { team: Team; side: 'home' | 'away' }) {
             WebkitMaskImage: 'radial-gradient(closest-side, #000 52%, transparent 100%)',
           }}
         >
-          <img decoding="async" src={team.logo} alt="" className="w-full h-full object-contain" />
+          <img decoding="async" src={cdnUrl(team.logo)} alt="" className="w-full h-full object-contain" />
         </div>
       )}
     </div>
@@ -138,7 +139,7 @@ function ClubMark({
         {team.logo ? (
           <img
             decoding="async"
-            src={team.logo}
+            src={cdnUrl(team.logo)}
             alt={`${team.name} crest`}
             className="w-full h-full object-contain rounded-xl"
           />

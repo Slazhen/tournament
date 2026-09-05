@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Team, Tournament } from '../types'
+import { cdnUrl } from '../utils/images'
 
 type TeamPickerProps = {
   teams: Team[]
@@ -123,7 +124,7 @@ export default function TeamPicker({
                 <img
                   loading="lazy"
                   decoding="async"
-                  src={team.logo}
+                  src={cdnUrl(team.logo)}
                   alt=""
                   className="w-5 h-5 rounded-full object-cover shrink-0"
                 />

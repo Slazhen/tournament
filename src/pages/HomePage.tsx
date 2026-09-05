@@ -22,6 +22,7 @@ import {
 } from '../utils/seasons'
 import { getOrganizerUrl } from '../utils/urls'
 import { useAuth, useSignedIn } from '../contexts/AuthContext'
+import { cdnUrl } from '../utils/images'
 
 /**
  * The front page.
@@ -303,7 +304,7 @@ export default function HomePage() {
                     <img
                       loading="lazy"
                       decoding="async"
-                      src={organizer.logo}
+                      src={cdnUrl(organizer.logo)}
                       alt=""
                       className="w-11 h-11 rounded-full object-cover border border-white/15"
                     />
@@ -340,7 +341,7 @@ export default function HomePage() {
                             <img
                               loading="lazy"
                               decoding="async"
-                              src={competition.current.logo}
+                              src={cdnUrl(competition.current.logo)}
                               alt=""
                               className="w-6 h-6 rounded object-contain"
                             />

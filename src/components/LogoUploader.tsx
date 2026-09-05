@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { compressImage, isValidImageType, isValidImageSize, formatFileSize, getCompressionOptions } from '../utils/imageCompression'
+import { cdnUrl } from '../utils/images'
 
 interface LogoUploaderProps {
   onLogoUpload: (file: File) => Promise<void>
@@ -142,7 +143,7 @@ export default function LogoUploader({
             <img
               loading="lazy"
               decoding="async"
-              src={displayLogo}
+              src={cdnUrl(displayLogo)}
               alt="Logo"
               className="w-full h-full object-cover"
             />

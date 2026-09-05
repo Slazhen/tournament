@@ -15,6 +15,7 @@ import {
   IconTrophy,
   IconGlobe,
 } from '../components/icons'
+import { cdnUrl } from '../utils/images'
 
 export default function PlayerPage() {
   const { playerId } = useParams()
@@ -171,7 +172,7 @@ export default function PlayerPage() {
               <img
               loading="lazy"
               decoding="async"
-                src={player.photo}
+                src={cdnUrl(player.photo)}
                 alt={`${fullName} photo`}
                 className="w-32 h-32 object-cover rounded-lg"
               />
@@ -371,7 +372,7 @@ export default function PlayerPage() {
                 <img
               loading="lazy"
               decoding="async"
-                  src={currentTeam.logo}
+                  src={cdnUrl(currentTeam.logo)}
                   alt={`${currentTeam.name} logo`}
                   className="w-16 h-16 object-cover rounded-lg"
                 />
@@ -507,7 +508,7 @@ export default function PlayerPage() {
                             <img
               loading="lazy"
               decoding="async" 
-                              src={tournament.logo} 
+                              src={cdnUrl(tournament.logo)} 
                               alt={`${tournament.name} logo`} 
                               className="w-full h-full object-cover" 
                             />
@@ -552,7 +553,7 @@ export default function PlayerPage() {
                           <img
               loading="lazy"
               decoding="async"
-                            src={currentTeam.logo}
+                            src={cdnUrl(currentTeam.logo)}
                             alt={`${currentTeam.name} logo`}
                             className="w-6 h-6 object-cover rounded"
                           />

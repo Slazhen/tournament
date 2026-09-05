@@ -17,6 +17,7 @@ import {
   IconGear,
   IconGlobe,
 } from '../components/icons'
+import { cdnUrl } from '../utils/images'
 
 type OrganizerSection = {
   key: string
@@ -222,7 +223,7 @@ function TournamentCard({
             <img
               loading="lazy"
               decoding="async"
-              src={tournament.logo}
+              src={cdnUrl(tournament.logo)}
               alt={`${tournament.name} logo`}
               className="w-full h-full object-cover"
             />

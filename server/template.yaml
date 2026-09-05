@@ -255,6 +255,84 @@ Resources:
 # it is presented. If you later add a numeric "expiresAtEpoch" attribute, turn on
 # DynamoDB TTL for the auth-sessions table so dead rows also disappear on their own.
 
+  # CloudFront in front of the image bucket.
+  #
+  # The bucket is in us-east-1 and the audience is in Australia. One crest
+  # measured between 250 and 1100 ms from Sydney, and a public organiser page
+  # draws about thirty of them: that is most of what a first visit waits for,
+  # because the images carry a year of `immutable` and so cost nothing on any
+  # visit after it. This serves the same objects from an edge instead.
+  #
+  # The bucket is deliberately left public and is not put behind an origin
+  # access control. Every image URL in DynamoDB names the bucket and always
+  # will - the CDN host is swapped in by the browser as it draws the image
+  # (src/utils/images.ts) - so both addresses have to keep answering, and
+  # turning this off again is one environment variable on the site.
+  # The cache key is the URL alone: no header, cookie or query string is
+  # forwarded. An image key carries a random id, so a given URL never changes,
+  # and nothing about the answer varies by request - the bucket sends no CORS
+  # headers at all, which is why a crest's colour is read while the browser
+  # still holds the file.
+  #
+  # A day rather than the year the objects themselves claim. Deleting an image
+  # deletes it from the bucket and nothing invalidates the edge, so the managed
+  # policy's year would have kept a photograph a club asked to have removed
+  # readable long after the record pointing at it was gone. The browser cache is
+  # untouched by this and still holds a year, which it already did; what the cap
+  # bounds is how long somebody who had never seen the image can still fetch it.
+  # The speed is unaffected: an edge miss once a day per image is nothing beside
+  # the thirty-two misses a first visit pays now.
+  ImagesCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub '${AWS::StackName}-images'
+        Comment: Images, cached on the URL alone for a day.
+        MinTTL: 1
+        DefaultTTL: 86400
+        MaxTTL: 86400
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  ImagesCdn:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub 'Images for ${AWS::StackName}'
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        # Australia and New Zealand are served from an edge only in
+        # PriceClass_All. The Sydney edge is the entire point of this
+        # distribution, so the cheaper classes buy nothing at all here.
+        PriceClass: PriceClass_All
+        Origins:
+          - Id: images
+            DomainName: !Sub '${ImagesBucket}.s3.${AWS::Region}.amazonaws.com'
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: images
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: !Ref ImagesCachePolicy
+        # The default CloudFront certificate otherwise accepts TLS 1.0. These
+        # bytes are public either way, but there is no reason to answer a
+        # handshake nothing here needs.
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+          MinimumProtocolVersion: TLSv1.2_2021
+
 Outputs:
   ApiUrl:
     Description: Base URL for the API. Put this in the frontend as VITE_API_BASE_URL.
@@ -262,3 +340,9 @@ Outputs:
   FunctionRole:
     Description: Execution role the API runs as.
     Value: !GetAtt ApiFunctionRole.Arn
+  ImagesCdnUrl:
+    Description: >
+      CDN in front of the image bucket. Put this in Amplify as
+      VITE_IMAGE_CDN_URL and redeploy the site. Until it is set the site fetches
+      images straight from the bucket, exactly as it did before.
+    Value: !Sub 'https://${ImagesCdn.DomainName}'

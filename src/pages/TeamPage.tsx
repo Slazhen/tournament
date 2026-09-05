@@ -20,6 +20,7 @@ import {
   IconGlobe,
   IconTrash,
 } from '../components/icons'
+import { cdnUrl } from '../utils/images'
 
 export default function TeamPage() {
   const { teamId } = useParams()
@@ -516,7 +517,7 @@ export default function TeamPage() {
               <img
               loading="lazy"
               decoding="async"
-                src={team.logo}
+                src={cdnUrl(team.logo)}
                 alt={`${team.name} logo`}
                 className="w-24 h-24 object-cover rounded-lg"
               />
@@ -673,7 +674,7 @@ export default function TeamPage() {
               <img
               loading="lazy"
               decoding="async"
-                src={team.photo}
+                src={cdnUrl(team.photo)}
                 alt={`${team.name} photo`}
                 className="w-24 h-24 object-cover rounded-lg"
               />
@@ -923,7 +924,7 @@ export default function TeamPage() {
                             <img
               loading="lazy"
               decoding="async"
-                              src={player.photo}
+                              src={cdnUrl(player.photo)}
                               alt={`${player.firstName} ${player.lastName} photo`}
                               className="w-12 h-12 object-cover rounded-full"
                             />
@@ -1045,7 +1046,7 @@ export default function TeamPage() {
                             <img
               loading="lazy"
               decoding="async" 
-                              src={tournament.logo} 
+                              src={cdnUrl(tournament.logo)} 
                               alt={`${tournament.name} logo`} 
                               className="w-full h-full object-cover" 
                             />

@@ -41,6 +41,7 @@ import {
   IconUser,
   IconUsers,
 } from '../components/icons'
+import { cdnUrl } from '../utils/images'
 
 /**
  * The club's own page, for the person who runs it.
@@ -1566,7 +1567,7 @@ function Squad({ team, onReload }: { team: Team; onReload: () => Promise<void> }
                   <img
                     loading="lazy"
                     decoding="async"
-                    src={player.photo}
+                    src={cdnUrl(player.photo)}
                     alt=""
                     className="w-7 h-7 rounded-full object-cover shrink-0"
                   />

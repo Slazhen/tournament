@@ -7,6 +7,7 @@ import NotFound from '../components/NotFound'
 import { IconBall, IconShield, IconTrophy, IconUsers } from '../components/icons'
 import { currentSeason, getSeasonUrl, groupIntoSeries, seasonLabel } from '../utils/seasons'
 import { headerColor } from '../utils/crest'
+import { cdnUrl } from '../utils/images'
 
 /**
  * An organiser's own page: /homebush_futsal.
@@ -100,7 +101,7 @@ export default function PublicOrganizerPage() {
         <header className="py-8 sm:py-12 flex items-center gap-5">
           {organizer.logo ? (
             <img
-              src={organizer.logo}
+              src={cdnUrl(organizer.logo)}
               alt=""
               decoding="async"
               className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border border-white/15 shrink-0"
@@ -156,7 +157,7 @@ export default function PublicOrganizerPage() {
                         <img
                           loading="lazy"
                           decoding="async"
-                          src={competition.current.logo}
+                          src={cdnUrl(competition.current.logo)}
                           alt=""
                           className="w-10 h-10 rounded object-contain shrink-0"
                         />
@@ -228,7 +229,7 @@ export default function PublicOrganizerPage() {
                       <img
                         loading="lazy"
                         decoding="async"
-                        src={club.logo}
+                        src={cdnUrl(club.logo)}
                         alt=""
                         className="w-9 h-9 rounded-full object-contain bg-white/5 shrink-0"
                       />

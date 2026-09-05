@@ -38,6 +38,7 @@ import { localDatePart, localTimePart } from '../utils/datetime'
 import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, getSeasonUrl, publicSeasonUrl } from '../utils/seasons'
+import { cdnUrl } from '../utils/images'
 
 /**
  * Which round a click was aimed at, sent with the write.
@@ -1302,7 +1303,7 @@ export default function TournamentPage() {
                                       <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                                         <img
               loading="lazy"
-              decoding="async" src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
+              decoding="async" src={cdnUrl(team.logo)} alt={`${team.name} logo`} className="w-full h-full object-cover" />
                                       </div>
                                     )
                                   } else {
@@ -1400,7 +1401,7 @@ export default function TournamentPage() {
                         {team?.logo ? (
                           <img
               loading="lazy"
-              decoding="async" src={team.logo} alt={team.name} className="w-5 h-5 rounded-full object-cover" />
+              decoding="async" src={cdnUrl(team.logo)} alt={team.name} className="w-5 h-5 rounded-full object-cover" />
                         ) : (
                           <span className="w-5 h-5 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                         )}
@@ -1451,7 +1452,7 @@ export default function TournamentPage() {
                           {team?.logo ? (
                             <img
               loading="lazy"
-              decoding="async" src={team.logo} alt={team.name} className="w-6 h-6 rounded-full object-cover" />
+              decoding="async" src={cdnUrl(team.logo)} alt={team.name} className="w-6 h-6 rounded-full object-cover" />
                           ) : (
                             <span className="w-6 h-6 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                           )}
@@ -1572,7 +1573,7 @@ export default function TournamentPage() {
                                   <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                                     <img
               loading="lazy"
-              decoding="async" src={team.logo} alt={`${team.name} logo`} className="w-full h-full object-cover" />
+              decoding="async" src={cdnUrl(team.logo)} alt={`${team.name} logo`} className="w-full h-full object-cover" />
                                   </div>
                                 )
                               } else {
@@ -1668,7 +1669,7 @@ export default function TournamentPage() {
                                          <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                                            <img
               loading="lazy"
-              decoding="async" src={homeTeam.logo} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
+              decoding="async" src={cdnUrl(homeTeam.logo)} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
                                          </div>
                                        )
                                      } else if (homeTeam) {
@@ -1701,7 +1702,7 @@ export default function TournamentPage() {
                                          <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
                                            <img
               loading="lazy"
-              decoding="async" src={awayTeam.logo} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
+              decoding="async" src={cdnUrl(awayTeam.logo)} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
                                          </div>
                                        )
                                      } else if (awayTeam) {

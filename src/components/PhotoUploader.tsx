@@ -8,6 +8,7 @@ import {
   isValidImageType,
 } from '../utils/imageCompression'
 import { IconCamera } from './icons'
+import { cdnUrl } from '../utils/images'
 
 /**
  * A photograph that can be replaced by clicking it.
@@ -109,7 +110,7 @@ export default function PhotoUploader({
             <img
               loading="lazy"
               decoding="async"
-              src={photo}
+              src={cdnUrl(photo)}
               alt={alt}
               className="w-full h-full object-cover"
             />
