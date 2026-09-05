@@ -155,17 +155,38 @@ for (const object of objects) {
   const oversized = (metadata.width ?? 0) > maxEdge || (metadata.height ?? 0) > maxEdge
   const needsHeader = cacheControl !== CACHE_CONTROL
 
-  if (!oversized && !needsHeader) continue
+  /**
+   * A crest is re-encoded whether or not it is too big, a photograph only when
+   * it is. Most of the saving comes from the encoder rather than the resize:
+   * after the first pass over this bucket the heaviest image left on a public
+   * page was a crest already inside 400px and still 186 KB, because nothing
+   * that fits is ever looked at again. Re-encoding a photograph that is already
+   * the right size would spend quality nobody asked to spend, and unlike a
+   * crest at forty pixels it would show.
+   */
+  const candidate = isCrest || oversized
+  if (!candidate && !needsHeader) continue
 
-  const optimized = oversized ? await shrink(body, extension, maxEdge) : body
+  const optimized = candidate ? await shrink(body, extension, maxEdge) : body
+  /**
+   * Re-encoding does not always win - a file already at a lower quality comes
+   * back bigger - and a crest is a candidate on every run, so the original is
+   * kept unless the new one is actually smaller. That is also what makes a
+   * second run a no-op instead of quantising the whole bucket again, one
+   * generation further from the image somebody uploaded.
+   */
+  const improved = optimized.length < body.length * 0.95
+  if (!improved && !needsHeader) continue
+
+  const payload = improved ? optimized : body
   before += body.length
-  after += optimized.length
+  after += payload.length
 
-  const saved = Math.round(((body.length - optimized.length) / body.length) * 100)
+  const saved = Math.round(((body.length - payload.length) / body.length) * 100)
   console.log(
-    `${oversized ? 'resize' : 'header'} ${isCrest ? '[crest]' : '[photo]'} ${key} ` +
+    `${improved ? 'shrink' : 'header'} ${isCrest ? '[crest]' : '[photo]'} ${key} ` +
       `${Math.round(body.length / 1024)}KB` +
-      (oversized ? ` -> ${Math.round(optimized.length / 1024)}KB (-${saved}%)` : '') +
+      (improved ? ` -> ${Math.round(payload.length / 1024)}KB (-${saved}%)` : '') +
       `${metadata.width ? ` [${metadata.width}x${metadata.height}]` : ''}`,
   )
 
@@ -174,7 +195,7 @@ for (const object of objects) {
       new PutObjectCommand({
         Bucket: BUCKET,
         Key: key,
-        Body: optimized,
+        Body: payload,
         ContentType: contentType,
         CacheControl: CACHE_CONTROL,
       }),
