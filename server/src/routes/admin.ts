@@ -1098,7 +1098,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
    * The rest of the record staying open is a debt, not a decision — a field
    * added to a tournament for the organiser is writable here the day it exists.
    */
-  const TOURNAMENT_PATCH_FORBIDDEN = ['squads', 'squadsStrict']
+  // `hiddenRounds` joins them for the ordinary reason a list does: this PATCH
+  // writes the attribute whole from the copy the browser is holding, and the
+  // route below appends and removes one round under a condition instead.
+  const TOURNAMENT_PATCH_FORBIDDEN = ['squads', 'squadsStrict', 'hiddenRounds']
 
   router.patch('/admin/tournaments/:id', async (ctx, params) => {
     const user = await ctx.user()
@@ -1204,12 +1207,21 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const index = Number(params.index)
     if (!Number.isInteger(index) || index < 0) throw badRequest('That is not a round')
 
-    const updates: { name?: string; description?: string; quantityOfGames?: number } = {}
+    const updates: {
+      name?: string
+      description?: string
+      quantityOfGames?: number
+      hidden?: boolean
+    } = {}
     if (typeof ctx.body.name === 'string') updates.name = ctx.body.name
     if (typeof ctx.body.description === 'string') updates.description = ctx.body.description
     if (typeof ctx.body.quantityOfGames === 'number') {
       updates.quantityOfGames = ctx.body.quantityOfGames
     }
+    // Whether the public may read this round's pairings yet. A boolean and
+    // nothing else: absent means unchanged, and a null here would otherwise be
+    // stored as a value that is neither hidden nor shown.
+    if (typeof ctx.body.hidden === 'boolean') updates.hidden = ctx.body.hidden
 
     const round = await tournaments.updatePlayoffRound(
       params.id!,
@@ -1248,6 +1260,59 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       organizerId: tournament.organizerId,
     })
     return { ok: true }
+  })
+
+  /**
+   * Whether the public may read one league round's fixtures yet.
+   *
+   * A round of a league is not a record — it is a number on the fixtures — so
+   * what is stored is the season's list of the rounds it is keeping back. Its
+   * own route rather than the tournament PATCH for the reason every list here
+   * has one: that PATCH writes the attribute whole from the browser's copy.
+   *
+   * Only fixtures still to come are affected. A round with results in it is
+   * public whatever this says, because the table on the same page is worked out
+   * from those results — see `lib/rounds.ts`.
+   */
+  router.put('/admin/tournaments/:id/rounds/:round/visibility', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const round = Number(params.round)
+    if (!Number.isInteger(round) || round < 0) throw badRequest('That is not a round')
+    if (typeof ctx.body.hidden !== 'boolean') throw badRequest('hidden must be true or false')
+
+    const hidden = ctx.body.hidden
+
+    // A round nobody plays in cannot be hidden. Without this the list takes any
+    // number that fits in a request, and nothing ever removes one: the toggle
+    // that would publish it again is only drawn for rounds that have fixtures.
+    // Publishing is always allowed, because a round can lose its fixtures to a
+    // redraw while it is still marked hidden.
+    const played = Array.isArray(tournament.matches) ? tournament.matches : []
+    const exists = played.some(
+      (match) =>
+        Boolean(match) &&
+        typeof match === 'object' &&
+        (Number.isInteger((match as { round?: unknown }).round)
+          ? (match as { round: number }).round
+          : 0) === round,
+    )
+    if (hidden && !exists) throw badRequest('This competition has no such round')
+    const changed = await tournaments.setRoundHidden(params.id!, round, hidden)
+
+    if (changed) {
+      await record(user, {
+        action: hidden ? 'round.hide' : 'round.show',
+        entity: 'tournament',
+        entityId: params.id!,
+        summary: `${hidden ? 'Hid' : 'Published'} round ${round + 1} of ${tournament.name}`,
+        organizerId: tournament.organizerId,
+      })
+    }
+
+    return { round, hidden, changed }
   })
 
   router.patch('/admin/tournaments/:tournamentId/matches/:matchId', async (ctx, params) => {

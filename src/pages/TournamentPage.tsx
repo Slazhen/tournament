@@ -23,6 +23,8 @@ import {
   IconTrash,
   IconKnockout,
   IconRepeat,
+  IconEye,
+  IconEyeOff,
 } from '../components/icons'
 import FacebookIcon from '../components/FacebookIcon'
 import InstagramIcon from '../components/InstagramIcon'
@@ -55,7 +57,7 @@ const persistedReconstructedGroups = new Set<string>()
 
 export default function TournamentPage() {
   const { id, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTournaments, getOrganizerTeams, updateTournament, updateMatchFields, setScore: saveScore, addPlayoffRound, updatePlayoffRound, removePlayoffRound, uploadTournamentLogo, loading, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTournaments, getOrganizerTeams, updateTournament, updateMatchFields, setScore: saveScore, setRoundHidden, addPlayoffRound, updatePlayoffRound, removePlayoffRound, uploadTournamentLogo, loading, superAdmin } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
@@ -302,6 +304,38 @@ export default function TournamentPage() {
    * page was holding, and those fixtures carry goals, cards and the teamsheets
    * a club's own manager writes.
    */
+  /**
+   * Whether one league round's fixtures are published.
+   *
+   * The list is on the season rather than on the fixtures, because a league
+   * round is a number and not a record — see `hiddenRounds` in `types.ts`.
+   */
+  const roundIsHidden = (round: number) => (tournament?.hiddenRounds ?? []).includes(round)
+
+  /**
+   * Whether this block of fixtures is a round the server can be told about.
+   *
+   * `hiddenRounds` names rounds by the number stored on the fixtures, and for
+   * every ordinary format the block below is exactly that. A
+   * `groups_with_divisions` season from before the round numbers were fixed is
+   * the exception: its fixtures are regrouped into display rounds here and on
+   * the public page, and the position on screen is then not the number in the
+   * record. Hiding by that number would hold back a different set of games than
+   * the one the organiser is looking at, so the control is not offered at all —
+   * the repair tool on this page puts such a season back in step first.
+   */
+  const roundIsAddressable = (r: { round: number; matchIds: string[] }) =>
+    r.matchIds.every(
+      (id) => (tournament?.matches.find((match) => match.id === id)?.round ?? 0) === r.round,
+    )
+
+  function toggleRoundHidden(round: number) {
+    if (!tournament) return
+    setRoundHidden(tournament.id, round, !roundIsHidden(round)).catch((error) =>
+      console.error('Error changing what the public sees of this round:', error),
+    )
+  }
+
   function savePlayoffRound(round: Partial<CustomPlayoffRoundConfig>) {
     if (!tournament) return
     addPlayoffRound(tournament.id, round).catch((error) =>
@@ -312,7 +346,7 @@ export default function TournamentPage() {
   function saveRound(
     index: number,
     round: CustomPlayoffRoundConfig,
-    updates: { name?: string; description?: string; quantityOfGames?: number },
+    updates: { name?: string; description?: string; quantityOfGames?: number; hidden?: boolean },
   ) {
     if (!tournament) return
     updatePlayoffRound(tournament.id, index, updates, expectationOf(round)).catch((error) =>
@@ -1727,6 +1761,36 @@ export default function TournamentPage() {
           <div key={r.round} className="glass rounded-xl p-4">
             <div className="mb-4 flex items-center justify-center gap-3 flex-wrap">
               <span className="font-bold text-lg text-blue-400">Round {r.round + 1}</span>
+              {/* What the public may read of this round yet. Hiding takes the
+                  clubs, the date and the kick-off off every fixture in it that
+                  has not been played; a result stays public, because the table
+                  on the same page is counted from it. */}
+              {roundIsAddressable(r) && (
+              <button
+                type="button"
+                onClick={() => toggleRoundHidden(r.round)}
+                className={`inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md text-xs transition-all ${
+                  roundIsHidden(r.round)
+                    ? 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'
+                    : 'glass hover:bg-white/10'
+                }`}
+                title={
+                  roundIsHidden(r.round)
+                    ? 'The public sees TBA for this round. Press to publish it.'
+                    : 'Show this round as TBA on the public page until you publish it'
+                }
+              >
+                {roundIsHidden(r.round) ? (
+                  <>
+                    <IconEyeOff size={14} /> Hidden from public
+                  </>
+                ) : (
+                  <>
+                    <IconEye size={14} /> Hide round
+                  </>
+                )}
+              </button>
+              )}
               {/* With an odd number of teams one club has no opponent this week.
                   The fixture list just left them out, which read as a mistake. */}
               {(() => {
@@ -2115,6 +2179,32 @@ export default function TournamentPage() {
                         />
                       </div>
                       <div className="flex gap-2">
+                        {/* The same choice as a league round, on the record
+                            that holds these fixtures rather than on the season:
+                            a hand-built round is a record of its own. */}
+                        <button
+                          onClick={() => saveRound(roundIndex, round, { hidden: !round.hidden })}
+                          className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md transition-all ${
+                            round.hidden
+                              ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200'
+                              : 'glass hover:bg-white/10'
+                          }`}
+                          title={
+                            round.hidden
+                              ? 'The public sees TBA for this round. Press to publish it.'
+                              : 'Show this round as TBA on the public page until you publish it'
+                          }
+                        >
+                          {round.hidden ? (
+                            <>
+                              <IconEyeOff size={15} /> Hidden
+                            </>
+                          ) : (
+                            <>
+                              <IconEye size={15} /> Hide
+                            </>
+                          )}
+                        </button>
                         <button
                           onClick={() => deleteRound(roundIndex, round)}
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-red-500/20 hover:bg-red-500/30 transition-all text-red-400"

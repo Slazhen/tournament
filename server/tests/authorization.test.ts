@@ -333,6 +333,91 @@ describe('a hand-built playoff, as a visiting club sees it', () => {
   })
 })
 
+describe('a round the organiser is holding back, as a visiting club sees it', () => {
+  const tournament = {
+    id: 't-3',
+    organizerId: 'org-2',
+    teamIds: ['team-mine', 'team-a', 'team-b'],
+    matches: [],
+    hiddenRounds: [3],
+  }
+
+  const upcoming = (extra: Record<string, unknown>) => ({
+    id: 'm-x',
+    dateISO: '2026-04-01T10:00:00.000Z',
+    round: 3,
+    ...extra,
+  })
+
+  // This route answers any club with an entry in the competition — an
+  // application the organiser turned down included — so the pairings of a round
+  // the public may not read must not be here either.
+  it("redacts another club's fixture in a hidden round", () => {
+    const seen = toClubTournament(
+      { ...tournament, matches: [upcoming({ homeTeamId: 'team-a', awayTeamId: 'team-b' })] },
+      ['team-mine'],
+    )
+    expect(seen.matches[0]).toEqual({ hidden: true, round: 3 })
+  })
+
+  // Deliberate: a club has to know when it plays and against whom, and a season
+  // where it cannot see its own next game is one nobody can name a teamsheet for.
+  it("still shows the club its own fixture in that round", () => {
+    const mine = upcoming({ homeTeamId: 'team-mine', awayTeamId: 'team-a' })
+    const seen = toClubTournament({ ...tournament, matches: [mine] }, ['team-mine'])
+    expect(seen.matches[0]).toEqual(mine)
+  })
+
+  it('leaves a played fixture in that round readable, so the table still adds up', () => {
+    const played = upcoming({
+      homeTeamId: 'team-a',
+      awayTeamId: 'team-b',
+      homeGoals: 1,
+      awayGoals: 1,
+    })
+    const seen = toClubTournament({ ...tournament, matches: [played] }, ['team-mine'])
+    expect(seen.matches[0]).toEqual(played)
+  })
+
+  it('redacts a hidden hand-built round the same way', () => {
+    const seen = toClubTournament(
+      {
+        ...tournament,
+        format: {
+          mode: 'league_custom_playoff',
+          customPlayoffConfig: {
+            playoffRounds: [
+              {
+                roundNumber: 2,
+                name: 'Week 2',
+                hidden: true,
+                matches: [{ id: 'p-9', homeTeamId: 'team-a', awayTeamId: 'team-b' }],
+              },
+            ],
+          },
+        },
+      },
+      ['team-mine'],
+    )
+    expect(seen.format.customPlayoffConfig.playoffRounds[0].matches[0]).toEqual({ hidden: true })
+  })
+
+  // Legacy, written by nothing and read by no screen, and it names the pairings
+  // the fixtures above have just had taken off them.
+  it('does not send a playoff bracket at all', () => {
+    const seen = toClubTournament(
+      {
+        ...tournament,
+        playoffBrackets: [
+          { round: 1, matches: [{ matchId: 'b-1', homeTeamId: 'team-a', awayTeamId: 'team-b' }] },
+        ],
+      },
+      ['team-mine'],
+    )
+    expect(seen.playoffBrackets).toBeUndefined()
+  })
+})
+
 describe('who may read the club directory', () => {
   it('lets an organizer and the super admin in', () => {
     expect(() => assertIsOrganizer(organizerUser)).not.toThrow()

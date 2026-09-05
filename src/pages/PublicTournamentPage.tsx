@@ -372,7 +372,23 @@ export default function PublicTournamentPage() {
    * the score. The seam the scoreboard needs is not needed here — the two
    * washes never meet.
    */
-  const renderMatch = (match: any) => {
+  const renderMatch = (match: any, index: number) => {
+    // A fixture of a round the organiser has not published yet. The API sends
+    // no clubs, no date and no id for one of these, so there is nothing to draw
+    // and nothing to open — only the fact that a game belongs here.
+    if (match?.hidden) {
+      return (
+        <div
+          key={`tba-${index}`}
+          className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-3 sm:p-4 flex items-center justify-center gap-3"
+        >
+          <span className="text-sm sm:text-lg font-semibold text-gray-400">TBA</span>
+          <span className="text-sm sm:text-lg font-semibold text-gray-500">vs</span>
+          <span className="text-sm sm:text-lg font-semibold text-gray-400">TBA</span>
+        </div>
+      )
+    }
+
     const homeTeam = teams.find((t: any) => t.id === match.homeTeamId)
     const awayTeam = teams.find((t: any) => t.id === match.awayTeamId)
     // `!== null` also passed for a match whose goals were never set at
@@ -769,7 +785,11 @@ export default function PublicTournamentPage() {
               }))
               // Only teams still in the tournament can be resting: the ones
               // already knocked out are absent for good, not for a week.
-              const resting = restingNote(playoffSurvivors[roundIndex] || [], matches, teams)
+              // Nobody is resting in a round nobody may read: every club is
+              // missing from it, so the note would name all of them.
+              const resting = matches.some((match) => match.hidden)
+                ? ''
+                : restingNote(playoffSurvivors[roundIndex] || [], matches, teams)
               const day = matches.find((match) => match.dateISO)
               const dayLabel = day
                 ? new Date(day.dateISO).toLocaleDateString('en-US', {
@@ -1045,7 +1065,11 @@ export default function PublicTournamentPage() {
                   title={`Round ${roundNumber + 1}`}
                   subtitle={[
                     roundSubtitle(roundMatches),
-                    restingNote(tournament.teamIds || [], roundMatches, teams),
+                    // Same reason as the playoff rounds above: a hidden round
+                    // names no clubs, so every one of them would read as resting.
+                    roundMatches.some((match: any) => match.hidden)
+                      ? ''
+                      : restingNote(tournament.teamIds || [], roundMatches, teams),
                   ]
                     .filter(Boolean)
                     .join(' · ')}
@@ -1584,6 +1608,14 @@ function restingNote(
 /** "6 matches · all played" reads better than a bare count. */
 function roundSubtitle(matches: any[]): string {
   const played = matches.filter((match) => matchStatus(match) === 'finished').length
+  // Why the rows say TBA. Without it the round reads as one the organiser has
+  // forgotten to fill in rather than one they have not announced.
+  const held = matches.filter((match) => match.hidden).length
+  if (held > 0) {
+    return played === 0
+      ? `${matches.length} matches · not announced yet`
+      : `${matches.length} matches · ${played} played · ${held} not announced yet`
+  }
   if (played === 0) return `${matches.length} matches`
   if (played === matches.length) return `${matches.length} matches · all played`
   return `${matches.length} matches · ${played} played`

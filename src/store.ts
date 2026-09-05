@@ -132,11 +132,12 @@ type AppStore = {
    * this browser is holding, and those fixtures now carry goals, cards and the
    * teamsheets a club's own manager writes.
    */
+  setRoundHidden: (tournamentId: string, round: number, hidden: boolean) => Promise<void>
   addPlayoffRound: (tournamentId: string, round: Partial<CustomPlayoffRoundConfig>) => Promise<void>
   updatePlayoffRound: (
     tournamentId: string,
     index: number,
-    updates: { name?: string; description?: string; quantityOfGames?: number },
+    updates: { name?: string; description?: string; quantityOfGames?: number; hidden?: boolean },
     expected: RoundExpectation,
   ) => Promise<void>
   removePlayoffRound: (
@@ -690,6 +691,34 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }))
   },
 
+  /**
+   * One league round published or held back.
+   *
+   * The list moves only once the server has agreed, the same arrangement as
+   * `setSquad` and `setLineup`: a toggle that flipped first would leave the
+   * screen saying a round is hidden when the write had been refused. The
+   * answer's `hidden` is what is applied, not the request's, so two tabs
+   * pressing the same toggle end up agreeing with the record.
+   */
+  setRoundHidden: async (tournamentId: string, round: number, hidden: boolean) => {
+    const stored = await tournamentService.setRoundHidden(tournamentId, round, hidden)
+
+    set(state => ({
+      tournaments: state.tournaments.map(tournament => {
+        if (tournament.id !== tournamentId) return tournament
+        const rounds = tournament.hiddenRounds ?? []
+        return {
+          ...tournament,
+          hiddenRounds: stored.hidden
+            ? rounds.includes(round)
+              ? rounds
+              : [...rounds, round]
+            : rounds.filter((one) => one !== round),
+        }
+      }),
+    }))
+  },
+
   addPlayoffRound: async (tournamentId: string, round: Partial<CustomPlayoffRoundConfig>) => {
     const stored = await tournamentService.addPlayoffRound(tournamentId, round)
     set(state => ({
@@ -704,7 +733,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   updatePlayoffRound: async (
     tournamentId: string,
     index: number,
-    updates: { name?: string; description?: string; quantityOfGames?: number },
+    updates: { name?: string; description?: string; quantityOfGames?: number; hidden?: boolean },
     expected: RoundExpectation,
   ) => {
     const stored = await tournamentService.updatePlayoffRound(

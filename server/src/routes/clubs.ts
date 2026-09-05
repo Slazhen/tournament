@@ -8,6 +8,7 @@ import {
   managesTeam,
 } from '../lib/auth.js'
 import { assertPasswordStrength, generateId, generateSalt, hashPassword } from '../lib/passwords.js'
+import { hiddenLeagueRounds, publicForm } from '../lib/rounds.js'
 import { createSession } from '../lib/sessions.js'
 import { ddb, PutCommand, scanAll } from '../lib/ddb.js'
 import { SITE_URL, TABLES } from '../lib/env.js'
@@ -66,6 +67,8 @@ import type { RequestContext } from '../context.js'
 const CARRIED_MATCH_FIELDS = [
   'id',
   // A playoff bracket names its fixture `matchId` and records a `winner`.
+  // `playoffBrackets` itself is no longer sent — see `toClubTournament` — but a
+  // fixture stored with these keys still reads correctly through this list.
   'matchId',
   'winner',
   'homeTeamId',
@@ -114,10 +117,13 @@ const CARRIED_TOURNAMENT_FIELDS = [
 ]
 
 /**
- * A playoff round, and a bracket, by the same rule as everything else here.
+ * A playoff round by the same rule as everything else here.
  *
  * These are the objects an organiser edits by hand, so they are the likeliest
- * to grow a field meant for them and not for the clubs.
+ * to grow a field meant for them and not for the clubs. `hidden` is deliberately
+ * not among them: what a round is holding back is said by its fixtures, which
+ * arrive redacted, and a round marked hidden while the club's own game inside it
+ * is drawn in full would only contradict itself.
  */
 const CARRIED_ROUND_FIELDS = [
   'id',
@@ -153,17 +159,41 @@ function summariseRound(round: unknown, mine: Set<string>): unknown {
   if (!round || typeof round !== 'object') return round
 
   const source = round as Record<string, unknown>
-  const summary: Record<string, unknown> = { matches: projectMatches(source.matches, mine) }
+  const summary: Record<string, unknown> = {
+    // A hand-built round carries its own flag, so the whole round is held back
+    // or none of it is.
+    matches: projectMatches(source.matches, mine, () => source.hidden === true),
+  }
   for (const field of CARRIED_ROUND_FIELDS) {
     if (source[field] !== undefined) summary[field] = source[field]
   }
   return summary
 }
 
-const projectMatches = (list: unknown, mine: Set<string>): unknown[] =>
-  (Array.isArray(list) ? list : []).map((match) =>
-    isOwnMatch(match, mine) ? match : summariseMatch(match),
-  )
+/**
+ * The fixtures of one competition as a club playing in it may see them.
+ *
+ * Three answers, not two. The caller's own match comes whole: a club has to
+ * know when it plays and against whom whatever the organiser has announced to
+ * everybody else, and a season where a club cannot see its own next game is one
+ * nobody can name a teamsheet for. Somebody else's match in a round the
+ * organiser is holding back is redacted exactly as the public gets it — this
+ * route answers any club with an entry in the competition, an application the
+ * organiser turned down included, so leaving the pairings here would be the way
+ * round the whole feature. Everything else is summarised to the score.
+ */
+const projectMatches = (
+  list: unknown,
+  mine: Set<string>,
+  held: (match: Record<string, unknown>) => boolean,
+): unknown[] =>
+  (Array.isArray(list) ? list : []).map((match) => {
+    if (isOwnMatch(match, mine)) return match
+    if (match && typeof match === 'object' && held(match as Record<string, unknown>)) {
+      return publicForm(match as Record<string, unknown>)
+    }
+    return summariseMatch(match)
+  })
 
 /**
  * A competition as a club playing in it may see it.
@@ -188,7 +218,10 @@ export function toClubTournament(
     if (tournament[field] !== undefined) visible[field] = tournament[field]
   }
 
-  visible.matches = projectMatches(tournament.matches, mine)
+  const hidden = hiddenLeagueRounds(tournament as never)
+  visible.matches = projectMatches(tournament.matches, mine, (match) =>
+    hidden.has(Number.isInteger(match.round) ? (match.round as number) : 0),
+  )
 
   // Playoff fixtures of a hand-built format are not in `matches` at all: they
   // live inside the format, and the client concatenates the two to get the
@@ -214,11 +247,10 @@ export function toClubTournament(
       : format
   }
 
-  if (Array.isArray(tournament.playoffBrackets)) {
-    visible.playoffBrackets = tournament.playoffBrackets.map((bracket: Record<string, any>) =>
-      summariseRound(bracket, mine),
-    )
-  }
+  // `playoffBrackets` used to be projected here. It is legacy — nothing writes
+  // it and no screen reads it — and the records that still carry one name the
+  // pairings by club and date, which is exactly what a hidden round takes off
+  // the fixtures above. The public projection drops it for the same reason.
 
   if (tournament.squads && typeof tournament.squads === 'object') {
     visible.squads = Object.fromEntries(

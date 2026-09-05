@@ -656,6 +656,99 @@ export const tournaments = {
    * this route could reach them their scores were edited by rewriting the whole
    * `format` object from the browser's copy.
    */
+  /**
+   * A league round the public may not read yet, and the way back.
+   *
+   * `hiddenRounds` is a list of round numbers, and a list is never written back
+   * whole here: an organiser with the season open in two tabs would drop
+   * whichever round the other tab had just added. So a round is appended under
+   * a `NOT contains` condition and removed by an index checked in the same
+   * request, the way the shortlist and `managerUserIds` already are.
+   *
+   * Returns false when there was nothing to do — the round was already hidden,
+   * or already shown. That is an ordinary answer and not an error: two clicks
+   * on the same toggle mean the same thing as one.
+   */
+  async setRoundHidden(tournamentId: string, round: number, hidden: boolean): Promise<boolean> {
+    if (hidden) {
+      const tournament = await this.getOrThrow(tournamentId)
+      const stored = (tournament as { hiddenRounds?: unknown }).hiddenRounds
+
+      // `POST /admin/tournaments` passes its body through, so a season can be
+      // created with anything at all under this key — and `list_append` onto a
+      // string is a ValidationException, which is a 500 with nothing in it to
+      // explain why the toggle stopped working. A value that is not a list is
+      // not a list of rounds either, so it is replaced rather than appended to.
+      if (stored !== undefined && !Array.isArray(stored)) {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.TOURNAMENTS,
+            Key: { id: tournamentId },
+            UpdateExpression: 'SET #hiddenRounds = :one',
+            ConditionExpression: 'attribute_exists(id)',
+            ExpressionAttributeNames: { '#hiddenRounds': 'hiddenRounds' },
+            ExpressionAttributeValues: { ':one': [round] },
+          }),
+        )
+        invalidate('tournaments:')
+        return true
+      }
+
+      if (Array.isArray(stored) && stored.length >= 100) {
+        throw badRequest('That is as many hidden rounds as one season can hold')
+      }
+
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.TOURNAMENTS,
+            Key: { id: tournamentId },
+            UpdateExpression: 'SET #hiddenRounds = list_append(if_not_exists(#hiddenRounds, :none), :one)',
+            ConditionExpression:
+              'attribute_exists(id) AND (attribute_not_exists(#hiddenRounds) OR NOT contains(#hiddenRounds, :round))',
+            ExpressionAttributeNames: { '#hiddenRounds': 'hiddenRounds' },
+            ExpressionAttributeValues: { ':none': [], ':one': [round], ':round': round },
+          }),
+        )
+        invalidate('tournaments:')
+        return true
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+        return false
+      }
+    }
+
+    let current: Tournament | null = await this.getOrThrow(tournamentId)
+
+    for (let attempt = 0; attempt < 3 && current; attempt++) {
+      const stored = (current as { hiddenRounds?: unknown }).hiddenRounds
+      const index = Array.isArray(stored) ? stored.indexOf(round) : -1
+      if (index === -1) return false
+
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.TOURNAMENTS,
+            Key: { id: tournamentId },
+            UpdateExpression: `REMOVE #hiddenRounds[${index}]`,
+            ConditionExpression: `#hiddenRounds[${index}] = :round`,
+            ExpressionAttributeNames: { '#hiddenRounds': 'hiddenRounds' },
+            ExpressionAttributeValues: { ':round': round },
+          }),
+        )
+        invalidate('tournaments:')
+        return true
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+        current = await this.get(tournamentId)
+      }
+    }
+
+    // Three writers moved the list under this one. Answering true would leave
+    // the screen saying a round is published while it is still held back.
+    return false
+  },
+
   async updateMatch(
     tournamentId: string,
     matchId: string,
@@ -755,7 +848,7 @@ export const tournaments = {
   async updatePlayoffRound(
     tournamentId: string,
     index: number,
-    updates: { name?: string; description?: string; quantityOfGames?: number },
+    updates: { name?: string; description?: string; quantityOfGames?: number; hidden?: boolean },
     expected: RoundExpectation,
   ): Promise<Record<string, unknown>> {
     const tournament = await this.getOrThrow(tournamentId)
@@ -784,6 +877,15 @@ export const tournaments = {
       values[':description'] = updates.description
       sets.push(`${at}.#description = :description`)
       merged.description = updates.description
+    }
+
+    if (typeof updates.hidden === 'boolean') {
+      // `hidden` is one of DynamoDB's reserved words, so it is aliased like
+      // every other hand-written name here.
+      names['#hidden'] = 'hidden'
+      values[':hidden'] = updates.hidden
+      sets.push(`${at}.#hidden = :hidden`)
+      merged.hidden = updates.hidden
     }
 
     if (typeof updates.quantityOfGames === 'number') {

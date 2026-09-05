@@ -2,6 +2,7 @@ import { Router } from '../lib/router.js'
 import { badRequest, notFound } from '../lib/http.js'
 import { organizerSlug, tournamentSlug, seriesSlug, seasonSlug, seriesKey } from '../lib/slugs.js'
 import { isPublic, organizers, teams, toSummary, tournaments } from '../repos.js'
+import { toPublicTournament, toPublicTournaments } from '../lib/rounds.js'
 import type { Organizer, Team, Tournament } from '../lib/types.js'
 import type { RequestContext } from '../context.js'
 
@@ -114,7 +115,7 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
    */
   router.get('/public/tournaments/full', async () => {
     const all = await tournaments.listAll()
-    return all.filter(isPublic)
+    return toPublicTournaments(all.filter(isPublic))
   })
 
   router.get('/public/teams', async () => toPublicTeams(await teams.listAll()))
@@ -128,12 +129,12 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
   router.get('/public/tournaments/:id', async (_ctx, params) => {
     const tournament = await tournaments.get(params.id!)
     if (!tournament || !isPublic(tournament)) throw notFound('Tournament not found')
-    return tournament
+    return toPublicTournament(tournament)
   })
 
   router.get('/public/organizers/:organizerId/tournaments', async (_ctx, params) => {
     const list = await tournaments.listByOrganizer(params.organizerId!)
-    return list.filter(isPublic)
+    return toPublicTournaments(list.filter(isPublic))
   })
 
   router.get('/public/organizers/:organizerId/teams', async (_ctx, params) =>
@@ -180,7 +181,9 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
   }
 
   const bundle = (all: Tournament[], tournament: Tournament, organizer: Organizer) => ({
-    tournament,
+    // The seasons beside it are summaries, which carry no fixtures; the season
+    // itself is the one thing here that does.
+    tournament: toPublicTournament(tournament),
     seasons: seasonsOf(all, tournament),
     organizer: {
       id: organizer.id,
@@ -356,8 +359,13 @@ async function buildTeamContext(team: Awaited<ReturnType<typeof teams.get>> & ob
       Array.isArray(tournament.teamIds) && tournament.teamIds.includes(team.id as string),
     )
 
+  // Projected before the clubs are gathered, not after: a fixture in a hidden
+  // round names nobody, and fetching the clubs it names would put them in this
+  // answer as the only trace of a round the season is keeping back.
+  const publicSeasons = toPublicTournaments(played)
+
   const referenced = new Set<string>()
-  for (const tournament of played) {
+  for (const tournament of publicSeasons) {
     // Same reason as the organiser page: a stored `teamIds` that is not an array
     // would throw here, on a route every club and player page goes through.
     for (const id of Array.isArray(tournament.teamIds) ? tournament.teamIds : []) referenced.add(id)
@@ -369,7 +377,7 @@ async function buildTeamContext(team: Awaited<ReturnType<typeof teams.get>> & ob
 
   return {
     team: toPublicTeam(team as Team),
-    tournaments: played,
+    tournaments: publicSeasons,
     teams: toPublicTeams(await teams.getMany([...referenced])),
   }
 }

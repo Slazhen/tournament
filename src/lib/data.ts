@@ -302,7 +302,7 @@ export const tournamentService = {
   async updatePlayoffRound(
     tournamentId: string,
     index: number,
-    updates: { name?: string; description?: string; quantityOfGames?: number },
+    updates: { name?: string; description?: string; quantityOfGames?: number; hidden?: boolean },
     expected: RoundExpectation,
   ): Promise<CustomPlayoffRoundConfig> {
     return api.patch<CustomPlayoffRoundConfig>(
@@ -324,6 +324,24 @@ export const tournamentService = {
     if (expected.name !== undefined) query.set('expectedName', expected.name)
     await api.delete(
       `/admin/tournaments/${encodeURIComponent(tournamentId)}/playoff-rounds/${index}?${query}`,
+    )
+  },
+
+  /**
+   * Whether one league round's fixtures are published yet.
+   *
+   * Not part of `update`: that PATCH writes the whole attribute from this
+   * page's copy, and `hiddenRounds` is a list. The API appends and removes one
+   * round under a condition, and refuses the field on the tournament PATCH.
+   */
+  async setRoundHidden(
+    tournamentId: string,
+    round: number,
+    hidden: boolean,
+  ): Promise<{ round: number; hidden: boolean; changed: boolean }> {
+    return api.put(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/rounds/${round}/visibility`,
+      { hidden },
     )
   },
 

@@ -245,6 +245,16 @@ export type Match = {
       substitutes: string[]
     }
   }
+  /**
+   * Set by the API on a fixture of a round the season is keeping back.
+   *
+   * It arrives instead of the fixture, not beside it: a hidden match carries no
+   * id, no clubs, no date and no kick-off, only the round it belongs to. The
+   * public pages draw it as a TBA row. Nothing ever writes this field — the
+   * organiser hides a round, and `server/src/lib/rounds.ts` decides what that
+   * means for each fixture in it.
+   */
+  hidden?: boolean
   // Match content
   preview?: string
   report?: string
@@ -296,6 +306,15 @@ export type CustomPlayoffRoundConfig = {
   quantityOfGames: number // Number of games in this round
   description?: string
   matches: CustomPlayoffMatchConfig[] // Individual match configurations
+  /**
+   * Whether the public may read this round's pairings yet.
+   *
+   * On the round itself, because a hand-built round is a record; a league round
+   * is only a number on its fixtures, so the season carries `hiddenRounds`
+   * instead. Absent means published, which is what every round did before the
+   * flag existed.
+   */
+  hidden?: boolean
 }
 
 /**
@@ -424,6 +443,19 @@ export type Tournament = {
    * being played does not lose its teamsheets to a checkbox.
    */
   squadsStrict?: boolean
+  /**
+   * The league rounds whose fixtures the public may not read yet, by round
+   * number as the matches store it — from zero.
+   *
+   * The organiser draws a whole season at once and does not always want it read
+   * that far ahead. A hidden round still appears on the public page, with a row
+   * per fixture reading TBA; what leaves the API is nothing but the count.
+   *
+   * Only fixtures still to come are affected. A result is public whatever this
+   * says, because the table beside it is worked out from those results and a
+   * held-back score would make it wrong rather than discreet.
+   */
+  hiddenRounds?: number[]
 }
 
 export type AppSettings = {

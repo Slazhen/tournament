@@ -95,6 +95,53 @@ stored record beside it: returning the stored one is exactly how `isPublic` was
 undone once before, and it would put the date of birth back on the wire the
 projection had just taken off.
 
+**A round can be held back, and what that means is decided on the server.**
+An organiser draws a whole season at once and does not always want it read that
+far ahead. `hiddenRounds` on the season names the league rounds being kept back,
+by the number the fixtures store — from zero; a hand-built playoff round carries
+`hidden` on the round record itself, because that one is a record and a league
+round is only a number. `server/src/lib/rounds.ts` is the single place that turns
+either into an answer: every public route projects the season through
+`toPublicTournament`, and a withheld fixture leaves the API as
+`{ hidden: true, round?, isPlayoff?, playoffRound?, division?, groupIndex? }` —
+no clubs, no date, no kick-off, and no id, since ids of hand-built rounds have
+been assembled out of a club id and a fixture nobody may read has no page to be
+opened at. The count survives, which is what lets the public page draw the round
+as that many TBA rows rather than as a round that does not exist.
+
+A played fixture is published whatever the flag says. The table, the scorers and
+the club pages are all counted in the browser from the matches in that answer, so
+a withheld result would not read as "not announced" — it would read as a league
+table that is quietly wrong. For the same reason the projection *strips* a stored
+`hidden`: `POST /admin/tournaments` passes its body through, so one can be
+written onto a fixture today, and the pages read that field as the server's word.
+
+`/manager/overview` projects it too, and not by accident. That route answers any
+club with an entry in the competition — an application the organiser turned down
+included — so a club could otherwise apply to a league it does not play in and
+read every round it is holding back. What a club still sees whole is *its own*
+fixture in a hidden round: it has to know when it plays, and a season where a
+club cannot see its own next game is one nobody can name a teamsheet for.
+
+`playoffBrackets` is no longer sent by either projection. Nothing writes it and
+no screen reads it, and on the records that still carry one it names the pairings
+by club and date — exactly what the fixtures beside it have just had taken off.
+
+Two things this does not do. It is not a secret: `/public/*` answers carry
+`cache-control: max-age=60` and the Lambda's own cache is per container, so a
+round hidden after the draw went out stays readable for a minute or two. And a
+`groups_with_divisions` season from before its round numbers were fixed regroups
+its fixtures into display rounds that are not the numbers in the record, so the
+control is not offered there at all — the repair tool puts such a season back in
+step first.
+
+The write is a list, so it is never written back whole:
+`PUT /admin/tournaments/:id/rounds/:round/visibility` appends under a
+`NOT contains` condition and removes by a checked index, `hiddenRounds` is in
+`TOURNAMENT_PATCH_FORBIDDEN`, and hiding a round the season does not have is
+refused — nothing would ever take such a number off the list again, since the
+toggle is only drawn for rounds that have fixtures.
+
 **A private season has no public address.** The public routes refuse it, so a
 link built for it answers "not found" — including for the organiser who runs it.
 Anything that offers to open a competition decides the destination itself: the
