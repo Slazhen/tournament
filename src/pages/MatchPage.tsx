@@ -15,7 +15,7 @@ import {
 } from '../components/icons'
 import { registeredPlayers } from '../utils/squads'
 import { youtubeEmbedUrl } from '../utils/video'
-import { cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
+import { byMinute, cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
 import { cdnUrl } from '../utils/images'
 
 /**
@@ -40,7 +40,7 @@ const STATISTIC_ROWS: Array<{
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateMatchFields, setLineup, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateMatchFields, addGoal, updateGoal, removeGoal, setLineup, superAdmin } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -118,31 +118,19 @@ export default function MatchPage() {
   }
 
   /**
-   * The score the recorded events add up to.
+   * One goal gone, through the route that writes one goal.
    *
-   * The two used to be stored side by side and reconciled by hand, so a goal
-   * entered here left the season's table showing the old result until somebody
-   * remembered to retype it. Adding or removing an event now moves the score
-   * with it, in the same write.
-   *
-   * The score stays a field of its own, and is still editable on the scoreboard
-   * above: most matches in this app have a result and no events at all, and a
-   * score derived from an empty list would read 0-0 for every one of them. So
-   * this is applied only when the event list itself changes.
-   */
-  const scoreOf = (goals: NonNullable<typeof match.goals>) => ({
-    homeGoals: goals.filter(g => g.team === 'home').length,
-    awayGoals: goals.filter(g => g.team === 'away').length,
-  })
-
-  /**
-   * One event gone, and the score with it. Written once: this was two calls,
-   * so the second could reach the API before the first and put the old score
-   * back beside the shorter list.
+   * The score is deliberately left alone. A goal now has two authors — this
+   * screen and the manager of the club it counts for — and what a deletion
+   * takes away is the name on it, not the goal: the result stands and the goal
+   * goes back to being one nobody has named. A wrong result is corrected on the
+   * scoreboard above, which is where it was typed.
    */
   const deleteGoal = (goalId: string) => {
-    const goals = match.goals?.filter(g => g.id !== goalId) || []
-    updateMatch({ goals, ...scoreOf(goals) })
+    if (!tournament || !matchId) return
+    removeGoal(tournament.id, matchId, goalId).catch((error) => {
+      console.error('Error removing goal:', error)
+    })
   }
 
   const getPlayerName = (playerId: string, team: typeof homeTeam) => {
@@ -397,13 +385,11 @@ export default function MatchPage() {
               <div>
                 <h3 className="font-semibold mb-4">Goals Timeline</h3>
                 <div className="space-y-2">
-                  {[...match.goals]
-                    .sort((a, b) => a.minute - b.minute)
-                    .map(goal => (
+                  {byMinute(match.goals).map(goal => (
                     <div key={goal.id} className="flex items-center justify-between p-3 glass rounded-lg">
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-mono bg-white/20 px-2 py-1 rounded">
-                          {goal.minute}'
+                          {typeof goal.minute === 'number' ? `${goal.minute}'` : '-'}
                         </span>
                         <span className={`font-semibold ${goal.team === 'home' ? 'text-blue-400' : 'text-red-400'}`}>
                           {getPlayerName(goal.playerId, scorerSide(goal) === 'home' ? homeTeam : awayTeam)}
@@ -551,6 +537,9 @@ export default function MatchPage() {
             homeTeam={homeTeam}
             awayTeam={awayTeam}
             onSave={updateMatch}
+            onAddGoal={(goal) => addGoal(tournament.id, match.id, goal)}
+            onUpdateGoal={(goalId, goal) => updateGoal(tournament.id, match.id, goalId, goal)}
+            onDeleteGoal={(goalId) => removeGoal(tournament.id, match.id, goalId)}
             onGoToLineups={() => setActiveTab('lineups')}
           />
         )}

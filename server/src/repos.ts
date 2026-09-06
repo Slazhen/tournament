@@ -13,7 +13,8 @@ import { TABLES } from './lib/env.js'
 import { cached, defaultTtl, invalidate, type ReadOptions } from './lib/cache.js'
 import { generateId } from './lib/passwords.js'
 import { badRequest, notFound } from './lib/http.js'
-import { locateMatch } from './lib/matches.js'
+import { locateMatch, type MatchLocation } from './lib/matches.js'
+import type { MatchExpectation } from './lib/goals.js'
 import type { Organizer, Team, Tournament } from './lib/types.js'
 
 /* ------------------------------------------------------------------ *
@@ -749,6 +750,226 @@ export const tournaments = {
     return false
   },
 
+  /**
+   * One goal, appended, with the score in the same write where it moves.
+   *
+   * `goals` has two authors now — the organiser and the club whose side the
+   * goal counts for — so the list is never written back whole, for the reason
+   * `lineups` stopped being written whole: the other author's event, added
+   * between the read and the write, would be gone. Appending under a condition
+   * on the length is what lets DynamoDB merge the two.
+   *
+   * `score` is the answer `scoreAfterAdding` gave, and travels with the append
+   * rather than in a second request: two writes would let the score reach the
+   * record before the goal that justifies it, and a failure between them would
+   * leave a result nothing on the page adds up to.
+   */
+  async addGoal(
+    tournamentId: string,
+    matchId: string,
+    goal: Record<string, unknown>,
+    score: { homeGoals: number; awayGoals: number } | null,
+    expected: MatchExpectation,
+    onSide?: { teamId: string; side: 'home' | 'away' },
+  ): Promise<void> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const located = locateMatch(tournament, matchId)
+    if (!located) throw notFound('Match not found in this tournament')
+
+    const stored = (located.match as { goals?: unknown }).goals
+    if (Array.isArray(stored) && stored.length >= 60) {
+      throw badRequest('That is as many goals as one match can hold')
+    }
+
+    const names: Record<string, string> = { ...located.names, '#goals': 'goals', '#id': 'id' }
+    const values: Record<string, unknown> = { ':one': [goal], ':matchId': matchId }
+    const sets: string[] = []
+
+    // `POST /admin/tournaments` passes its body through, so `goals` can hold
+    // anything at all on a record made that way — and `list_append` onto a
+    // value that is not a list is a ValidationException, which reaches the
+    // screen as a 500 with nothing in it to explain itself.
+    const appendable = stored === undefined || Array.isArray(stored)
+    if (appendable) {
+      sets.push(
+        `${located.path}.#goals = list_append(if_not_exists(${located.path}.#goals, :none), :one)`,
+      )
+      values[':none'] = []
+    } else {
+      sets.push(`${located.path}.#goals = :one`)
+    }
+
+    if (score) {
+      names['#homeGoals'] = 'homeGoals'
+      names['#awayGoals'] = 'awayGoals'
+      sets.push(`${located.path}.#homeGoals = :homeGoals`, `${located.path}.#awayGoals = :awayGoals`)
+      values[':homeGoals'] = score.homeGoals
+      values[':awayGoals'] = score.awayGoals
+    }
+
+    // The condition asserts the match the *route* read, not the one this method
+    // just read, because the decision being defended was made there: that this
+    // side still has a goal nobody has named. Both halves of that are in it —
+    // how many goals the fixture holds, and what the score counts — since a
+    // count alone does not notice the organiser lowering the score in the same
+    // moment, and a score alone does not notice a second manager saving.
+    const guards = [`${located.path}.#id = :matchId`]
+    if (appendable) {
+      guards.push(
+        `(attribute_not_exists(${located.path}.#goals) OR size(${located.path}.#goals) = :count)`,
+      )
+      values[':count'] = expected.goals
+    }
+    guards.push(...scoreGuard(located, expected, names, values))
+    guards.push(...sideGuard(located, onSide, names, values))
+
+    await this.writeMatchPart(tournamentId, `SET ${sets.join(', ')}`, guards.join(' AND '), names, values)
+  },
+
+  /**
+   * One goal corrected in place, addressed by its id and not by its position.
+   *
+   * The index comes from a list this request has just read, and the array can
+   * be appended to between that read and this write, so the condition asserts
+   * the id sitting at that position — the same reason a playoff round carries
+   * its expected name and number.
+   */
+  async updateGoal(
+    tournamentId: string,
+    matchId: string,
+    goalId: string,
+    goal: Record<string, unknown>,
+    score: { homeGoals: number; awayGoals: number } | null,
+    expected: MatchExpectation,
+    author?: string,
+    onSide?: { teamId: string; side: 'home' | 'away' },
+  ): Promise<void> {
+    const { located, index } = await this.findGoal(tournamentId, matchId, goalId)
+
+    const names: Record<string, string> = { ...located.names, '#goals': 'goals', '#id': 'id' }
+    const values: Record<string, unknown> = {
+      ':goal': goal,
+      ':matchId': matchId,
+      ':goalId': goalId,
+    }
+    const sets = [`${located.path}.#goals[${index}] = :goal`]
+
+    if (score) {
+      names['#homeGoals'] = 'homeGoals'
+      names['#awayGoals'] = 'awayGoals'
+      sets.push(`${located.path}.#homeGoals = :homeGoals`, `${located.path}.#awayGoals = :awayGoals`)
+      values[':homeGoals'] = score.homeGoals
+      values[':awayGoals'] = score.awayGoals
+    }
+
+    const guards = [
+      `${located.path}.#id = :matchId`,
+      `${located.path}.#goals[${index}].#id = :goalId`,
+    ]
+    // Who wrote the goal is a permission, so a caller allowed to correct only
+    // their club's own entries asserts it in the write as well as reading it:
+    // between the two, the organiser can have replaced that goal.
+    if (author) {
+      names['#enteredBy'] = 'enteredBy'
+      guards.push(`${located.path}.#goals[${index}].#enteredBy = :enteredBy`)
+      values[':enteredBy'] = author
+    }
+    guards.push(...scoreGuard(located, expected, names, values))
+    guards.push(...sideGuard(located, onSide, names, values))
+
+    await this.writeMatchPart(tournamentId, `SET ${sets.join(', ')}`, guards.join(' AND '), names, values)
+  },
+
+  /**
+   * One goal removed. The score is deliberately left where it is: what the
+   * match loses is the name on that goal and not the goal itself, so it goes
+   * back to being one the score counts and nobody has attributed.
+   */
+  async removeGoal(
+    tournamentId: string,
+    matchId: string,
+    goalId: string,
+    author?: string,
+    onSide?: { teamId: string; side: 'home' | 'away' },
+  ): Promise<void> {
+    const { located, index } = await this.findGoal(tournamentId, matchId, goalId)
+
+    const names: Record<string, string> = { ...located.names, '#goals': 'goals', '#id': 'id' }
+    const values: Record<string, unknown> = { ':matchId': matchId, ':goalId': goalId }
+    const guards = [
+      `${located.path}.#id = :matchId`,
+      `${located.path}.#goals[${index}].#id = :goalId`,
+    ]
+    if (author) {
+      names['#enteredBy'] = 'enteredBy'
+      guards.push(`${located.path}.#goals[${index}].#enteredBy = :enteredBy`)
+      values[':enteredBy'] = author
+    }
+    guards.push(...sideGuard(located, onSide, names, values))
+
+    await this.writeMatchPart(
+      tournamentId,
+      `REMOVE ${located.path}.#goals[${index}]`,
+      guards.join(' AND '),
+      names,
+      values,
+    )
+  },
+
+  /** Where one goal sits, with the fixture it sits in. */
+  async findGoal(
+    tournamentId: string,
+    matchId: string,
+    goalId: string,
+  ): Promise<{
+    located: NonNullable<ReturnType<typeof locateMatch>>
+    index: number
+    goal: Record<string, unknown>
+  }> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const located = locateMatch(tournament, matchId)
+    if (!located) throw notFound('Match not found in this tournament')
+
+    const stored = (located.match as { goals?: unknown }).goals
+    const list = Array.isArray(stored) ? stored : []
+    const index = list.findIndex(
+      (goal) =>
+        Boolean(goal) && typeof goal === 'object' && (goal as { id?: unknown }).id === goalId,
+    )
+    if (index < 0) throw notFound('That goal is not in this match')
+
+    return { located, index, goal: list[index] as Record<string, unknown> }
+  },
+
+  /** The write those three share, and the one answer worth giving when it fails. */
+  async writeMatchPart(
+    tournamentId: string,
+    expression: string,
+    condition: string,
+    names: Record<string, string>,
+    values: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id: tournamentId },
+          UpdateExpression: expression,
+          ConditionExpression: condition,
+          ExpressionAttributeNames: names,
+          ExpressionAttributeValues: values,
+        }),
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      // Somebody else wrote this match between the read and the write. Retrying
+      // against what is there now would be guessing at which goal the caller
+      // meant, and the list they were looking at is the stale thing.
+      throw notFound('This match has changed since the page was loaded. Reload and try again.')
+    }
+    invalidate('tournaments:')
+  },
+
   async updateMatch(
     tournamentId: string,
     matchId: string,
@@ -1080,4 +1301,70 @@ export const tournaments = {
 
     invalidate('tournaments:')
   },
+}
+
+/**
+ * The score as the caller read it, as a condition.
+ *
+ * A goal is allowed or refused on the strength of what the score counts, so the
+ * write has to fail if the score has changed since — otherwise an organiser
+ * correcting a result and a manager naming a scorer, a second apart, agree on
+ * neither. An absent score is a fixture with no result and is asserted as
+ * absent, not as zero: those are different records.
+ */
+function scoreGuard(
+  located: MatchLocation,
+  expected: MatchExpectation,
+  names: Record<string, string>,
+  values: Record<string, unknown>,
+): string[] {
+  const guards: string[] = []
+
+  for (const side of ['home', 'away'] as const) {
+    const field = side === 'home' ? 'homeGoals' : 'awayGoals'
+    const alias = side === 'home' ? '#expectedHome' : '#expectedAway'
+    const value = side === 'home' ? expected.homeGoals : expected.awayGoals
+    names[alias] = field
+
+    if (value === undefined) {
+      guards.push(`attribute_not_exists(${located.path}.${alias})`)
+    } else if (value === null) {
+      // A score stored as something other than a number. Asserting only that it
+      // is still there is weaker than the other two branches, and it is the
+      // whole of what can be said: comparing against the stored value would
+      // mean naming a type this code has no reason to know.
+      guards.push(`attribute_exists(${located.path}.${alias})`)
+    } else {
+      const placeholder = side === 'home' ? ':expectedHome' : ':expectedAway'
+      guards.push(`${located.path}.${alias} = ${placeholder}`)
+      values[placeholder] = value
+    }
+  }
+
+  return guards
+}
+
+/**
+ * The club still on the side the caller was granted, as a condition.
+ *
+ * `setLineup` has carried this since a knockout taught it why: saving a result
+ * in the previous round rewrites `homeTeamId` of an existing fixture, so a
+ * permission established against a club id can be spent on a match that club is
+ * no longer in. A goal is the same shape of write — it credits a player of that
+ * club — and was missing it, so a manager's goal could land on a fixture their
+ * side had just been swapped out of.
+ *
+ * Nothing for the organiser, who writes both sides of their own match: the
+ * question is only asked of a caller whose permission came from one club.
+ */
+function sideGuard(
+  located: MatchLocation,
+  onSide: { teamId: string; side: 'home' | 'away' } | undefined,
+  names: Record<string, string>,
+  values: Record<string, unknown>,
+): string[] {
+  if (!onSide) return []
+  names['#sideTeam'] = onSide.side === 'home' ? 'homeTeamId' : 'awayTeamId'
+  values[':sideTeamId'] = onSide.teamId
+  return [`${located.path}.#sideTeam = :sideTeamId`]
 }

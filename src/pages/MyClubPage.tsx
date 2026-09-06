@@ -13,7 +13,9 @@ import type { Organizer, Player, Team, Tournament, Match } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
-import { hasSquadEntry, registeredPlayers } from '../utils/squads'
+import { hasSquadEntry, playersNamedInMatch, registeredPlayers } from '../utils/squads'
+import { byMinute, unattributedGoals } from '../utils/matches'
+import { playerLabel } from '../utils/players'
 import { readCrestAppearance } from '../utils/crest'
 import { getPublicTournamentUrl } from '../utils/urls'
 import Trophy from '../components/Trophy'
@@ -1482,6 +1484,314 @@ function TeamsheetRow({
               </div>
             </>
           )}
+
+          <MatchGoals
+            tournament={tournament}
+            match={match}
+            team={team}
+            side={side}
+            onReload={onReload}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * The goals of one match, as the club may fill them in
+ * ------------------------------------------------------------------ */
+
+type GoalDraft = { type: 'goal' | 'penalty' | 'own_goal'; playerId: string; assistPlayerId: string; minute: string }
+
+const BLANK_GOAL: GoalDraft = { type: 'goal', playerId: '', assistPlayerId: '', minute: '' }
+
+/**
+ * Naming the scorers of the goals the result already counts.
+ *
+ * A result in this app is usually a score and nothing else — the organiser
+ * types it on the season page and moves on — so a club's own scorers are
+ * missing from every table until somebody who was there fills them in, and that
+ * somebody is the coach. What is offered here is exactly that gap: the goals
+ * this side's score counts that nobody has attributed, one row each.
+ *
+ * Three things this deliberately does not offer. The score, which is the
+ * organiser's record of the result and moves for nobody here. The other club's
+ * half of the match. And the organiser's own entries: what they wrote is
+ * theirs to correct, and a coach who thinks it is wrong has an organiser to
+ * tell. An own goal counting for this club was put in by a player the manager
+ * may not name, so it is recorded as one with nobody on it.
+ */
+function MatchGoals({
+  tournament,
+  match,
+  team,
+  side,
+  onReload,
+}: {
+  tournament: Tournament
+  match: Match
+  team: Team
+  side: 'home' | 'away'
+  onReload: () => Promise<void>
+}) {
+  const [draft, setDraft] = useState<GoalDraft>(BLANK_GOAL)
+  const [editing, setEditing] = useState<{ id: string; draft: GoalDraft } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const mine = byMinute((match.goals ?? []).filter((goal) => goal.team === side))
+  const unnamed = unattributedGoals(match)[side]
+
+  // The teamsheet, not the registration: the person typing has the sheet in
+  // front of them, and a picker of forty registered names is how the wrong one
+  // gets chosen. An empty sheet says so rather than falling back to the squad —
+  // falling back is how a sheet stays empty.
+  const players = playersNamedInMatch(team, match.lineups?.[side], draft.playerId, editing?.draft.playerId)
+
+  const body = (from: GoalDraft) => {
+    const minute = Number(from.minute)
+    return {
+      type: from.type,
+      playerId: from.type === 'own_goal' ? '' : from.playerId,
+      assistPlayerId: from.type === 'own_goal' ? '' : from.assistPlayerId,
+      minute:
+        from.minute.trim() && Number.isInteger(minute) && minute >= 1 && minute <= 130
+          ? minute
+          : undefined,
+    }
+  }
+
+  const complete = (from: GoalDraft) => from.type === 'own_goal' || from.playerId !== ''
+
+  const run = async (action: () => Promise<unknown>, whenItFails: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      await onReload()
+      return true
+    } catch (caught) {
+      setError(messageOf(caught, whenItFails))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const add = async () => {
+    if (!complete(draft)) return
+    const saved = await run(
+      () => clubService.addGoal(tournament.id, match.id, team.id, body(draft)),
+      'That goal could not be saved.',
+    )
+    if (saved) setDraft(BLANK_GOAL)
+  }
+
+  const save = async (goalId: string, from: GoalDraft) => {
+    if (!complete(from)) return
+    const saved = await run(
+      () => clubService.updateGoal(tournament.id, match.id, team.id, goalId, body(from)),
+      'That correction could not be saved.',
+    )
+    if (saved) setEditing(null)
+  }
+
+  const remove = async (goalId: string) => {
+    await run(
+      () => clubService.removeGoal(tournament.id, match.id, team.id, goalId),
+      'That goal could not be removed.',
+    )
+  }
+
+  const nameOf = (playerId: string | undefined) => {
+    if (!playerId) return null
+    const player = team.players?.find((one) => one?.id === playerId)
+    return player ? playerLabel(player) : 'Former player'
+  }
+
+  // Nothing to show before a result exists: there are no goals to name, and an
+  // empty form under an unplayed fixture invites a scorer for a match that has
+  // not been played.
+  if (mine.length === 0 && unnamed === 0) return null
+
+  const editor = (from: GoalDraft, onChange: (next: GoalDraft) => void) => (
+    <div className="grid gap-2 sm:grid-cols-2 mt-2">
+      <div className="flex flex-wrap gap-1.5">
+        {([
+          { value: 'goal' as const, label: 'Goal' },
+          { value: 'penalty' as const, label: 'Penalty' },
+          { value: 'own_goal' as const, label: 'Own goal' },
+        ]).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange({ ...from, type: option.value, playerId: '', assistPlayerId: '' })}
+            className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors ${
+              from.type === option.value
+                ? 'bg-white/20 border-white/40'
+                : 'border-white/15 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <input
+        type="number"
+        min="1"
+        max="130"
+        inputMode="numeric"
+        placeholder="Minute (optional)"
+        value={from.minute}
+        onChange={(event) => onChange({ ...from, minute: event.target.value })}
+        className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/20 text-sm"
+      />
+      {from.type === 'own_goal' ? (
+        <p className="text-xs text-gray-400 sm:col-span-2">
+          An own goal was put in by one of the other club's players, so only the organiser can put
+          a name on it. Recorded as an own goal.
+        </p>
+      ) : (
+        <>
+          <select
+            value={from.playerId}
+            onChange={(event) => onChange({ ...from, playerId: event.target.value })}
+            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/20 text-sm"
+          >
+            <option value="">Scorer</option>
+            {players.map((player) => (
+              <option key={player.id} value={player.id}>
+                {playerLabel(player)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={from.assistPlayerId}
+            onChange={(event) => onChange({ ...from, assistPlayerId: event.target.value })}
+            className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/20 text-sm"
+          >
+            <option value="">No assist</option>
+            {players.map((player) => (
+              <option key={player.id} value={player.id}>
+                {playerLabel(player)}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+    </div>
+  )
+
+  return (
+    <div className="mt-4 pt-3 border-t border-white/10">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-300 mb-1">Goals</h4>
+      <p className="text-xs text-gray-400 mb-3">
+        Who scored the goals in this result. The score itself is the organiser's; you are naming
+        the goals it already counts.
+      </p>
+
+      {error && <p className="text-sm text-red-300 mb-2">{error}</p>}
+
+      <div className="space-y-1.5">
+        {mine.map((goal) =>
+          editing?.id === goal.id ? (
+            <div key={goal.id} className="rounded-lg bg-white/[0.03] px-3 py-2">
+              {editor(editing.draft, (next) => setEditing({ id: goal.id, draft: next }))}
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => save(goal.id, editing.draft)}
+                  disabled={busy || !complete(editing.draft)}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setEditing(null)}
+                  className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm text-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              key={goal.id}
+              className="rounded-lg bg-white/[0.03] px-3 py-2 flex items-center gap-2 flex-wrap"
+            >
+              <span className="font-mono text-xs bg-white/10 px-2 py-0.5 rounded">
+                {typeof goal.minute === 'number' ? `${goal.minute}'` : '-'}
+              </span>
+              <span className="text-sm font-medium">
+                {goal.type === 'own_goal' ? 'Own goal' : nameOf(goal.playerId) ?? 'Unknown'}
+              </span>
+              {goal.type === 'penalty' && (
+                <span className="text-xs uppercase tracking-wide px-2 py-0.5 rounded bg-white/10">
+                  Penalty
+                </span>
+              )}
+              {goal.type !== 'own_goal' && goal.assistPlayerId && (
+                <span className="text-xs text-gray-400">assist {nameOf(goal.assistPlayerId)}</span>
+              )}
+              {goal.enteredBy === 'club' ? (
+                <div className="ml-auto flex items-center gap-3">
+                  <button
+                    onClick={() =>
+                      setEditing({
+                        id: goal.id,
+                        draft: {
+                          type: goal.type ?? 'goal',
+                          playerId: goal.playerId ?? '',
+                          assistPlayerId: goal.assistPlayerId ?? '',
+                          minute: typeof goal.minute === 'number' ? String(goal.minute) : '',
+                        },
+                      })
+                    }
+                    className="text-xs opacity-70 hover:opacity-100 transition-opacity"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => remove(goal.id)}
+                    disabled={busy}
+                    className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ) : (
+                <span className="ml-auto text-xs text-gray-500">entered by the organiser</span>
+              )}
+            </div>
+          ),
+        )}
+
+        {Array.from({ length: unnamed }, (_, index) => (
+          <div
+            key={`unnamed-${index}`}
+            className="rounded-lg bg-white/[0.03] px-3 py-2 flex items-center gap-2 opacity-70"
+          >
+            <span className="font-mono text-xs bg-white/10 px-2 py-0.5 rounded">-</span>
+            <span className="text-sm">Unknown</span>
+          </div>
+        ))}
+      </div>
+
+      {unnamed > 0 && (
+        <div className="mt-3">
+          {players.length === 0 && draft.type !== 'own_goal' ? (
+            <p className="text-sm opacity-60">
+              Name the team above first — a scorer is chosen from the teamsheet.
+            </p>
+          ) : null}
+          {editor(draft, setDraft)}
+          <button
+            onClick={add}
+            disabled={busy || !complete(draft)}
+            className="mt-2 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm"
+          >
+            {busy ? 'Saving...' : `Name this goal (${unnamed} left)`}
+          </button>
         </div>
       )}
     </div>

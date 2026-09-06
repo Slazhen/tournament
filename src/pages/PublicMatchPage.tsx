@@ -3,7 +3,17 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { batchGetTeams, organizerService, tournamentService } from '../lib/data'
 import { findTournamentBySlug } from '../utils/urls'
-import { allMatches, cardLabel, cardTotals, isPlayed, NO_STAT, roundLabel, scorerSide } from '../utils/matches'
+import {
+  allMatches,
+  byMinute,
+  cardLabel,
+  cardTotals,
+  isPlayed,
+  NO_STAT,
+  roundLabel,
+  scorerSide,
+  unattributedGoals,
+} from '../utils/matches'
 import { publicTeamUrl } from '../utils/teams'
 import { tableForMatch } from '../utils/standings'
 import type { Tournament, Team, Match, Organizer, Player } from '../types'
@@ -354,19 +364,36 @@ function EventsPanel({
   match: Match
   teamOf: (side: 'home' | 'away') => Team | null
 }) {
+  // The goals of this result nobody has named a scorer for. They are drawn as
+  // rows rather than left out, because a 3-1 with one scorer named is a story
+  // with two goals missing from it, and a timeline that quietly showed one
+  // event read as the whole of what happened. Whoever can fill them in — the
+  // organiser, or the club's own manager — sees the same gap from their screens.
+  const unnamed = unattributedGoals(match)
+
   // Copied before sorting: the arrays belong to the match record this page is
-  // holding.
-  const events = [
-    ...(match.goals ?? [])
-      // A goal with nobody named is a half-filled row the organiser is still
-      // working on — except an own goal, which changed the score and belongs in
-      // the story whether or not anyone was named for it.
-      .filter((goal) => Boolean(goal?.playerId) || goal?.type === 'own_goal')
-      .map((goal) => ({ kind: 'goal' as const, id: goal.id, minute: goal.minute ?? 0, goal })),
+  // holding. A goal nobody timed sorts to the end rather than to the kick-off.
+  const events: TimelineEvent[] = byMinute([
+    ...(match.goals ?? []).map((goal) => ({
+      kind: 'goal' as const,
+      id: goal.id,
+      minute: goal.minute,
+      goal,
+    })),
     ...(match.cards ?? [])
+      // A booking with nobody named is a half-filled row somebody is still
+      // typing: there is no score counting it and nothing to show.
       .filter((card) => Boolean(card?.playerId))
-      .map((card) => ({ kind: 'card' as const, id: card.id, minute: card.minute ?? 0, card })),
-  ].sort((a, b) => a.minute - b.minute)
+      .map((card) => ({ kind: 'card' as const, id: card.id, minute: card.minute, card })),
+    ...(['home', 'away'] as const).flatMap((side) =>
+      Array.from({ length: unnamed[side] }, (_, index) => ({
+        kind: 'unnamed' as const,
+        id: `unnamed-${side}-${index}`,
+        minute: undefined,
+        side,
+      })),
+    ),
+  ])
 
   if (events.length === 0 && !match.preview && !match.report) {
     return <Nothing>No goals or bookings have been recorded for this match.</Nothing>
@@ -399,7 +426,12 @@ function EventsPanel({
               // own goal appears beside the team it gave the goal to. Who put
               // it in is a player of the other side, which is the squad the
               // name is resolved against.
-              const side = event.kind === 'goal' ? event.goal.team : event.card.team
+              const side =
+                event.kind === 'goal'
+                  ? event.goal.team
+                  : event.kind === 'card'
+                    ? event.card.team
+                    : event.side
               const team = teamOf(side === 'away' ? 'away' : 'home')
               const other = teamOf(side === 'away' ? 'home' : 'away')
               const namedBy =
@@ -416,7 +448,7 @@ function EventsPanel({
                     )}
                   </div>
                   <span className="shrink-0 text-xs font-mono tabular-nums px-2 py-1 rounded-full bg-white/10 text-gray-200">
-                    {event.minute}'
+                    {typeof event.minute === 'number' ? `${event.minute}'` : '-'}
                   </span>
                   <div>
                     {side !== 'home' && (
@@ -434,8 +466,10 @@ function EventsPanel({
 }
 
 type TimelineEvent =
-  | { kind: 'goal'; id: string; minute: number; goal: NonNullable<Match['goals']>[number] }
-  | { kind: 'card'; id: string; minute: number; card: NonNullable<Match['cards']>[number] }
+  | { kind: 'goal'; id: string; minute?: number; goal: NonNullable<Match['goals']>[number] }
+  | { kind: 'card'; id: string; minute?: number; card: NonNullable<Match['cards']>[number] }
+  /** A goal the score counts and nobody has attributed. Derived, never stored. */
+  | { kind: 'unnamed'; id: string; minute?: number; side: 'home' | 'away' }
 
 function EventLine({
   event,
@@ -451,6 +485,17 @@ function EventLine({
   align: 'start' | 'end'
 }) {
   const rowClass = `flex items-center gap-2 flex-wrap ${align === 'end' ? 'justify-end' : ''}`
+
+  // A goal the result counts that nobody has named. The row exists because the
+  // goal did: the score says so.
+  if (event.kind === 'unnamed') {
+    return (
+      <div className={rowClass}>
+        <IconBall size={14} className="opacity-40" />
+        <span className="text-sm font-semibold text-gray-400">Unknown</span>
+      </div>
+    )
+  }
 
   if (event.kind === 'card') {
     return (

@@ -651,15 +651,33 @@ columns, because the player was booked and the side finished a man down.
 Bookings feed nothing else: `playerRecords` does not read them, so a card cannot
 move an appearance or a table position.
 
-**A goal moves the score; the score is still a field.** Adding or deleting a goal
-on the organiser's match screen recounts `homeGoals` and `awayGoals` from
-`match.goals` and saves both in the same request, because the two were stored
-side by side and reconciled by hand — a goal entered on that tab left the table
-showing the old result. The score is not derived, though, and is edited on the
-scoreboard at the top of that screen: most matches in this app have a result and
-no events at all, and a score counted from an empty list would read 0-0 for every
-one of them. The recount therefore happens only when the event list itself
-changes. The Statistics tab shows Goals as a number and no longer offers a second
+**A goal the score already counts does not move it.** Most results here are
+entered as a score on the season page and nothing else, so the difference
+between the score and the goals recorded for a side is the goals nobody has
+named a scorer for. They are derived, never stored — `unattributed` in
+`server/src/lib/goals.ts`, `unattributedGoals` in `src/utils/matches.ts` — and
+drawn as "Unknown" with a dash for the minute on the public match page, the
+organiser's screen and the club's. Writing them out as empty rows would have
+meant migrating every match ever played, deciding which of the empty ones a
+corrected score should delete, and keeping them out of every tally that walks
+`goals`.
+
+So the rule is one sentence in three parts. Naming one of those goals changes
+nothing about the result. A goal the score has no room for raises it by one,
+which is what entering a match from an empty scoresheet has always done.
+Deleting one never lowers it: what the match loses is the name, and the goal
+goes back to being unattributed — a wrong result is corrected on the scoreboard,
+where it was typed. `scoreAfterAdding` and `scoreAfterMoving` are the two places
+that decide, and the second exists because the first was used for corrections
+too: on a fixture holding more goals for a side than the score counts — which is
+exactly what lowering a score whose scorers were already named leaves behind —
+it found no room, read a spelling fix as a new goal and put the result back up.
+For a club's manager that was a way to move a league table one edit at a time.
+
+The recount this replaced went the other way: it wrote the score as the number
+of events, so an organiser who named one scorer of a 2-0 got a 1-0. The score
+remains a field of its own, edited on the scoreboard at the top of the match
+screen. The Statistics tab shows Goals as a number and no longer offers a second
 field for it.
 
 **An event is entered against the teamsheet, and written once.** The scorer,
@@ -690,11 +708,50 @@ writes that field any more. The type is three chips beside the scorer, not the
 fourth select in a row of four, because organisers were not finding Penalty at
 all.
 
-What the API does not check is who is named: `goals` and `cards` are in
-`MATCH_FIELDS` and travel whole, so the teamsheet rule is the screen's and not
-the server's. The teamsheet route itself refuses a player who may not be named
-(`nameableInMatch`); the events beside it do not, and a hand-made request can
-still credit a goal to anybody's player id.
+`cards` is still in `MATCH_FIELDS` and travels whole, so for a booking the
+teamsheet rule is the screen's and not the server's: a hand-made request can
+credit a card to anybody's player id. `goals` is not, any more — see below.
+
+**A goal has two authors, and only one of them may move the score.** A club's
+own manager names the scorers of the goals their side's result counts:
+`POST`/`PATCH`/`DELETE /manager/tournaments/:t/matches/:m/goals[/:id]`, mirrored
+by the organiser's `/admin/…` routes, and `goals` left `MATCH_FIELDS` when they
+arrived — the same move `lineups` made, for the same reason. A list two people
+write is never written whole.
+
+Five things narrow the club's half, and each of them is the club's own part of a
+record the competition owns. The side comes from the fixture (`sideOfTeam`),
+never from the request. A goal is refused once that side's goals add up to the
+score, so the manager is naming goals and not scoring them; the correction route
+never writes the score at all. Only a goal marked `enteredBy: 'club'` on their
+own side may be corrected or deleted — what the organiser wrote stays theirs, and
+`enteredBy` is a side rather than an account id because a goal travels whole to
+every visitor of the public page. The scorer and the assist are checked against
+`nameableInMatch`, the teamsheet rule, on the server this time: a goal is an
+appearance and a place in the scorer table, so naming somebody else's player
+would be writing into a squad the manager has nothing to do with. And an own goal
+counting for this club was put in by a player they may not name, so it is stored
+as an own goal with nobody on it — which is how the public page has always drawn
+one whose scorer is unknown.
+
+The minute is optional on a goal and required on a card. A coach filling in last
+month's scoresheet remembers who scored and not when, and a required minute is
+answered by typing a number at random — which sorts the timeline wrongly and
+cannot afterwards be told from a real one. `byMinute` puts an untimed event at
+the end rather than before the kick-off.
+
+Every one of these writes asserts what the route read, not what the repository
+read a moment later: `expectationOf` carries the length of the stored list and
+both halves of the score into the condition (`scoreGuard`), and the club's writes
+also assert the club still on that side (`sideGuard`) and `enteredBy`. Without the
+first, two saves whose reads overlap both pass and a side ends up with more goals
+than its result counts. Without the second, a knockout redraw — which rewrites
+`homeTeamId` on an existing fixture — lets a goal land on a match the club has
+just been swapped out of, which is the trap `setLineup` already guards against. A
+score stored as something other than a number is asserted as present rather than
+as absent: `null` sits in these records, and `attribute_not_exists` against a
+stored NULL is a condition that can never be true — it would have refused every
+goal on that match forever.
 
 **The table is derived in one place too.** `src/utils/standings.ts` holds the
 tally, the group split and the elimination set; the season page and the match
@@ -919,6 +976,13 @@ window, or anybody arriving for the first time — pays: 1.6 MB over 32 requests
 2.7 seconds of wall clock even in parallel, because the S3 REST endpoint speaks
 HTTP/1.1 and the browser opens six connections to a host.
 
+Measured again once both were done: 32 images, 1617 KB and 2.7 s of wall clock
+became 760 KB and 0.55 s. Note which half did what. Halving the bytes moved the
+clock by 10% - the cost was 32 round trips over six HTTP/1.1 connections to
+us-east-1, not the payload. The edge is what took the five-fold cut, and it is
+also HTTP/2, so the six-connection ceiling is gone with it. Bytes were the cheap
+half of this and the distribution was the real one.
+
 Two things were wrong and both are fixed. The bucket now has `ImagesCdn` in
 front of it, and the site swaps the host in as it draws an image —
 `cdnUrl` in `src/utils/images.ts`, applied at every `src=` that comes from a
@@ -959,7 +1023,10 @@ photographs it was protecting keep their size.
   the pipeline sees it — `tsc` does not look inside a string, the tests mock
   `repos.js` above the DynamoDB call, and `smoke-init` only proves the bundle
   loads — so `server/tests/expressions.test.ts` reads every literal `…Expression`
-  in `server/src` and fails on a bare reserved word.
+  in `server/src` and fails on a bare reserved word. It reads any template
+  literal that *looks* like an expression too, because the goal writes assemble
+  theirs in pieces and pass a variable: a check that only sees a literal at the
+  key had those three writes to live match records outside it.
 - **A league round is stored from zero, a playoff round from one.**
   `generateRoundRobinSchedule` numbers its rounds from zero and every generator
   since has followed it; `roundNumber` on a hand-built playoff round is

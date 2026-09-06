@@ -33,6 +33,13 @@ import {
   sideOfTeam,
 } from '../lib/lineups.js'
 import { assertCompetitionColours, assertTeamColours } from '../lib/colours.js'
+import {
+  composeGoal,
+  expectationOf,
+  readGoal,
+  scoreAfterAdding,
+  scoreAfterMoving,
+} from '../lib/goals.js'
 import { locateMatch } from '../lib/matches.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { findUserByCredential } from './auth.js'
@@ -240,7 +247,9 @@ const MATCH_FIELDS = [
   'time',
   'status',
   'statistics',
-  'goals',
+  // `goals` is absent for the same reason, and it became so later: a goal now
+  // has two authors as well — the organiser, and the club whose side it counts
+  // for. The goal routes below write one event at a time.
   'cards',
   'preview',
   'report',
@@ -1363,6 +1372,121 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     })
     return { ok: true }
   })
+
+  /**
+   * One goal of one match, for the organiser.
+   *
+   * Three routes rather than a `goals` array on the match PATCH, because the
+   * list has two authors: this one, and the manager of the club the goal counts
+   * for. Everything about them is in `lib/goals.ts`; what is here is the
+   * permission and the audit line.
+   *
+   * The score follows the events only where it has to. A goal the score already
+   * counts — the organiser typed 2-0 on the season page and is naming the
+   * scorers now — leaves it alone; a goal the score has no room for raises it by
+   * one, which is what entering a match from an empty scoresheet has always
+   * done. Deleting never lowers it: the goal goes back to being unattributed,
+   * and a wrong result is corrected on the scoreboard.
+   */
+  router.post('/admin/tournaments/:tournamentId/matches/:matchId/goals', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.tournamentId!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const match = locateMatch(tournament, params.matchId!)?.match
+    if (!match) throw notFound('Match not found in this tournament')
+
+    const fields = readGoal(ctx.body)
+    if (fields.type !== 'own_goal' && !fields.playerId) throw badRequest('A scorer is required')
+
+    const goal = composeGoal(generateId(), fields, 'organizer')
+    const score = scoreAfterAdding(match, fields.team)
+    // The match as this request read it, asserted in the write: the decision
+    // above was made from it, and it can move underneath a slow request.
+    await tournaments.addGoal(
+      params.tournamentId!,
+      params.matchId!,
+      goal,
+      score,
+      expectationOf(match),
+    )
+
+    await record(user, {
+      action: 'goal.add',
+      entity: 'match',
+      entityId: `${params.tournamentId}/${params.matchId}`,
+      summary: `Recorded a goal in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+    // The score comes back so the screen shows what was written rather than
+    // working the rule out a second time in the browser.
+    return { goal, score }
+  })
+
+  router.patch(
+    '/admin/tournaments/:tournamentId/matches/:matchId/goals/:goalId',
+    async (ctx, params) => {
+      const user = await ctx.user()
+      const tournament = await tournaments.getOrThrow(params.tournamentId!)
+      assertCanAccessOrganizer(user, tournament.organizerId)
+
+      const { located, goal: stored } = await tournaments.findGoal(
+        params.tournamentId!,
+        params.matchId!,
+        params.goalId!,
+      )
+
+      const fields = readGoal({ ...stored, ...ctx.body })
+      if (fields.type !== 'own_goal' && !fields.playerId) throw badRequest('A scorer is required')
+
+      // The side a goal counts for is editable here, so the score is worked out
+      // against the match as it would be without this goal — which answers a
+      // correction that stays on its side and one that crosses with one rule.
+      const goal = composeGoal(params.goalId!, fields, (stored.enteredBy as never) ?? 'organizer')
+      // Only a goal that changes sides moves the score. Correcting a scorer on
+      // a fixture that already holds more goals than the score counts — which
+      // is what lowering a score on the scoreboard leaves behind — would
+      // otherwise put the score back up on the next spelling fix.
+      const score = scoreAfterMoving(located.match, params.goalId!, stored.team, fields.team)
+      await tournaments.updateGoal(
+        params.tournamentId!,
+        params.matchId!,
+        params.goalId!,
+        goal,
+        score,
+        expectationOf(located.match),
+      )
+
+      await record(user, {
+        action: 'goal.update',
+        entity: 'match',
+        entityId: `${params.tournamentId}/${params.matchId}`,
+        summary: `Corrected a goal in ${tournament.name}`,
+        organizerId: tournament.organizerId,
+      })
+      return { goal, score }
+    },
+  )
+
+  router.delete(
+    '/admin/tournaments/:tournamentId/matches/:matchId/goals/:goalId',
+    async (ctx, params) => {
+      const user = await ctx.user()
+      const tournament = await tournaments.getOrThrow(params.tournamentId!)
+      assertCanAccessOrganizer(user, tournament.organizerId)
+
+      await tournaments.removeGoal(params.tournamentId!, params.matchId!, params.goalId!)
+
+      await record(user, {
+        action: 'goal.remove',
+        entity: 'match',
+        entityId: `${params.tournamentId}/${params.matchId}`,
+        summary: `Removed a goal from a match of ${tournament.name}`,
+        organizerId: tournament.organizerId,
+      })
+      return { ok: true }
+    },
+  )
 
   /**
    * The organiser's teamsheet, for either club in one of their matches.

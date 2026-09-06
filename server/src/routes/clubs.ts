@@ -36,6 +36,13 @@ import {
   refusedByRegistration,
   sideOfTeam,
 } from '../lib/lineups.js'
+import {
+  composeGoal,
+  expectationOf,
+  readGoal,
+  scoreAfterAdding,
+  unattributed,
+} from '../lib/goals.js'
 import { locateMatch } from '../lib/matches.js'
 import { isInClubPool } from '../lib/pool.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
@@ -1140,6 +1147,154 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     return { playerIds }
   })
 
+  /**
+   * The club naming the scorers of the goals its match already counts.
+   *
+   * Most results in this app are entered as a score on the season page and
+   * nothing else, so a competition's scorer table stays empty however many
+   * matches have been played — and the person who knows who scored is the
+   * coach, not the organiser. What a club may fill in is exactly that gap: a
+   * goal the score counts and nobody has attributed.
+   *
+   * Three things narrow it, and each is the club's own half of a record the
+   * competition owns. The side comes from the fixture and never from the
+   * request, the way it does for a teamsheet. The score is not the club's to
+   * move, so a goal is refused once that side's goals add up to it — the
+   * manager is naming goals, not scoring them. And the players are the club's
+   * own, by the same teamsheet rule the lineup route uses, because a goal
+   * credited to somebody else's player is an appearance and a place in the
+   * scorer table for a squad this manager has nothing to do with.
+   *
+   * An own goal counting for this club was put in by a player the manager may
+   * not name, so it is recorded as an own goal with nobody on it — which is how
+   * the public page has always drawn one whose scorer is unknown. The organiser
+   * can put the name on it afterwards.
+   */
+  router.post('/manager/tournaments/:tournamentId/matches/:matchId/goals', async (ctx, params) => {
+    const { user, team, tournament, match, side } = await clubMatch(ctx, params)
+
+    if (unattributed(match, side) === 0) {
+      throw badRequest(
+        'Every goal in this result already has a scorer. Ask the organiser to correct the score first.',
+      )
+    }
+
+    // The side is the record's answer, not the request's: a manager who could
+    // name the side could put goals on their opponent's half of the match.
+    const fields = readGoal({ ...ctx.body, team: side })
+    assertClubPlayers(fields, tournament, team, match, side)
+
+    const goal = composeGoal(generateId(), fields, 'club')
+    // Null by construction — an unattributed goal is one the score already
+    // counts — and asked for through the same helper the organiser's route
+    // uses, so the rule lives in one place rather than being asserted twice.
+    await tournaments.addGoal(
+      params.tournamentId!,
+      params.matchId!,
+      goal,
+      scoreAfterAdding(match, side),
+      // The match as this request read it. Without it in the condition, two
+      // saves whose reads overlap both pass and the side ends up with more
+      // goals than the result counts — which the club has no way to undo.
+      expectationOf(match),
+      // And the club still on that side when the write lands, the guard the
+      // teamsheet route has carried since a knockout redraw moved a fixture
+      // under a permission granted for it.
+      { teamId: team.id, side },
+    )
+
+    await record(user, {
+      action: 'goal.add',
+      entity: 'match',
+      entityId: `${params.tournamentId}/${params.matchId}`,
+      summary: `Named a scorer for ${team.name} in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+    // `score` is null here by construction, and sent anyway: the club's screen
+    // reads the same answer as the organiser's, and a shape that differs by
+    // caller is a second thing to keep in step.
+    return { goal, score: null }
+  })
+
+  /**
+   * A club correcting one of its own entries.
+   *
+   * Its own: a goal this club entered, on this club's side. What the organiser
+   * wrote stays the organiser's, because the alternative is a manager quietly
+   * rewriting a match somebody else has already settled — and a coach who
+   * thinks the organiser has it wrong has an organiser to tell.
+   */
+  router.patch(
+    '/manager/tournaments/:tournamentId/matches/:matchId/goals/:goalId',
+    async (ctx, params) => {
+      const { user, team, tournament, side } = await clubMatch(ctx, params)
+      const { located, goal: stored } = await tournaments.findGoal(
+        params.tournamentId!,
+        params.matchId!,
+        params.goalId!,
+      )
+      assertClubWrote(stored, side)
+
+      const fields = readGoal({ ...stored, ...ctx.body, team: side })
+      assertClubPlayers(fields, tournament, team, located.match, side)
+
+      const goal = composeGoal(params.goalId!, fields, 'club')
+      await tournaments.updateGoal(
+        params.tournamentId!,
+        params.matchId!,
+        params.goalId!,
+        goal,
+        // Never. A club correcting its own entry cannot touch the result, and
+        // the score is not passed through a rule that might one day decide
+        // otherwise: this route has no business writing it at all.
+        null,
+        expectationOf(located.match),
+        // And the goal it corrects must still be the club's own when the write
+        // lands — the organiser can have replaced it since it was read.
+        'club',
+        { teamId: team.id, side },
+      )
+
+      await record(user, {
+        action: 'goal.update',
+        entity: 'match',
+        entityId: `${params.tournamentId}/${params.matchId}`,
+        summary: `Corrected a scorer for ${team.name} in ${tournament.name}`,
+        organizerId: tournament.organizerId,
+      })
+      return { goal, score: null }
+    },
+  )
+
+  router.delete(
+    '/manager/tournaments/:tournamentId/matches/:matchId/goals/:goalId',
+    async (ctx, params) => {
+      const { user, team, tournament, side } = await clubMatch(ctx, params)
+      const { goal: stored } = await tournaments.findGoal(
+        params.tournamentId!,
+        params.matchId!,
+        params.goalId!,
+      )
+      assertClubWrote(stored, side)
+
+      // The score stays where it is: the goal was counted before anybody named
+      // it, and it goes back to being one of the ones nobody has named.
+      await tournaments.removeGoal(params.tournamentId!, params.matchId!, params.goalId!, 'club', {
+        teamId: team.id,
+        side,
+      })
+
+      await record(user, {
+        action: 'goal.remove',
+        entity: 'match',
+        entityId: `${params.tournamentId}/${params.matchId}`,
+        summary: `Removed a scorer for ${team.name} in ${tournament.name}`,
+        organizerId: tournament.organizerId,
+      })
+      return { ok: true }
+    },
+  )
+
   /* ---------------- the organizer's side ---------------- */
 
   router.get('/admin/tournaments/:id/entries', async (ctx, params) => {
@@ -1398,6 +1553,121 @@ async function enterInvitedTournament(
     // The club has changed hands either way. Losing that to a competition that
     // was deleted mid-signup would burn the invitation with nothing to show.
     console.error('Entering an invited club in its competition failed', error)
+  }
+}
+
+/**
+ * The club, the fixture and the side, for a manager writing one event.
+ *
+ * The club is worked out from the match rather than taken from the request.
+ * A teamsheet route can ask for a `teamId` because it has a body to put one
+ * in; a delete has no body, and giving one route a query parameter the others
+ * do not have would be three shapes for one question. So both sides of the
+ * fixture are read and the caller is matched against them — which is also the
+ * narrower answer, since it is the record that decides which club is theirs.
+ *
+ * `assertManagesTeam` is the test, not a comparison written out again here:
+ * whether an organizer may still act for a club they own is a rule with a
+ * history, and one copy of it is the only way it stays one rule.
+ */
+async function clubMatch(
+  ctx: RequestContext,
+  params: Record<string, string | undefined>,
+): Promise<{
+  user: AuthUser
+  team: Team
+  tournament: Tournament
+  match: Record<string, unknown>
+  side: 'home' | 'away'
+}> {
+  const user = await ctx.user()
+  const tournament = await tournaments.getOrThrow(params.tournamentId!)
+
+  // Either home of a fixture: a hand-built playoff round keeps its matches
+  // inside the format rather than in `matches`.
+  const match = locateMatch(tournament, params.matchId!)?.match
+  if (!match) throw notFound('Match not found in this tournament')
+
+  // A delete carries no body, so the club may also be named in the query: the
+  // caller has to be able to say which of their clubs they mean on every route,
+  // and a super admin — who may act for both — has no other way to.
+  const asked =
+    typeof ctx.body?.teamId === 'string' && ctx.body.teamId
+      ? ctx.body.teamId
+      : (ctx.query?.teamId ?? '')
+  const ids = ['homeTeamId', 'awayTeamId']
+    .map((field) => match[field])
+    .filter((id): id is string => typeof id === 'string' && id !== '')
+    .filter((id) => !asked || id === asked)
+
+  const mine = (await teams.getMany(ids)).filter((team) => {
+    try {
+      assertManagesTeam(user, team as Team)
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  if (mine.length === 0) throw forbidden('You do not run either club in this match')
+  if (mine.length > 1) {
+    // An organizer standing in for both clubs of their own fixture, or a super
+    // admin, who may act for either. Which club is meant is a question only
+    // they can answer, and both screens send it.
+    throw badRequest('Name the club: this account can act for both sides of this match')
+  }
+
+  const team = mine[0] as Team
+  const side = sideOfTeam(match, team.id)
+  if (!side) throw forbidden('This club is not playing in that match')
+
+  return { user, team, tournament, match, side }
+}
+
+/**
+ * The players a club may put on its own goal.
+ *
+ * The same rule as its teamsheet, and checked here rather than left to the
+ * screen: a goal names a player in the scorer table and gives them an
+ * appearance, so a request naming somebody else's player is a club writing
+ * into a squad it has nothing to do with. An own goal counting for this club
+ * was scored by the other side, whose players this manager may not name — so
+ * it carries no name at all.
+ */
+function assertClubPlayers(
+  fields: { type: string; playerId: string; assistPlayerId?: string },
+  tournament: Tournament,
+  team: Team,
+  match: unknown,
+  side: 'home' | 'away',
+): void {
+  if (fields.type === 'own_goal') {
+    if (fields.playerId) {
+      throw badRequest(
+        'An own goal was scored by the other club, so only the organiser can put a name on it',
+      )
+    }
+    return
+  }
+
+  if (!fields.playerId) throw badRequest('A scorer is required')
+
+  const allowed = nameableInMatch(tournament, team, match, side)
+  for (const id of [fields.playerId, fields.assistPlayerId]) {
+    if (!id) continue
+    if (!allowed.has(id)) {
+      throw badRequest(
+        'That player is not registered for this competition. Reload the page and try again.',
+      )
+    }
+  }
+}
+
+/** A goal this club entered itself, which is the only kind it may correct. */
+function assertClubWrote(goal: Record<string, unknown>, side: 'home' | 'away'): void {
+  if (goal.team !== side) throw forbidden("That goal belongs to the other club's side of the match")
+  if (goal.enteredBy !== 'club') {
+    throw forbidden('The organiser entered that goal. Ask them to change it.')
   }
 }
 

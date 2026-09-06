@@ -4,8 +4,9 @@ import type { Match, Player, Team } from '../types'
 import { uid } from '../utils/uid'
 import { playersNamedInMatch } from '../utils/squads'
 import { playerLabel } from '../utils/players'
-import { cardLabel, scorerSide } from '../utils/matches'
+import { byMinute, cardLabel, scorerSide, unattributedGoals } from '../utils/matches'
 import type { CardType } from '../utils/matches'
+import type { GoalInput } from '../lib/data'
 import { IconBall, IconCard } from './icons'
 
 type Side = 'home' | 'away'
@@ -44,12 +45,22 @@ const CARD_TYPES: Array<{ value: CardType; label: string }> = [
 const FIELD =
   'w-full px-3 py-2 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:border-white/40 transition-colors'
 
-/** The minute somebody typed, or nothing at all. An event without one cannot be placed. */
+/** The minute somebody typed, or null when the box is empty or holds nonsense. */
 function minuteOf(entered: string): number | null {
   const minute = Number(entered)
   if (!entered.trim() || !Number.isInteger(minute) || minute < 1 || minute > 130) return null
   return minute
 }
+
+/**
+ * A goal may be recorded without a minute, and a booking may not.
+ *
+ * Who scored is the part anybody remembers a week later, and a required minute
+ * is answered by typing a number at random — which sorts the timeline wrongly
+ * and cannot afterwards be told from a real one. A card is entered off the
+ * teamsheet while the match is still in mind, so it keeps its minute.
+ */
+const minuteGiven = (entered: string) => entered.trim() !== ''
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -336,44 +347,63 @@ function CardFields({
 /**
  * The goals and the bookings of one match.
  *
- * Two rules hold this screen together. Nothing is written until a form is
- * submitted, so a list never reorders itself under a cursor; and adding or
- * removing a goal recounts the score in the same write, so the result on the
- * scoreboard above follows the events without anybody retyping it.
+ * Three rules hold this screen together. Nothing is written until a form is
+ * submitted, so a list never reorders itself under a cursor. A goal is written
+ * on its own, through its own route, because the club whose side it counts for
+ * writes this list too. And the score is the organiser's: naming a goal the
+ * result already counts leaves it alone, a goal it has no room for raises it,
+ * and deleting one never lowers it — the goal simply goes back to being one
+ * nobody has named, and a wrong result is corrected on the scoreboard.
  */
 export default function MatchEvents({
   match,
   homeTeam,
   awayTeam,
   onSave,
+  onAddGoal,
+  onUpdateGoal,
+  onDeleteGoal,
   onGoToLineups,
 }: {
   match: Match
   homeTeam: Team
   awayTeam: Team
+  /** Cards, which have one author and still travel as a list. */
   onSave: (updates: Partial<Match>) => void
+  onAddGoal: (goal: GoalInput) => Promise<void>
+  onUpdateGoal: (goalId: string, goal: GoalInput) => Promise<void>
+  onDeleteGoal: (goalId: string) => Promise<void>
   onGoToLineups: () => void
 }) {
   const [goalDraft, setGoalDraft] = useState<GoalDraft>(EMPTY_GOAL)
   const [cardDraft, setCardDraft] = useState<CardDraft>(EMPTY_CARD)
   const [editingGoal, setEditingGoal] = useState<{ id: string; draft: GoalDraft } | null>(null)
   const [editingCard, setEditingCard] = useState<{ id: string; draft: CardDraft } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const goals = match.goals ?? []
   const cards = match.cards ?? []
 
-  /**
-   * The score the recorded events add up to.
-   *
-   * The score is still a field of its own, edited on the scoreboard: most
-   * matches here have a result and no events at all, and a score counted from
-   * an empty list would read 0-0 for every one of them. So this is applied only
-   * when the event list itself changes.
-   */
-  const scoreOf = (list: typeof goals) => ({
-    homeGoals: list.filter((goal) => goal.team === 'home').length,
-    awayGoals: list.filter((goal) => goal.team === 'away').length,
-  })
+  // The goals of this result nobody has named a scorer for. Derived from the
+  // score rather than stored as empty rows, so a match played before any of
+  // this existed shows them too.
+  const unnamed = unattributedGoals(match)
+
+  /** One write, and the message if it is refused rather than a silent no-op. */
+  const write = async (action: () => Promise<void>, whenItFails: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      return true
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : whenItFails)
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const nameOf = (playerId: string, side: Side): string => {
     if (!playerId) return ''
@@ -388,57 +418,41 @@ export default function MatchEvents({
     return fallback ? playerLabel(fallback) : 'Former player'
   }
 
+  // The minute is optional; a minute typed as something other than a minute is
+  // not. Emptying the box is how it is left out.
   const goalIsComplete = (draft: GoalDraft) =>
-    minuteOf(draft.minute) !== null && (draft.type === 'own_goal' || draft.playerId !== '')
+    (!minuteGiven(draft.minute) || minuteOf(draft.minute) !== null) &&
+    (draft.type === 'own_goal' || draft.playerId !== '')
+
+  const goalBody = (draft: GoalDraft): GoalInput => ({
+    team: draft.team,
+    type: draft.type,
+    minute: minuteGiven(draft.minute) ? minuteOf(draft.minute) ?? undefined : undefined,
+    playerId: draft.playerId,
+    assistPlayerId: draft.type === 'own_goal' ? '' : draft.assistPlayerId,
+  })
 
   const cardIsComplete = (draft: CardDraft) => minuteOf(draft.minute) !== null && draft.playerId !== ''
 
-  const addGoal = () => {
-    const minute = minuteOf(goalDraft.minute)
-    if (minute === null || !goalIsComplete(goalDraft)) return
-    const next = [
-      ...goals,
-      {
-        id: uid(),
-        team: goalDraft.team,
-        playerId: goalDraft.playerId,
-        minute,
-        type: goalDraft.type,
-        assistPlayerId:
-          goalDraft.type === 'own_goal' ? undefined : goalDraft.assistPlayerId || undefined,
-      },
-    ]
-    onSave({ goals: next, ...scoreOf(next) })
+  const addGoal = async () => {
+    if (!goalIsComplete(goalDraft)) return
+    const saved = await write(() => onAddGoal(goalBody(goalDraft)), 'That goal could not be saved.')
     // The club stays chosen: goals are entered off a scoresheet a side at a time.
-    setGoalDraft({ ...EMPTY_GOAL, team: goalDraft.team })
+    if (saved) setGoalDraft({ ...EMPTY_GOAL, team: goalDraft.team })
   }
 
-  const saveGoal = (id: string, draft: GoalDraft) => {
-    const minute = minuteOf(draft.minute)
-    if (minute === null || !goalIsComplete(draft)) return
-    const next = goals.map((goal) =>
-      goal.id === id
-        ? {
-            ...goal,
-            team: draft.team,
-            type: draft.type,
-            minute,
-            playerId: draft.playerId,
-            assistPlayerId:
-              draft.type === 'own_goal' ? undefined : draft.assistPlayerId || undefined,
-          }
-        : goal,
+  const saveGoal = async (id: string, draft: GoalDraft) => {
+    if (!goalIsComplete(draft)) return
+    const saved = await write(
+      () => onUpdateGoal(id, goalBody(draft)),
+      'That correction could not be saved.',
     )
-    // The side a goal counts for is editable here, so the score is recounted on
-    // a correction as well as on a new event.
-    onSave({ goals: next, ...scoreOf(next) })
-    setEditingGoal(null)
+    if (saved) setEditingGoal(null)
   }
 
-  const deleteGoal = (id: string) => {
-    const next = goals.filter((goal) => goal.id !== id)
-    onSave({ goals: next, ...scoreOf(next) })
-    if (editingGoal?.id === id) setEditingGoal(null)
+  const deleteGoal = async (id: string) => {
+    const removed = await write(() => onDeleteGoal(id), 'That goal could not be removed.')
+    if (removed && editingGoal?.id === id) setEditingGoal(null)
   }
 
   const addCard = () => {
@@ -472,9 +486,10 @@ export default function MatchEvents({
   }
 
   // Copied before sorting: the array belongs to the record this page is
-  // holding, and sorting it in place reorders it there.
-  const sortedGoals = [...goals].sort((a, b) => a.minute - b.minute)
-  const sortedCards = [...cards].sort((a, b) => a.minute - b.minute)
+  // holding, and sorting it in place reorders it there. A goal with no minute
+  // sorts to the end rather than before the kick-off.
+  const sortedGoals = byMinute(goals)
+  const sortedCards = byMinute(cards)
 
   // Which goal of the match it was for that club, counted from the order the
   // list is in. It used to be a number stored on the goal, which stayed as it
@@ -493,9 +508,17 @@ export default function MatchEvents({
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h3 className="font-semibold text-xl">Goals</h3>
           <div className="text-sm opacity-70">
-            {homeTeam.name} {scoredHome} - {scoredAway} {awayTeam.name} from the events below
+            {homeTeam.name} {scoredHome} - {scoredAway} {awayTeam.name} named
+            {unnamed.home + unnamed.away > 0 &&
+              `, ${unnamed.home + unnamed.away} still to be named`}
           </div>
         </div>
+
+        {error && (
+          <div className="rounded-lg px-4 py-3 text-sm bg-red-500/15 border border-red-400/30">
+            {error}
+          </div>
+        )}
 
         <div className="glass rounded-xl p-5 space-y-4">
           <h4 className="font-semibold">Add a goal</h4>
@@ -511,18 +534,20 @@ export default function MatchEvents({
             <button
               type="button"
               onClick={addGoal}
-              disabled={!goalIsComplete(goalDraft)}
+              disabled={busy || !goalIsComplete(goalDraft)}
               className="px-4 py-2 rounded-lg glass border border-white/20 hover:bg-white/10 transition-all disabled:opacity-40 disabled:hover:bg-transparent"
             >
               Add goal
             </button>
             <span className="text-sm opacity-60">
-              The score above updates with it.
+              {unnamed.home + unnamed.away > 0
+                ? 'The result already counts this goal, so the score does not change.'
+                : 'This match has no goal left to name, so the score goes up by one.'}
             </span>
           </div>
         </div>
 
-        {sortedGoals.length === 0 ? (
+        {sortedGoals.length === 0 && unnamed.home + unnamed.away === 0 ? (
           <div className="glass rounded-xl p-8 text-center">
             <div className="mb-4 flex justify-center opacity-60">
               <IconBall size={36} />
@@ -552,7 +577,7 @@ export default function MatchEvents({
                       <button
                         type="button"
                         onClick={() => saveGoal(goal.id, editingGoal.draft)}
-                        disabled={!goalIsComplete(editingGoal.draft)}
+                        disabled={busy || !goalIsComplete(editingGoal.draft)}
                         className="px-4 py-2 rounded-lg glass border border-white/20 hover:bg-white/10 transition-all disabled:opacity-40"
                       >
                         Save
@@ -571,7 +596,9 @@ export default function MatchEvents({
 
               return (
                 <div key={goal.id} className="glass rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap">
-                  <span className="font-mono text-sm bg-white/10 px-2 py-1 rounded">{goal.minute}'</span>
+                  <span className="font-mono text-sm bg-white/10 px-2 py-1 rounded">
+                    {typeof goal.minute === 'number' ? `${goal.minute}'` : '-'}
+                  </span>
                   <span
                     className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border ${
                       isHome
@@ -626,6 +653,31 @@ export default function MatchEvents({
                 </div>
               )
             })}
+
+            {/* The goals this result counts that nobody has named. Rows rather
+                than a note, because that is what they are on the public page
+                too, and because each of them is one thing left to do. */}
+            {(['home', 'away'] as const).flatMap((side) =>
+              Array.from({ length: unnamed[side] }, (_, index) => (
+                <div
+                  key={`unnamed-${side}-${index}`}
+                  className="glass rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap opacity-70"
+                >
+                  <span className="font-mono text-sm bg-white/10 px-2 py-1 rounded">-</span>
+                  <span className="font-semibold">Unknown</span>
+                  <span className="text-sm opacity-50">
+                    {side === 'home' ? homeTeam.name : awayTeam.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setGoalDraft({ ...EMPTY_GOAL, team: side })}
+                    className="ml-auto text-sm opacity-70 hover:opacity-100 transition-opacity"
+                  >
+                    Name this goal
+                  </button>
+                </div>
+              )),
+            )}
           </div>
         )}
       </section>

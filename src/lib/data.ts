@@ -18,6 +18,29 @@ const MAX_BATCH = 500
 /** Which hand-built playoff round the screen believed it was editing. */
 export type RoundExpectation = { roundNumber?: number; name?: string }
 
+/** One goal as a screen describes it. The id, the author and the score are the server's. */
+export type GoalInput = {
+  team?: 'home' | 'away'
+  type?: 'goal' | 'penalty' | 'own_goal'
+  /** Left out where nobody knew it, rather than guessed at. */
+  minute?: number
+  playerId?: string
+  assistPlayerId?: string
+  /** Only the manager's routes read this: which of the caller's clubs is meant. */
+  teamId?: string
+}
+
+export type Goal = NonNullable<Match['goals']>[number]
+
+/**
+ * What a goal route answers with.
+ *
+ * The score comes back rather than being worked out again here: whether a goal
+ * moves the result is the server's rule, and a browser repeating it is a second
+ * copy waiting to disagree. `null` means the score stayed as it was.
+ */
+export type GoalWritten = { goal: Goal; score: { homeGoals: number; awayGoals: number } | null }
+
 export const organizerService = {
   /**
    * The organisers the signed-in user administers — everything for a super
@@ -447,6 +470,39 @@ export const matchService = {
       { teamId, playerIds },
     )
   },
+
+  /**
+   * One goal, for the same reason a teamsheet is one side.
+   *
+   * `goals` has two authors now — the organiser and the club a goal counts for
+   * — so the whole list is never sent. The score follows on the server, in the
+   * write that carries the goal: one the score already counts leaves it alone,
+   * one it has no room for raises it by one, and a deletion never lowers it.
+   */
+  async addGoal(tournamentId: string, matchId: string, goal: GoalInput): Promise<GoalWritten> {
+    return api.post(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/goals`,
+      goal,
+    )
+  },
+
+  async updateGoal(
+    tournamentId: string,
+    matchId: string,
+    goalId: string,
+    goal: GoalInput,
+  ): Promise<GoalWritten> {
+    return api.patch(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/goals/${encodeURIComponent(goalId)}`,
+      goal,
+    )
+  },
+
+  async removeGoal(tournamentId: string, matchId: string, goalId: string): Promise<void> {
+    await api.delete(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/goals/${encodeURIComponent(goalId)}`,
+    )
+  },
 }
 
 /* ------------------------------------------------------------------ *
@@ -701,6 +757,51 @@ export const clubService = {
     return api.put(
       `/manager/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/lineup`,
       { teamId, playerIds },
+    )
+  },
+
+  /**
+   * The club naming the scorer of one of its goals.
+   *
+   * Only a goal the score already counts and nobody has named: the club is
+   * filling in the record of a result, not changing it. The side comes from
+   * the fixture on the server, so nothing here can put a goal on the other
+   * club's half of the match.
+   */
+  async addGoal(
+    tournamentId: string,
+    matchId: string,
+    teamId: string,
+    goal: GoalInput,
+  ): Promise<GoalWritten> {
+    return api.post(
+      `/manager/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/goals`,
+      { ...goal, teamId },
+    )
+  },
+
+  async updateGoal(
+    tournamentId: string,
+    matchId: string,
+    teamId: string,
+    goalId: string,
+    goal: GoalInput,
+  ): Promise<GoalWritten> {
+    return api.patch(
+      `/manager/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/goals/${encodeURIComponent(goalId)}`,
+      { ...goal, teamId },
+    )
+  },
+
+  /** A delete carries no body, so the club is named in the query instead. */
+  async removeGoal(
+    tournamentId: string,
+    matchId: string,
+    teamId: string,
+    goalId: string,
+  ): Promise<void> {
+    await api.delete(
+      `/manager/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/goals/${encodeURIComponent(goalId)}?teamId=${encodeURIComponent(teamId)}`,
     )
   },
 

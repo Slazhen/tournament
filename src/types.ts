@@ -205,14 +205,28 @@ export type Match = {
       possession?: number
     }
   }
-  // Goals and events
+  /**
+   * The goals somebody has put a name to.
+   *
+   * Legitimately shorter than the score. Most results here are entered as a
+   * score and nothing else, and the difference between the two is the goals
+   * nobody has attributed yet: they are drawn as "Unknown" wherever events are
+   * listed and never stored as rows of their own.
+   *
+   * Two authors write this list — the organiser, and the manager of the club a
+   * goal counts for — so it is never sent whole. One event at a time, through
+   * the goal routes.
+   */
   goals?: Array<{
     id: string
     team: 'home' | 'away'
     playerId: string
-    minute: number
+    /** Absent where nobody knew it: a manager remembers the scorer, not the clock. */
+    minute?: number
     type: 'goal' | 'penalty' | 'own_goal'
     assistPlayerId?: string
+    /** Which side entered it, and so who may correct it. Not an account id. */
+    enteredBy?: 'organizer' | 'club'
     goalNumber?: number // Goal number for this team (1st, 2nd, 3rd goal, etc.)
   }>
   /**

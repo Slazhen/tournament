@@ -7,7 +7,7 @@ import { generateFixtures } from './utils/fixtures'
 import { applySchedule } from './utils/matchdates'
 import type { ScheduleOptions } from './utils/matchdates'
 import { organizerService, teamService, tournamentService, matchService, playerService, uploadImage } from './lib/data'
-import type { RoundExpectation } from './lib/data'
+import type { GoalInput, RoundExpectation } from './lib/data'
 import { readCrestAppearance } from './utils/crest'
 
 const playoffRoundsOf = (tournament: Tournament): CustomPlayoffRoundConfig[] =>
@@ -145,6 +145,25 @@ type AppStore = {
     index: number,
     expected: RoundExpectation,
   ) => Promise<void>
+  /**
+   * One goal of one match, written on its own.
+   *
+   * The list has two authors — the organiser and the club a goal counts for —
+   * so it is never sent whole, exactly as a teamsheet is never sent as a pair
+   * of elevens. The score moves on the server, in the write that carries the
+   * goal, and the answer says whether it did: a goal the result already counts
+   * leaves it alone, one it has no room for raises it, and a deletion never
+   * lowers it.
+   */
+  addGoal: (tournamentId: string, matchId: string, goal: GoalInput) => Promise<void>
+  updateGoal: (
+    tournamentId: string,
+    matchId: string,
+    goalId: string,
+    goal: GoalInput,
+  ) => Promise<void>
+  removeGoal: (tournamentId: string, matchId: string, goalId: string) => Promise<void>
+
   /**
    * One club's teamsheet for one match. Throws rather than swallowing, so a
    * ticked box that did not reach the server can say so.
@@ -783,6 +802,56 @@ export const useAppStore = create<AppStore>((set, get) => ({
    * the list back whole is how a teamsheet saved on a phone disappears the next
    * time the organiser ticks a box.
    */
+  addGoal: async (tournamentId: string, matchId: string, goal: GoalInput) => {
+    const written = await matchService.addGoal(tournamentId, matchId, goal)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? applyMatchUpdate(tournament, matchId, match => ({
+              ...match,
+              goals: [...(match.goals ?? []), written.goal],
+              ...(written.score ?? {}),
+            }))
+          : tournament,
+      ),
+    }))
+  },
+
+  updateGoal: async (
+    tournamentId: string,
+    matchId: string,
+    goalId: string,
+    goal: GoalInput,
+  ) => {
+    const written = await matchService.updateGoal(tournamentId, matchId, goalId, goal)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? applyMatchUpdate(tournament, matchId, match => ({
+              ...match,
+              goals: (match.goals ?? []).map(one => (one.id === goalId ? written.goal : one)),
+              ...(written.score ?? {}),
+            }))
+          : tournament,
+      ),
+    }))
+  },
+
+  /** The score stays: the goal goes back to being one nobody has named. */
+  removeGoal: async (tournamentId: string, matchId: string, goalId: string) => {
+    await matchService.removeGoal(tournamentId, matchId, goalId)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? applyMatchUpdate(tournament, matchId, match => ({
+              ...match,
+              goals: (match.goals ?? []).filter(one => one.id !== goalId),
+            }))
+          : tournament,
+      ),
+    }))
+  },
+
   setLineup: async (
     tournamentId: string,
     matchId: string,

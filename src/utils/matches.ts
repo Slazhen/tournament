@@ -128,6 +128,47 @@ export const scorerSide = (goal: {
 }): 'home' | 'away' =>
   goal.type === 'own_goal' ? (goal.team === 'home' ? 'away' : 'home') : goal.team
 
+/**
+ * How many of a side's goals nobody has named a scorer for.
+ *
+ * The score is the organiser's record of the result and the events are filled
+ * in afterwards, often by the club rather than by them — so a 2-0 with one goal
+ * entered is not a page half loaded, it is one goal still to be named. These
+ * are derived and never stored: writing them out as empty rows would mean
+ * migrating every match ever played, deciding which of the empty ones a
+ * corrected score should delete, and keeping them out of every tally that walks
+ * the list.
+ *
+ * One function for the public timeline, the organiser's screen and the club's,
+ * because three counts of the same thing are three chances to disagree about
+ * what a match is still missing.
+ */
+export function unattributedGoals(match: Match): { home: number; away: number } {
+  const named = (side: 'home' | 'away') =>
+    (match.goals ?? []).filter((goal) => goal.team === side).length
+  const scored = (value: number | null | undefined) => (typeof value === 'number' ? value : 0)
+
+  return {
+    home: Math.max(0, scored(match.homeGoals) - named('home')),
+    away: Math.max(0, scored(match.awayGoals) - named('away')),
+  }
+}
+
+/**
+ * Events in the order they happened, with the ones nobody timed at the end.
+ *
+ * The minute is optional — a manager filling in last month's scoresheet knows
+ * who scored and not when — and sorting an absent minute as zero would put
+ * those goals before the kick-off.
+ */
+export function byMinute<T extends { minute?: number }>(events: T[]): T[] {
+  return [...events].sort((a, b) => {
+    const left = typeof a.minute === 'number' ? a.minute : Number.POSITIVE_INFINITY
+    const right = typeof b.minute === 'number' ? b.minute : Number.POSITIVE_INFINITY
+    return left - right
+  })
+}
+
 export type PlayerRecord = {
   playerId: string
   /** The club the goals were scored for, so a name can be resolved against it. */

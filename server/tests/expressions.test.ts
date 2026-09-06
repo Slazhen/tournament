@@ -104,6 +104,24 @@ const EXPRESSION_PROPERTY =
   /(KeyConditionExpression|ConditionExpression|FilterExpression|UpdateExpression|ProjectionExpression)\s*:\s*(['"`])((?:\\.|(?!\2)[\s\S])*)\2/g
 
 /**
+ * The same check for an expression assembled before it is passed.
+ *
+ * The property pattern above only sees a literal sitting at the key, and the
+ * goal writes build theirs in pieces — a list of `SET` clauses, a list of
+ * conditions — held in variables until the moment they are sent. That put three
+ * writes to live match records outside the only check in the pipeline that
+ * looks inside these strings.
+ *
+ * A template literal is treated as an expression when it reads like one: an
+ * update action, a condition function, or a comparison against a placeholder.
+ * Anything matching that and containing a bare reserved word is either a real
+ * expression or a sentence written to look exactly like one.
+ */
+const EXPRESSION_FRAGMENT = /`((?:\\.|[^`])*)`/g
+const LOOKS_LIKE_EXPRESSION =
+  /^\s*(SET|REMOVE|ADD|DELETE)\s|attribute_exists\(|attribute_not_exists\(|if_not_exists\(|list_append\(|size\(|=\s*:|^\$\{[\s\S]*\s=\s/
+
+/**
  * The reserved words a single expression names without an alias.
  *
  * `#name` and `:value` are already aliases. A `${…}` interpolation is a
@@ -149,6 +167,16 @@ describe('DynamoDB expressions', () => {
         const where = `${file.slice(root.length - 3)}:${line}`
         offences.push(`${where} ${match[1]} names ${words.join(', ')} — use ExpressionAttributeNames`)
       }
+
+      for (const match of contents.matchAll(EXPRESSION_FRAGMENT)) {
+        if (!LOOKS_LIKE_EXPRESSION.test(match[1])) continue
+        const words = unaliasedReservedWords(match[1])
+        if (words.length === 0) continue
+
+        const line = contents.slice(0, match.index).split('\n').length
+        const where = `${file.slice(root.length - 3)}:${line}`
+        offences.push(`${where} an expression names ${words.join(', ')} — use ExpressionAttributeNames`)
+      }
     }
 
     expect(offences.join('\n')).toBe('')
@@ -161,5 +189,28 @@ describe('DynamoDB expressions', () => {
     expect(unaliasedReservedWords('#matches[0].#status = :status')).toEqual([])
     expect(unaliasedReservedWords('SET teamIds = list_append(teamIds, :one)')).toEqual([])
     expect(unaliasedReservedWords('SET details.name = :name')).toEqual(['name'])
+  })
+
+  // The fragment pattern has the same failure mode as the property one: it can
+  // stop matching and take the check with it, silently.
+  it('recognises an expression that is assembled rather than passed', () => {
+    expect(LOOKS_LIKE_EXPRESSION.test('SET #goals[0] = :goal')).toBe(true)
+    expect(LOOKS_LIKE_EXPRESSION.test('REMOVE #goals[0]')).toBe(true)
+    expect(LOOKS_LIKE_EXPRESSION.test('attribute_not_exists(#goals)')).toBe(true)
+    expect(LOOKS_LIKE_EXPRESSION.test('#goals[0].#id = :goalId')).toBe(true)
+    expect(LOOKS_LIKE_EXPRESSION.test('#goals = list_append(if_not_exists(#goals, :none), :one)')).toBe(
+      true,
+    )
+    // A clause built out of two interpolations, which is how the score guard
+    // and the append clause are written: neither ends in `= :placeholder`.
+    expect(LOOKS_LIKE_EXPRESSION.test('#matches[0].#expectedHome = :expectedHome')).toBe(true)
+    // A clause whose left and right sides are both interpolations — the score
+    // guard — which nothing else in the pattern would recognise.
+    expect(LOOKS_LIKE_EXPRESSION.test('${located.path}.${alias} = ${placeholder}')).toBe(true)
+    // And the shapes that made the first version of this pattern cry wolf.
+    expect(LOOKS_LIKE_EXPRESSION.test('${SITE_URL}/reset-password?token=${reset.token}')).toBe(false)
+    expect(LOOKS_LIKE_EXPRESSION.test('public, max-age=${PUBLIC_CACHE_SECONDS}')).toBe(false)
+    expect(LOOKS_LIKE_EXPRESSION.test('Set the score to 2:1 in the Premier League')).toBe(false)
+    expect(LOOKS_LIKE_EXPRESSION.test('/manager/tournaments/123/matches/456')).toBe(false)
   })
 })
