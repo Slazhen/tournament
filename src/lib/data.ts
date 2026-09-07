@@ -226,11 +226,25 @@ export const tournamentService = {
     return api.get<TournamentSummary[]>('/public/tournaments')
   },
 
-  async getById(id: string): Promise<Tournament | null> {
-    const path = isSignedIn()
-      ? `/admin/tournaments/${encodeURIComponent(id)}`
-      : `/public/tournaments/${encodeURIComponent(id)}`
-    return api.get<Tournament>(path)
+  /**
+   * One season by id, as a visitor may read it — public for everyone, signed
+   * in or not.
+   *
+   * It used to send anyone holding a token to `/admin/tournaments/:id`, which
+   * answers 403 unless the viewer administers that very organiser. Only public
+   * pages call this, so the token decided whether they worked: a club manager
+   * saw an error on every competition, and an organiser on every competition
+   * but their own — the "next match" link and the "View" button on a club page
+   * both land here, and both answered "not found" for a season anyone signed
+   * out could read.
+   *
+   * The slug routes beside it (`getBySlug`, `getSeason`) already read the
+   * public projection for everyone; this is the same rule for the older
+   * `/public/tournaments/:id` addresses. A season the organiser has kept
+   * private is not readable here — as it already was not through its slug.
+   */
+  async getPublicById(id: string): Promise<Tournament | null> {
+    return api.get<Tournament>(`/public/tournaments/${encodeURIComponent(id)}`)
   },
 
   /**

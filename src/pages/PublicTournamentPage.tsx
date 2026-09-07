@@ -186,7 +186,7 @@ export default function PublicTournamentPage() {
 
         // Old route: /public/tournaments/:id — fetch by key, then its teams.
         const full = actualTournamentId
-          ? await tournamentService.getById(actualTournamentId)
+          ? await tournamentService.getPublicById(actualTournamentId)
           : null
         if (!cancelled) setTournament(full)
 

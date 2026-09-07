@@ -1073,3 +1073,13 @@ photographs it was protecting keep their size.
   from zero organisers" — the count came from a public route and the directory
   from an admin one. Public pages read `getAllPublic`; the branching methods
   belong to the admin screens.
+
+  It happened again in `tournamentService.getById`, and worse: it sent a
+  signed-in viewer to `/admin/tournaments/:id`, which is not merely narrower but
+  a 403 unless the viewer administers that organiser. Every caller was a public
+  page, so the "next match" link and the "View" button on a club page answered
+  "not found" for a club manager on every competition, and for an organiser on
+  every competition but their own — while a signed-out visitor read the same
+  page fine. It is `getPublicById` now, public for everyone. When a method is
+  there to be read by visitors, say so in its name: `getAll` and `getById` are
+  the names that get called from a public page by mistake.

@@ -115,7 +115,7 @@ export default function PublicMatchPage() {
 
         if (tournamentId) {
           // Old route: /public/tournaments/:tournamentId/matches/:matchId — single GetItem (no scan)
-          tournamentData = await tournamentService.getById(tournamentId)
+          tournamentData = await tournamentService.getPublicById(tournamentId)
         } else if (orgSlug && seriesSlug && seasonSlug) {
           // /:orgSlug/:seriesSlug/:seasonSlug/matches/:matchId — a match inside
           // a named season, which is the address every link on the season page
@@ -141,7 +141,7 @@ export default function PublicMatchPage() {
             decodeURIComponent(tournamentSlug).trim(),
             organizers,
           )
-          tournamentData = summary ? await tournamentService.getById(summary.id) : null
+          tournamentData = summary ? await tournamentService.getPublicById(summary.id) : null
         }
 
         if (!tournamentData) {
