@@ -34,6 +34,7 @@ import {
 } from '../lib/lineups.js'
 import { assertCompetitionColours, assertTeamColours } from '../lib/colours.js'
 import {
+  assertScorerOrCounted,
   composeGoal,
   expectationOf,
   readGoal,
@@ -1397,10 +1398,17 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     if (!match) throw notFound('Match not found in this tournament')
 
     const fields = readGoal(ctx.body)
-    if (fields.type !== 'own_goal' && !fields.playerId) throw badRequest('A scorer is required')
+    const score = scoreAfterAdding(match, fields.team)
+    // A goal with nobody on it is one of the ones the result already counts,
+    // written out so that its minute has somewhere to live: an unattributed goal
+    // is derived from the score and has no record of its own to hang a minute
+    // off. It may not raise the score - a goal the result does not count and
+    // nobody can name is not a goal anybody has a record of, and a wrong result
+    // is corrected on the scoreboard. An own goal with no name is the older case
+    // of the same thing and is unchanged.
+    assertScorerOrCounted(fields, score)
 
     const goal = composeGoal(generateId(), fields, 'organizer')
-    const score = scoreAfterAdding(match, fields.team)
     // The match as this request read it, asserted in the write: the decision
     // above was made from it, and it can move underneath a slow request.
     await tournaments.addGoal(
@@ -1437,17 +1445,21 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       )
 
       const fields = readGoal({ ...stored, ...ctx.body })
-      if (fields.type !== 'own_goal' && !fields.playerId) throw badRequest('A scorer is required')
 
       // The side a goal counts for is editable here, so the score is worked out
       // against the match as it would be without this goal — which answers a
       // correction that stays on its side and one that crosses with one rule.
-      const goal = composeGoal(params.goalId!, fields, (stored.enteredBy as never) ?? 'organizer')
       // Only a goal that changes sides moves the score. Correcting a scorer on
       // a fixture that already holds more goals than the score counts — which
       // is what lowering a score on the scoreboard leaves behind — would
       // otherwise put the score back up on the next spelling fix.
       const score = scoreAfterMoving(located.match, params.goalId!, stored.team, fields.team)
+      // The scorer may be taken off as well as put on: a goal entered as a
+      // minute and nothing else is corrected here too. What it may not do is
+      // move the score, which is the same rule the add route holds to.
+      assertScorerOrCounted(fields, score)
+
+      const goal = composeGoal(params.goalId!, fields, (stored.enteredBy as never) ?? 'organizer')
       await tournaments.updateGoal(
         params.tournamentId!,
         params.matchId!,

@@ -519,8 +519,11 @@ function EventLine({
   const note =
     goal.type === 'penalty' ? 'penalty' : goal.type === 'own_goal' ? 'own goal' : undefined
 
-  // An own goal nobody was named for still reads as one: the label carries the
-  // whole event, and there is no player page to link to.
+  // A goal with nobody on it still reads as the event it was, and there is no
+  // player page to link to. Which event depends on the type: an own goal is one,
+  // and anything else is a goal the result counts whose scorer nobody has filled
+  // in — drawn at its minute, in the same grey as the rows that have no record
+  // of their own, because that is what it is.
   const scorer = goal.playerId ? (
     <Link
       to={`/public/players/${goal.playerId}`}
@@ -528,12 +531,18 @@ function EventLine({
     >
       {playerName(team, goal.playerId, other)}
     </Link>
-  ) : (
+  ) : goal.type === 'own_goal' ? (
     <span className="text-sm font-semibold">Own goal</span>
+  ) : (
+    <span className="text-sm font-semibold text-gray-400">Unknown</span>
   )
-  const detail = goal.playerId ? (
-    <GoalDetail goal={goal} team={team} other={other} note={note} />
-  ) : null
+  // An own goal's label already says "own goal", so the note beside it would say
+  // it twice. Everything else keeps it: a penalty nobody has named is still a
+  // penalty.
+  const detail =
+    goal.playerId || goal.type !== 'own_goal' ? (
+      <GoalDetail goal={goal} team={team} other={other} note={note} />
+    ) : null
 
   return (
     <div className={rowClass}>

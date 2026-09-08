@@ -1207,7 +1207,13 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
       action: 'goal.add',
       entity: 'match',
       entityId: `${params.tournamentId}/${params.matchId}`,
-      summary: `Named a scorer for ${team.name} in ${tournament.name}`,
+      // What was actually written. A goal entered as a minute and nothing else
+      // names nobody, and the audit line is the only server-side record of what
+      // the club did - one that says "named a scorer" makes the two
+      // indistinguishable when somebody reads the log back.
+      summary: goal.playerId
+        ? `Named a scorer for ${team.name} in ${tournament.name}`
+        : `Recorded the minute of a goal for ${team.name} in ${tournament.name}`,
       organizerId: tournament.organizerId,
     })
     // `score` is null here by construction, and sent anyway: the club's screen
@@ -1259,7 +1265,9 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
         action: 'goal.update',
         entity: 'match',
         entityId: `${params.tournamentId}/${params.matchId}`,
-        summary: `Corrected a scorer for ${team.name} in ${tournament.name}`,
+        summary: goal.playerId
+          ? `Corrected a scorer for ${team.name} in ${tournament.name}`
+          : `Corrected a goal with no scorer for ${team.name} in ${tournament.name}`,
         organizerId: tournament.organizerId,
       })
       return { goal, score: null }
@@ -1650,8 +1658,11 @@ function assertClubPlayers(
     return
   }
 
-  if (!fields.playerId) throw badRequest('A scorer is required')
-
+  // A goal with nobody on it stands. It is one of the goals the result already
+  // counts — this route refuses any other kind — with the minute the coach
+  // remembers on it and the name still to come, and it credits nobody with
+  // anything until somebody puts one there. What is checked is every name that
+  // is on it.
   const allowed = nameableInMatch(tournament, team, match, side)
   for (const id of [fields.playerId, fields.assistPlayerId]) {
     if (!id) continue

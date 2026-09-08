@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assertScorerOrCounted,
   composeGoal,
   expectationOf,
   readGoal,
@@ -192,5 +193,61 @@ describe('reading a goal off a request', () => {
     expect(composeGoal('g1', readGoal({ team: 'home', playerId: 'p1' }), 'club').enteredBy).toBe(
       'club',
     )
+  })
+})
+
+describe('a goal with nobody on it', () => {
+  // The minute of a goal the result counts and nobody can name. It has to be a
+  // record of its own, because the rows drawn for unattributed goals are
+  // derived from the score and there is nothing there to write a minute on.
+  const unknown = { type: 'goal' as const, playerId: '' }
+
+  it('stands where the result already counts it', () => {
+    const counted = match({ homeGoals: 2, awayGoals: 0 })
+    expect(() => assertScorerOrCounted(unknown, scoreAfterAdding(counted, 'home'))).not.toThrow()
+  })
+
+  it('is refused where it would raise the score', () => {
+    // Nobody's name and nothing in the result to attach it to is not a goal
+    // anybody has a record of. The score is corrected on the scoreboard.
+    const empty = match({ homeGoals: 0, awayGoals: 0 })
+    expect(() => assertScorerOrCounted(unknown, scoreAfterAdding(empty, 'home'))).toThrow(HttpError)
+  })
+
+  it('leaves an own goal alone, which has been nameless since before any of this', () => {
+    const empty = match({ homeGoals: 0, awayGoals: 0 })
+    expect(() =>
+      assertScorerOrCounted({ type: 'own_goal', playerId: '' }, scoreAfterAdding(empty, 'home')),
+    ).not.toThrow()
+  })
+
+  it('says nothing about a goal that has a scorer on it', () => {
+    const empty = match({ homeGoals: 0, awayGoals: 0 })
+    expect(() =>
+      assertScorerOrCounted({ type: 'goal', playerId: 'p-1' }, scoreAfterAdding(empty, 'home')),
+    ).not.toThrow()
+  })
+
+  it('counts as recorded once it is written, so the derived row goes', () => {
+    // The point of writing it: 2-0 with one minute filled in is one goal with a
+    // record and one still drawn from the score.
+    const played = match({
+      homeGoals: 2,
+      awayGoals: 0,
+      goals: [{ id: 'g1', team: 'home', playerId: '', minute: 34, type: 'goal' }],
+    })
+    expect(recordedFor(played, 'home')).toBe(1)
+    expect(unattributed(played, 'home')).toBe(1)
+  })
+
+  it('keeps the minute the request gave it', () => {
+    const read = readGoal({ team: 'home', type: 'goal', minute: 34 })
+    expect(read.playerId).toBe('')
+    expect(composeGoal('g-9', read, 'club')).toMatchObject({ playerId: '', minute: 34 })
+  })
+
+  it('drops an assist, which would credit a player for a goal nobody scored', () => {
+    const read = readGoal({ team: 'home', type: 'goal', minute: 34, assistPlayerId: 'p-2' })
+    expect(read.assistPlayerId).toBeUndefined()
   })
 })

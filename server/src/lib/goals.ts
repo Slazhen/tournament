@@ -132,13 +132,17 @@ export function readGoal(body: Record<string, unknown>): {
   const assist = typeof body.assistPlayerId === 'string' ? body.assistPlayerId : ''
 
   // An own goal has no assist: the field is not offered for one on any screen,
-  // and a value stored on an older record is ignored rather than credited.
+  // and a value stored on an older record is ignored rather than credited. A
+  // goal with nobody on it has none either - it is a minute and nothing else,
+  // and an assist for a goal whose scorer is unknown is a credit hanging off a
+  // player nobody has named. Both are dropped here rather than left to the
+  // screens, because `playerRecords` credits an assist whatever the scorer is.
   return {
     team: team as Side,
     type: type as GoalType,
     minute,
     playerId,
-    assistPlayerId: type === 'own_goal' || !assist ? undefined : assist,
+    assistPlayerId: type === 'own_goal' || !playerId || !assist ? undefined : assist,
   }
 }
 
@@ -160,6 +164,30 @@ export function composeGoal(
     assistPlayerId: fields.assistPlayerId,
     enteredBy,
   }
+}
+
+/**
+ * A goal with nobody on it is one of the goals the result already counts.
+ *
+ * The rows a screen draws for those are derived from the score and have no
+ * record of their own, so a minute has nowhere to live until one is written -
+ * which is the whole reason a goal may be entered with no scorer at all. What
+ * such a goal may not do is move the score: a goal the result does not count
+ * and nobody can name is not a goal anybody has a record of, and a wrong result
+ * is corrected on the scoreboard rather than by adding an empty event to it.
+ *
+ * An own goal with no name is the older case of the same shape - the scorer
+ * plays for the other club and a manager may not name them - and is unchanged.
+ *
+ * Asked with the score the write would produce, so that the two routes that
+ * write a goal decide it the same way, and once.
+ */
+export function assertScorerOrCounted(
+  fields: { type: GoalType; playerId: string },
+  score: { homeGoals: number; awayGoals: number } | null,
+): void {
+  if (fields.type === 'own_goal' || fields.playerId || !score) return
+  throw badRequest('A goal with no scorer has to be one this result already counts')
 }
 
 /**

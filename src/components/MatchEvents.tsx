@@ -204,6 +204,7 @@ function GoalFields({
   match,
   homeTeam,
   awayTeam,
+  scorerOptional,
   onGoToLineups,
 }: {
   draft: GoalDraft
@@ -211,6 +212,14 @@ function GoalFields({
   match: Match
   homeTeam: Team
   awayTeam: Team
+  /**
+   * Whether this goal may be left with nobody on it.
+   *
+   * True only where it already is: a goal entered as a minute and nothing else,
+   * from one of the rows below. The add form still asks for a scorer, because a
+   * goal nobody names is entered from the row that says nobody has named it.
+   */
+  scorerOptional?: boolean
   onGoToLineups: () => void
 }) {
   // An own goal counts for one side and is put in by a player of the other, so
@@ -268,12 +277,15 @@ function GoalFields({
         value={draft.playerId}
         onChange={(playerId) => onChange({ ...draft, playerId })}
         teamName={scorerTeam.name}
-        allowNobody={isOwnGoal}
+        allowNobody={isOwnGoal || scorerOptional}
         nobodyLabel="Not known"
         onGoToLineups={onGoToLineups}
       />
-      {/* An own goal has no assist, so the field is not offered for one. */}
-      {!isOwnGoal && (
+      {/* An own goal has no assist, so the field is not offered for one. Nor is
+          it offered for a goal with nobody on it: an assist for a goal whose
+          scorer is unknown credits a player for something nobody recorded, and
+          the server drops it. */}
+      {!isOwnGoal && (draft.playerId !== '' || !scorerOptional) && (
         <PlayerChoice
           label="Assist"
           players={assists}
@@ -378,6 +390,10 @@ export default function MatchEvents({
   const [goalDraft, setGoalDraft] = useState<GoalDraft>(EMPTY_GOAL)
   const [cardDraft, setCardDraft] = useState<CardDraft>(EMPTY_CARD)
   const [editingGoal, setEditingGoal] = useState<{ id: string; draft: GoalDraft } | null>(null)
+  // Which of the rows below is having its minute typed, and what has been typed.
+  // Keyed by the row rather than by the side: the rows of one side are alike and
+  // opening the second must not open the first as well.
+  const [timing, setTiming] = useState<{ key: string; side: Side; minute: string } | null>(null)
   const [editingCard, setEditingCard] = useState<{ id: string; draft: CardDraft } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -420,9 +436,9 @@ export default function MatchEvents({
 
   // The minute is optional; a minute typed as something other than a minute is
   // not. Emptying the box is how it is left out.
-  const goalIsComplete = (draft: GoalDraft) =>
+  const goalIsComplete = (draft: GoalDraft, scorerOptional = false) =>
     (!minuteGiven(draft.minute) || minuteOf(draft.minute) !== null) &&
-    (draft.type === 'own_goal' || draft.playerId !== '')
+    (scorerOptional || draft.type === 'own_goal' || draft.playerId !== '')
 
   const goalBody = (draft: GoalDraft): GoalInput => ({
     team: draft.team,
@@ -441,13 +457,31 @@ export default function MatchEvents({
     if (saved) setGoalDraft({ ...EMPTY_GOAL, team: goalDraft.team })
   }
 
-  const saveGoal = async (id: string, draft: GoalDraft) => {
-    if (!goalIsComplete(draft)) return
+  const saveGoal = async (id: string, draft: GoalDraft, scorerOptional: boolean) => {
+    if (!goalIsComplete(draft, scorerOptional)) return
     const saved = await write(
       () => onUpdateGoal(id, goalBody(draft)),
       'That correction could not be saved.',
     )
     if (saved) setEditingGoal(null)
+  }
+
+  /**
+   * The minute of a goal the result counts and nobody can name.
+   *
+   * It is written as a goal like any other, with nobody on it, because the rows
+   * it comes from are derived from the score and have no record to hang a minute
+   * off. The score does not move - there was already a goal here - and whoever
+   * remembers the name afterwards puts it on with Edit.
+   */
+  const saveMinute = async (side: Side, entered: string) => {
+    const minute = minuteOf(entered)
+    if (minute === null) return
+    const saved = await write(
+      () => onAddGoal({ team: side, type: 'goal', minute, playerId: '' }),
+      'That minute could not be saved.',
+    )
+    if (saved) setTiming(null)
   }
 
   const deleteGoal = async (id: string) => {
@@ -571,13 +605,14 @@ export default function MatchEvents({
                       match={match}
                       homeTeam={homeTeam}
                       awayTeam={awayTeam}
+                      scorerOptional={!goal.playerId}
                       onGoToLineups={onGoToLineups}
                     />
                     <div className="flex gap-3">
                       <button
                         type="button"
-                        onClick={() => saveGoal(goal.id, editingGoal.draft)}
-                        disabled={busy || !goalIsComplete(editingGoal.draft)}
+                        onClick={() => saveGoal(goal.id, editingGoal.draft, !goal.playerId)}
+                        disabled={busy || !goalIsComplete(editingGoal.draft, !goal.playerId)}
                         className="px-4 py-2 rounded-lg glass border border-white/20 hover:bg-white/10 transition-all disabled:opacity-40"
                       >
                         Save
@@ -610,7 +645,14 @@ export default function MatchEvents({
                     {ordinals.get(goal.id)}
                   </span>
                   <span className={`font-semibold ${isHome ? 'text-blue-300' : 'text-red-300'}`}>
-                    {goal.playerId ? nameOf(goal.playerId, side) : 'Own goal'}
+                    {/* Nobody on it is an own goal put in by a player this
+                        organiser never named, or a goal of this result recorded
+                        as a minute and nothing else. */}
+                    {goal.playerId
+                      ? nameOf(goal.playerId, side)
+                      : goal.type === 'own_goal'
+                        ? 'Own goal'
+                        : 'Unknown'}
                   </span>
                   {goal.type !== 'goal' && (
                     <span className="text-xs uppercase tracking-wide px-2 py-1 rounded bg-white/10">
@@ -658,25 +700,75 @@ export default function MatchEvents({
                 than a note, because that is what they are on the public page
                 too, and because each of them is one thing left to do. */}
             {(['home', 'away'] as const).flatMap((side) =>
-              Array.from({ length: unnamed[side] }, (_, index) => (
-                <div
-                  key={`unnamed-${side}-${index}`}
-                  className="glass rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap opacity-70"
-                >
-                  <span className="font-mono text-sm bg-white/10 px-2 py-1 rounded">-</span>
-                  <span className="font-semibold">Unknown</span>
-                  <span className="text-sm opacity-50">
-                    {side === 'home' ? homeTeam.name : awayTeam.name}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setGoalDraft({ ...EMPTY_GOAL, team: side })}
-                    className="ml-auto text-sm opacity-70 hover:opacity-100 transition-opacity"
+              Array.from({ length: unnamed[side] }, (_, index) => {
+                const key = `unnamed-${side}-${index}`
+                const typing = timing?.key === key
+
+                return (
+                  <div
+                    key={key}
+                    className="glass rounded-lg px-4 py-3 flex items-center gap-3 flex-wrap opacity-70"
                   >
-                    Name this goal
-                  </button>
-                </div>
-              )),
+                    <span className="font-mono text-sm bg-white/10 px-2 py-1 rounded">-</span>
+                    <span className="font-semibold">Unknown</span>
+                    <span className="text-sm opacity-50">
+                      {side === 'home' ? homeTeam.name : awayTeam.name}
+                    </span>
+                    {typing ? (
+                      <div className="ml-auto flex items-center gap-2 flex-wrap">
+                        <input
+                          type="number"
+                          min="1"
+                          max="130"
+                          inputMode="numeric"
+                          autoFocus
+                          placeholder="Minute"
+                          value={timing.minute}
+                          onChange={(event) =>
+                            setTiming({ key, side, minute: event.target.value })
+                          }
+                          className="w-24 px-3 py-1.5 rounded-lg bg-white/5 border border-white/20 focus:outline-none focus:border-white/40 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => saveMinute(side, timing.minute)}
+                          disabled={busy || minuteOf(timing.minute) === null}
+                          className="px-3 py-1.5 rounded-lg glass border border-white/20 hover:bg-white/10 transition-all text-sm disabled:opacity-40"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTiming(null)}
+                          className="text-sm text-white/70 hover:text-white transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="ml-auto flex items-center gap-3">
+                        {/* The minute alone, for a goal whose scorer nobody can
+                            name. It is recorded as a goal with nobody on it, so
+                            the timeline holds it in the right place. */}
+                        <button
+                          type="button"
+                          onClick={() => setTiming({ key, side, minute: '' })}
+                          className="text-sm opacity-70 hover:opacity-100 transition-opacity"
+                        >
+                          Set minute
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGoalDraft({ ...EMPTY_GOAL, team: side })}
+                          className="text-sm opacity-70 hover:opacity-100 transition-opacity"
+                        >
+                          Name this goal
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              }),
             )}
           </div>
         )}

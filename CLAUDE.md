@@ -640,6 +640,28 @@ credited. Goals recorded before this rule store a scorer from the side the goal
 counted for, so the name lookup falls back to the other squad rather than
 printing "Unknown player" over a player who is in the match.
 
+**A goal can be a minute and nothing else.** The goals a result counts that
+nobody has named are derived from the score and have no record of their own, so
+there is nowhere on one to write a minute. Where somebody remembers when a goal
+was scored but not who scored it, the goal is written out as a record with an
+empty `playerId` - "Unknown" wherever events are listed, and in its place on the
+timeline - and the derived row it replaces disappears on its own, because
+`recordedFor` counts it like any other. `assertScorerOrCounted` in
+`server/src/lib/goals.ts` is the one rule both goal routes ask: a goal with
+nobody on it may only be one the result already counts, never one that raises the
+score, because a goal the result does not count and nobody can name is not a goal
+anybody has a record of - a wrong result is corrected on the scoreboard. It
+carries no assist either, dropped in `readGoal` the way an own goal's already
+was, since `playerRecords` credits an assist whatever the scorer is.
+
+All three of the people who may write a result enter it the same way, from the
+row that says the goal is unknown: the super admin and the competition's
+organiser on the match screen, the club's own manager on `/my-club` - whose
+route refuses a goal the score has no room for and never writes a score at all,
+so the rule holds there by construction. What follows for the screens is that an
+empty `playerId` no longer means "own goal": which of the two it is comes from
+the type, and a page that reads the field alone prints the wrong word.
+
 **A card is an event, and the totals are counted from it.** `match.cards` holds
 one row per booking — player, side, minute, and `yellow`, `second_yellow` or
 `red` — and the Yellow Cards and Red Cards rows of the match statistics table
