@@ -23,8 +23,50 @@ import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
 import { cdnUrl } from '../utils/images'
+import TablePostButton from '../components/TablePostButton'
+import { standingsNote } from '../utils/instagramPost'
+import type { PostMark, PostRow, TablePost } from '../utils/instagramPost'
 
 const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
+
+/**
+ * What a row in the league table is marked as.
+ *
+ * The page paints it and the Instagram poster draws it, and two answers to
+ * "who is on the podium" would disagree the first time either of them changed —
+ * the same reason the table itself is worked out in `utils/standings.ts` and
+ * not on each screen that shows one.
+ */
+function standingMark(index: number, teamId: string, qualified: PlayoffCut): PostMark {
+  if (qualified.teamIds.has(teamId)) return 'advance'
+  // Gold, silver and bronze are a claim about who finished first, second and
+  // third. A season that ends in a knockout has not decided that in the table,
+  // so where there is a cut everyone through it is marked and nobody above
+  // anybody else.
+  if (qualified.teamIds.size > 0 || index > 2) return 'none'
+  return (['gold', 'silver', 'bronze'] as const)[index]
+}
+
+/** In a group, the top two reach the first division's playoffs and the next two the second's. */
+const groupMark = (index: number): PostMark => (index < 2 ? 'advance' : index < 4 ? 'second' : 'none')
+
+const BADGE_CLASS: Record<PostMark, string> = {
+  gold: 'bg-yellow-500 text-black',
+  silver: 'bg-gray-400 text-black',
+  bronze: 'bg-orange-500 text-black',
+  advance: 'bg-green-500 text-black',
+  second: 'bg-blue-500 text-black',
+  none: '',
+}
+
+const ROW_CLASS: Record<PostMark, string> = {
+  gold: 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5',
+  silver: 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5',
+  bronze: 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5',
+  advance: 'bg-gradient-to-r from-green-500/5 to-green-500/10',
+  second: 'bg-gradient-to-r from-blue-500/5 to-blue-500/10',
+  none: '',
+}
 
 const STATS_TABS = [
   { id: 'scorers', label: 'Top Scorers' },
@@ -358,6 +400,47 @@ export default function PublicTournamentPage() {
   const thisSeason = seasonLabel(tournament)
   const championId = championOf(tournament)
   const champion = championId ? teams.find((team: any) => team.id === championId) : undefined
+
+  /* ---------- The table as a picture ---------- */
+
+  /**
+   * One row of the poster, from the row the table is already drawn from.
+   *
+   * A club that cannot be resolved keeps its place: the table counts the goals
+   * and not the squad, and a season carries player and club ids from before the
+   * API that nothing can put a name to.
+   */
+  const postRow = (row: any, mark: PostMark): PostRow => {
+    const team = teams.find((candidate: any) => candidate.id === row.id)
+    return {
+      name: team?.name || 'Unknown Team',
+      logo: team?.logo,
+      color: team ? headerColor(team) : '#3B82F6',
+      p: row.p,
+      gd: row.gf - row.ga,
+      pts: row.pts,
+      mark,
+      eliminated: eliminatedTeams.has(row.id),
+    }
+  }
+
+  const tablePost = (
+    rows: any[],
+    mark: (index: number, teamId: string) => PostMark,
+    group?: string,
+  ): TablePost => ({
+    competition,
+    season: thisSeason,
+    group,
+    note: standingsNote(tournament),
+    logo: tournament.logo,
+    logoDimmed: Boolean(tournament.logoOpaqueBackground),
+    color: competitionColor(tournament),
+    rows: rows.map((row: any, index: number) => postRow(row, mark(index, row.id))),
+  })
+
+  const postFilename = (group?: string) =>
+    `${slugify(competition)}-${slugify(thisSeason)}${group ? `-${slugify(group)}` : ''}-table.png`
   const otherSeasons = seasons.filter((season) => season.id !== tournament.id)
   const seasonHref = (season: TournamentSummary) =>
     `/${organizerSlug}/${slugify(seriesName(season))}/${slugify(seasonLabel(season))}`
@@ -605,7 +688,15 @@ export default function PublicTournamentPage() {
                   
                   return (
                     <div key={groupIndex} className="glass rounded-2xl p-4 sm:p-8 overflow-hidden shadow-2xl border border-white/20">
-                      <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 text-center">Group {groupLetter}</h3>
+                      <div className="relative mb-4">
+                        <h3 className="text-xl sm:text-2xl font-bold text-white text-center">Group {groupLetter}</h3>
+                        <div className="mt-3 flex justify-center sm:mt-0 sm:absolute sm:right-0 sm:top-0">
+                          <TablePostButton
+                            build={() => tablePost(groupTable, groupMark, `Group ${groupLetter}`)}
+                            filename={postFilename(`Group ${groupLetter}`)}
+                          />
+                        </div>
+                      </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs sm:text-base">
                           <thead>
@@ -625,12 +716,10 @@ export default function PublicTournamentPage() {
                           <tbody>
                             {groupTable.map((row: any, index: number) => {
                               const team = teams.find((t: any) => t.id === row.id)
-                              const isTop2 = index < 2
-                              const isTop4 = index < 4
                               return (
                                 <tr 
                                   key={row.id} 
-                                  className={`border-b border-white/10 hover:bg-white/5 transition-all duration-300 ${isTop2 ? 'bg-gradient-to-r from-green-500/5 to-green-500/10' : isTop4 ? 'bg-gradient-to-r from-blue-500/5 to-blue-500/10' : ''}`}
+                                  className={`border-b border-white/10 hover:bg-white/5 transition-all duration-300 ${ROW_CLASS[groupMark(index)]}`}
                                 >
                                   <td className="py-2 px-1 sm:px-6 text-white font-bold text-xs sm:text-lg">{index + 1}</td>
                                   <td className="py-2 px-1 sm:px-6">
@@ -688,6 +777,14 @@ export default function PublicTournamentPage() {
           ) : (
             /* Regular Standings Table */
             <div className="glass rounded-2xl p-4 sm:p-8 overflow-hidden shadow-2xl border border-white/20">
+              {/* Above the table and to the right: visible to anybody who has
+                  just read it, and out of the way of everybody else. */}
+              <div className="flex justify-end mb-3">
+                <TablePostButton
+                  build={() => tablePost(table, (index, teamId) => standingMark(index, teamId, qualified))}
+                  filename={postFilename()}
+                />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs sm:text-base">
                   <thead>
@@ -707,27 +804,13 @@ export default function PublicTournamentPage() {
                   <tbody>
                     {table.map((row: any, index: number) => {
                       const team = teams.find((t: any) => t.id === row.id)
-                      const isQualified = qualified.teamIds.has(row.id)
-                      // Gold, silver and bronze are a claim about who finished
-                      // first, second and third. A season that ends in a
-                      // knockout has not decided that here, so where there is a
-                      // cut the table marks everyone through it and nobody
-                      // above anybody else.
-                      const isTopThree = qualified.teamIds.size === 0 && index < 3
-                      const badge = isQualified
-                        ? 'bg-green-500 text-black'
-                        : !isTopThree
-                          ? ''
-                          : index === 0
-                            ? 'bg-yellow-500 text-black'
-                            : index === 1
-                              ? 'bg-gray-400 text-black'
-                              : 'bg-orange-500 text-black'
+                      const mark = standingMark(index, row.id, qualified)
+                      const badge = BADGE_CLASS[mark]
                       const isEliminated = eliminatedTeams.has(row.id)
                       return (
                         <tr 
                           key={row.id} 
-                          className={`border-b border-white/10 hover:bg-white/5 transition-all duration-300 ${isQualified ? 'bg-gradient-to-r from-green-500/5 to-green-500/10' : isTopThree ? 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5' : ''} ${isEliminated ? 'opacity-50' : ''}`}
+                          className={`border-b border-white/10 hover:bg-white/5 transition-all duration-300 ${ROW_CLASS[mark]} ${isEliminated ? 'opacity-50' : ''}`}
                         >
                           <td className="py-2 px-1 sm:px-6 text-white font-bold text-xs sm:text-lg">
                             <div className="flex items-center gap-1 sm:gap-2">

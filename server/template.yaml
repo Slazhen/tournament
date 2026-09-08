@@ -301,6 +301,42 @@ Resources:
           QueryStringsConfig:
             QueryStringBehavior: none
 
+  # CORS on the images, so that a canvas may read them back.
+  #
+  # The Instagram poster (src/utils/instagramPost.ts) is drawn in the browser
+  # from the same crests and logos the page shows. A canvas that has drawn a
+  # cross-origin image whose answer carries no Access-Control-Allow-Origin is
+  # tainted and refuses toBlob, so without this header the poster cannot be
+  # exported at all - the same wall readCrestAppearance hit, which is why a
+  # crest's colour is read while the browser still holds the file.
+  #
+  # `*` rather than the site's own origin. These bytes are already public to
+  # anybody who asks for them and this header grants no more than that: the
+  # policy allows no credentials, so no cookie or token ever rides along with
+  # such a request. It also has to be the same answer for everyone, because the
+  # cache key holds no Origin - a per-origin header would be cached under the
+  # first origin that asked and served to the rest.
+  #
+  # OriginOverride, because the bucket is not part of this stack and somebody
+  # may one day give it a CORS configuration of its own; CloudFront's header
+  # has to win, or which one is served depends on what the edge happens to hold.
+  ImagesCorsPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub '${AWS::StackName}-images-cors'
+        Comment: Lets a canvas on the site read the images it has drawn.
+        CorsConfig:
+          AccessControlAllowCredentials: false
+          AccessControlAllowHeaders:
+            Items: ['*']
+          AccessControlAllowMethods:
+            Items: [GET, HEAD]
+          AccessControlAllowOrigins:
+            Items: ['*']
+          AccessControlMaxAgeSec: 86400
+          OriginOverride: true
+
   ImagesCdn:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -326,6 +362,7 @@ Resources:
           CachedMethods: [GET, HEAD]
           Compress: true
           CachePolicyId: !Ref ImagesCachePolicy
+          ResponseHeadersPolicyId: !Ref ImagesCorsPolicy
         # The default CloudFront certificate otherwise accepts TLS 1.0. These
         # bytes are public either way, but there is no reason to answer a
         # handshake nothing here needs.

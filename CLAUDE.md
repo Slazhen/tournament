@@ -884,7 +884,15 @@ round: a row whose player cannot be found still counts, under "Former player".
   `logo`. It cannot be read later: the image bucket answers without CORS
   headers, so a canvas that has drawn a published crest refuses its pixels, and
   the API never sees the bytes either — crests go to S3 through a presigned
-  POST. Every club whose crest predates this has no colour and falls back to
+  POST. The distribution in front of the bucket does now answer with
+  `Access-Control-Allow-Origin: *` (`ImagesCorsPolicy` in `template.yaml`),
+  because the Instagram poster below has to export a canvas it has drawn these
+  crests onto. That does not move the measurement back: the bucket itself is
+  not part of this stack and still answers without the header, so any URL that
+  has not been through `cdnUrl` — a dev build with no `VITE_IMAGE_CDN_URL`, an
+  address drawn straight from a record — is as unreadable as it ever was, and a
+  colour read while the file is in hand costs nothing and cannot fail. Every
+  club whose crest predates this has no colour and falls back to
   `colors[0]`, which is what the header used before and is wrong for about half
   of them: nobody returns to the colour picker after changing a crest.
 - **A colour is checked by the API, not by the browser that computed it.**
@@ -906,6 +914,27 @@ round: a row whose player cannot be found still counts, under "Former player".
   passes it through `headerColor` first, which returns a colour or the fallback
   and nothing else. **A validation that runs on the update and not on the
   create has not been done.**
+- **The table is also a picture.** `src/utils/instagramPost.ts` draws the
+  standings as a 1080x1350 PNG — the season's colour, its logo, the clubs'
+  crests, the application's mark — and `TablePostButton` puts it behind one
+  button above each table on the public season page. Instagram accepts nothing
+  from a web page, so what the button produces is a file to download or hand to
+  the phone's share sheet. It is drawn on a canvas rather than photographed off
+  the page: ten columns of small type built for a browser window read as
+  nothing in a feed, so the poster is a different layout of the same rows, and
+  the rows still come from `utils/standings.ts`.
+
+  Two things hold it up. Every image on it is loaded with `crossOrigin`, which
+  is what the CORS header above is for, and a crest that will not load is drawn
+  as the club's initial on the club's own colour — one refused image has to cost
+  one badge and not the whole poster. And what a row is marked as — the medals,
+  the green of a qualifying place — is `standingMark` in
+  `PublicTournamentPage.tsx`, read by the table and by the poster alike: two
+  answers to who is on the podium would disagree the first time either of them
+  was changed. The application's own mark is markup in `src/utils/logoMark.ts`
+  rather than JSX for the same reason — `LogoMark` renders it in the page and
+  the canvas needs it as an image.
+
 - **The table is sorted deterministically.** `sortTeamsByStandings` used to end
   in a coin toss, so a season nobody had played — where every club ties on every
   criterion — dealt out different positions on every render.
