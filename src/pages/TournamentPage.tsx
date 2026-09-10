@@ -38,7 +38,7 @@ import { localDatePart, localTimePart } from '../utils/datetime'
 import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, getSeasonUrl, publicSeasonUrl } from '../utils/seasons'
-import { Crest } from '../components/Crest'
+import { cdnUrl } from '../utils/images'
 
 /**
  * Which round a click was aimed at, sent with the write.
@@ -1300,7 +1300,11 @@ export default function TournamentPage() {
                                   const team = teams.find(t => t.id === row.id)
                                   if (team?.logo) {
                                     return (
-                                      <Crest logo={team.logo} name={team.name} className="w-5 h-5" />
+                                      <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                                        <img
+              loading="lazy"
+              decoding="async" src={cdnUrl(team.logo)} alt={`${team.name} logo`} className="w-full h-full object-cover" />
+                                      </div>
                                     )
                                   } else {
                                     return (
@@ -1395,7 +1399,9 @@ export default function TournamentPage() {
                         }}
                       >
                         {team?.logo ? (
-                          <Crest logo={team.logo} name={team.name} className="w-5 h-5" />
+                          <img
+              loading="lazy"
+              decoding="async" src={cdnUrl(team.logo)} alt={team.name} className="w-5 h-5 rounded-full object-cover" />
                         ) : (
                           <span className="w-5 h-5 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                         )}
@@ -1444,7 +1450,9 @@ export default function TournamentPage() {
                           }}
                         >
                           {team?.logo ? (
-                            <Crest logo={team.logo} name={team.name} className="w-6 h-6" />
+                            <img
+              loading="lazy"
+              decoding="async" src={cdnUrl(team.logo)} alt={team.name} className="w-6 h-6 rounded-full object-cover" />
                           ) : (
                             <span className="w-6 h-6 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                           )}
@@ -1562,7 +1570,11 @@ export default function TournamentPage() {
                               const team = teams.find(t => t.id === row.id)
                               if (team?.logo) {
                                 return (
-                                  <Crest logo={team.logo} name={team.name} className="w-6 h-6" />
+                                  <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                                    <img
+              loading="lazy"
+              decoding="async" src={cdnUrl(team.logo)} alt={`${team.name} logo`} className="w-full h-full object-cover" />
+                                  </div>
                                 )
                               } else {
                                 return (
@@ -1654,7 +1666,11 @@ export default function TournamentPage() {
                                        )
                                      } else if (homeTeam?.logo) {
                                        return (
-                                         <Crest logo={homeTeam.logo} name={homeTeam.name} className="w-5 h-5" />
+                                         <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                                           <img
+              loading="lazy"
+              decoding="async" src={cdnUrl(homeTeam.logo)} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
+                                         </div>
                                        )
                                      } else if (homeTeam) {
                                        return (
@@ -1683,7 +1699,11 @@ export default function TournamentPage() {
                                        )
                                      } else if (awayTeam?.logo) {
                                        return (
-                                         <Crest logo={awayTeam.logo} name={awayTeam.name} className="w-5 h-5" />
+                                         <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                                           <img
+              loading="lazy"
+              decoding="async" src={cdnUrl(awayTeam.logo)} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
+                                         </div>
                                        )
                                      } else if (awayTeam) {
                                        return (

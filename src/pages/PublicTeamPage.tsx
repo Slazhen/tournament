@@ -20,7 +20,6 @@ import { hasSquadEntry, squadInTournament } from '../utils/squads'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { formatOptionFor } from '../utils/formats'
 import { cdnUrl } from '../utils/images'
-import { Crest } from '../components/Crest'
 
 export default function PublicTeamPage() {
   const { teamId } = useParams()
@@ -640,12 +639,19 @@ export default function PublicTeamPage() {
                   <tr key={tournament.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <Crest
-                          logo={tournament.logo}
-                          name={tournament.name}
-                          className="w-10 h-10"
-                          fallback={<span className="opacity-40"><IconTrophy size={18} /></span>}
-                        />
+                        <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                          {tournament.logo ? (
+                            <img
+              loading="lazy"
+              decoding="async" 
+                              src={cdnUrl(tournament.logo)} 
+                              alt={`${tournament.name} logo`} 
+                              className="w-full h-full object-cover" 
+                            />
+                          ) : (
+                            <div className="opacity-40"><IconTrophy size={18} /></div>
+                          )}
+                        </div>
                         <div>
                           <div className="font-medium">{tournament.name}</div>
                           <div className="text-xs opacity-70">

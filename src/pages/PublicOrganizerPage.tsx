@@ -7,7 +7,7 @@ import NotFound from '../components/NotFound'
 import { IconBall, IconShield, IconTrophy, IconUsers } from '../components/icons'
 import { currentSeason, getSeasonUrl, groupIntoSeries, seasonLabel } from '../utils/seasons'
 import { headerColor } from '../utils/crest'
-import { Crest } from '../components/Crest'
+import { cdnUrl } from '../utils/images'
 
 /**
  * An organiser's own page: /homebush_futsal.
@@ -99,18 +99,17 @@ export default function PublicOrganizerPage() {
       <div className="container mx-auto px-4 pb-16">
         {/* ---------- Who this is ---------- */}
         <header className="py-8 sm:py-12 flex items-center gap-5">
-          {(
-            <Crest
-              logo={organizer.logo}
-              name={organizer.name}
-              className="w-20 h-20 sm:w-24 sm:h-24"
-              eager
-              fallback={
-                <span className="text-3xl font-semibold">
-                  {organizer.name?.charAt(0).toUpperCase() || 'O'}
-                </span>
-              }
+          {organizer.logo ? (
+            <img
+              src={cdnUrl(organizer.logo)}
+              alt=""
+              decoding="async"
+              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border border-white/15 shrink-0"
             />
+          ) : (
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-blue-500/30 to-purple-500/30 border border-white/15 flex items-center justify-center text-3xl font-semibold shrink-0">
+              {organizer.name?.charAt(0).toUpperCase() || 'O'}
+            </div>
           )}
 
           <div className="min-w-0">
@@ -154,16 +153,18 @@ export default function PublicOrganizerPage() {
                       to={getSeasonUrl(competition.current, organizer)}
                       className="flex items-center gap-3 group"
                     >
-                      {(
-                        <Crest
-                          logo={competition.current.logo}
-                          className="w-10 h-10"
-                          fallback={
-                            <span className="text-white/50">
-                              <IconBall size={18} />
-                            </span>
-                          }
+                      {competition.current.logo ? (
+                        <img
+                          loading="lazy"
+                          decoding="async"
+                          src={cdnUrl(competition.current.logo)}
+                          alt=""
+                          className="w-10 h-10 rounded object-contain shrink-0"
                         />
+                      ) : (
+                        <span className="w-10 h-10 rounded bg-white/5 flex items-center justify-center text-white/50 shrink-0">
+                          <IconBall size={18} />
+                        </span>
                       )}
                       <span className="min-w-0">
                         <span className="block font-semibold truncate group-hover:text-blue-300 transition-colors">
@@ -224,28 +225,28 @@ export default function PublicOrganizerPage() {
                     to={`/public/teams/${club.id}`}
                     className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/20 transition-colors min-w-0"
                   >
-                    {(
-                      <Crest
-                        logo={club.logo}
-                        name={club.name}
-                        className="w-9 h-9"
-                        fallback={
-                          // `background`, the shorthand, printed the club's
-                          // stored colour raw - and the shorthand accepts
-                          // `url(...)`. Clubs created before the API checked
-                          // `colors` can hold one, so both halves of that fix
-                          // apply here: the value goes through `headerColor`,
-                          // which returns a colour or the fallback and nothing
-                          // else, and it is set on `backgroundColor`, which
-                          // cannot fetch anything.
-                          <span
-                            className="absolute inset-0 flex items-center justify-center"
-                            style={{ backgroundColor: headerColor(club) }}
-                          >
-                            <IconShield size={16} />
-                          </span>
-                        }
+                    {club.logo ? (
+                      <img
+                        loading="lazy"
+                        decoding="async"
+                        src={cdnUrl(club.logo)}
+                        alt=""
+                        className="w-9 h-9 rounded-full object-contain bg-white/5 shrink-0"
                       />
+                    ) : (
+                      // `background`, the shorthand, printed the club's stored
+                      // colour raw — and the shorthand accepts `url(...)`.
+                      // Clubs created before the API checked `colors` can hold
+                      // one, so both halves of that fix apply here: the value
+                      // goes through `headerColor`, which returns a colour or
+                      // the fallback and nothing else, and it is set on
+                      // `backgroundColor`, which cannot fetch anything.
+                      <span
+                        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 border border-white/15"
+                        style={{ backgroundColor: headerColor(club) }}
+                      >
+                        <IconShield size={16} />
+                      </span>
                     )}
                     <span className="text-sm truncate">{club.name}</span>
                   </Link>

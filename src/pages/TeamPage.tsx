@@ -21,7 +21,6 @@ import {
   IconTrash,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
-import { Crest } from '../components/Crest'
 
 export default function TeamPage() {
   const { teamId } = useParams()
@@ -514,13 +513,18 @@ export default function TeamPage() {
         <div className="flex items-center gap-6 mb-6">
           {/* Team Logo */}
           <div className="relative group">
-            {(
-              <Crest
-                logo={team.logo}
-                name={team.name}
-                className="w-24 h-24"
-                fallback={<span className="opacity-50"><IconTrophy size={22} /></span>}
+            {team.logo ? (
+              <img
+              loading="lazy"
+              decoding="async"
+                src={cdnUrl(team.logo)}
+                alt={`${team.name} logo`}
+                className="w-24 h-24 object-cover rounded-lg"
               />
+            ) : (
+              <div className="w-24 h-24 rounded-lg bg-white/10 flex items-center justify-center opacity-50">
+                <IconTrophy size={22} />
+              </div>
             )}
             {clubIsMineToEdit && (
               <>
@@ -1037,12 +1041,19 @@ export default function TeamPage() {
                   <tr key={tournament.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <Crest
-                          logo={tournament.logo}
-                          name={tournament.name}
-                          className="w-10 h-10"
-                          fallback={<span className="opacity-40"><IconTrophy size={18} /></span>}
-                        />
+                        <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                          {tournament.logo ? (
+                            <img
+              loading="lazy"
+              decoding="async" 
+                              src={cdnUrl(tournament.logo)} 
+                              alt={`${tournament.name} logo`} 
+                              className="w-full h-full object-cover" 
+                            />
+                          ) : (
+                            <div className="opacity-40"><IconTrophy size={18} /></div>
+                          )}
+                        </div>
                         <div>
                           <div className="font-medium">{tournament.name}</div>
                           <div className="text-xs opacity-70">ID: {tournament.id.slice(-6)}</div>

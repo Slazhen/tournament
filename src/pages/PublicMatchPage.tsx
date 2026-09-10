@@ -39,7 +39,7 @@ import { renderMatchPost } from '../utils/instagramPost'
 import type { MatchPost, PostClub, PostEvent } from '../utils/instagramPost'
 import { slugify } from '../utils/urls'
 import { youtubeEmbedUrl } from '../utils/video'
-import { Crest } from '../components/Crest'
+import { cdnUrl } from '../utils/images'
 
 /**
  * One fixture, as the five things a visitor comes here for.
@@ -1007,7 +1007,13 @@ function TablePanel({
                   <td className="py-2">
                     <div className="flex items-center gap-2 min-w-0">
                       {team?.logo && (
-                        <Crest logo={team.logo} name={team.name} className="w-5 h-5" />
+                        <img
+                          loading="lazy"
+                          decoding="async"
+                          src={cdnUrl(team.logo)}
+                          alt=""
+                          className="w-5 h-5 object-contain shrink-0"
+                        />
                       )}
                       {team ? (
                         <Link

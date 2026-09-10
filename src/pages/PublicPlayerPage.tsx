@@ -13,7 +13,6 @@ import PublicHeader from '../components/PublicHeader'
 import { allMatches, isPlayed, recordOf } from '../utils/matches'
 import { formatOptionFor } from '../utils/formats'
 import { cdnUrl } from '../utils/images'
-import { Crest } from '../components/Crest'
 
 export default function PublicPlayerPage() {
   const { playerId } = useParams()
@@ -181,13 +180,18 @@ export default function PublicPlayerPage() {
           <div className="text-right">
             <div className="text-sm opacity-70 mb-2">Current Team</div>
             <div className="flex items-center gap-3">
-              {(
-                <Crest
-                  logo={currentTeam.logo}
-                  name={currentTeam.name}
-                  className="w-16 h-16"
-                  fallback={<span className="opacity-50"><IconTrophy size={22} /></span>}
+              {currentTeam.logo ? (
+                <img
+              loading="lazy"
+              decoding="async"
+                  src={cdnUrl(currentTeam.logo)}
+                  alt={`${currentTeam.name} logo`}
+                  className="w-16 h-16 object-cover rounded-lg"
                 />
+              ) : (
+                <div className="w-16 h-16 rounded-lg bg-white/10 flex items-center justify-center opacity-50">
+                  <IconTrophy size={22} />
+                </div>
               )}
               <div>
                 <div className="font-semibold">{currentTeam.name}</div>
@@ -303,12 +307,19 @@ export default function PublicPlayerPage() {
                   <tr key={tournament.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <Crest
-                          logo={tournament.logo}
-                          name={tournament.name}
-                          className="w-10 h-10"
-                          fallback={<span className="opacity-40"><IconTrophy size={18} /></span>}
-                        />
+                        <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                          {tournament.logo ? (
+                            <img
+              loading="lazy"
+              decoding="async" 
+                              src={cdnUrl(tournament.logo)} 
+                              alt={`${tournament.name} logo`} 
+                              className="w-full h-full object-cover" 
+                            />
+                          ) : (
+                            <div className="opacity-40"><IconTrophy size={18} /></div>
+                          )}
+                        </div>
                         <div>
                           <div className="font-medium">{tournament.name}</div>
                           <div className="text-xs opacity-70">
@@ -343,7 +354,13 @@ export default function PublicPlayerPage() {
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">
                         {currentTeam.logo && (
-                          <Crest logo={currentTeam.logo} name={currentTeam.name} className="w-6 h-6" />
+                          <img
+              loading="lazy"
+              decoding="async"
+                            src={cdnUrl(currentTeam.logo)}
+                            alt={`${currentTeam.name} logo`}
+                            className="w-6 h-6 object-cover rounded"
+                          />
                         )}
                         <span className="font-semibold">{currentTeam.name}</span>
                       </div>

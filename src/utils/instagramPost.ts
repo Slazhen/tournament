@@ -242,6 +242,20 @@ function drawContain(
   ctx.drawImage(image, x + (w - width) / 2, y + (h - height) / 2, width, height)
 }
 
+/** The box filled by the image, whatever that costs its edges — the crests' `object-cover`. */
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  size: number,
+): void {
+  const scale = Math.max(size / image.width, size / image.height)
+  const width = image.width * scale
+  const height = image.height * scale
+  ctx.drawImage(image, x + (size - width) / 2, y + (size - height) / 2, width, height)
+}
+
 /** The competition's logo as the ground of the header, faded into the colour. */
 function drawWatermark(
   ctx: CanvasRenderingContext2D,
@@ -298,15 +312,7 @@ function fitSize(
   return sizes[sizes.length - 1]
 }
 
-/**
- * A club's crest, or its initial on its own colour where there is no crest.
- *
- * The tile is what the pages draw: a crest is filed as it was drawn, and a
- * badge that is not square lost its edges to a round box under `object-cover`
- * - a third of the crests in one season are shaped between 400x285 and
- * 213x400. So the poster holds the whole badge inside a rounded tile rather
- * than cutting it to fit one.
- */
+/** A club's crest, or its initial on its own colour where there is no crest to draw. */
 function drawCrest(
   ctx: CanvasRenderingContext2D,
   image: HTMLImageElement | null,
@@ -315,17 +321,13 @@ function drawCrest(
   y: number,
   size: number,
 ): void {
-  const radius = size * 0.22
   ctx.save()
-  roundedRect(ctx, x, y, size, size, radius)
+  ctx.beginPath()
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2)
+  ctx.closePath()
   ctx.clip()
   if (image) {
-    // The same faint plate the pages put behind a crest, so a badge that does
-    // not fill its tile is not left floating on the competition's colour.
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)'
-    ctx.fillRect(x, y, size, size)
-    const inset = size * 0.08
-    drawContain(ctx, image, x + inset, y + inset, size - inset * 2, size - inset * 2)
+    drawCover(ctx, image, x, y, size)
   } else {
     ctx.fillStyle = club.color
     ctx.fillRect(x, y, size, size)
@@ -335,7 +337,8 @@ function drawCrest(
     ctx.fillText((club.name.trim().charAt(0) || 'T').toUpperCase(), x + size / 2, y + size * 0.66)
   }
   ctx.restore()
-  roundedRect(ctx, x, y, size, size, radius)
+  ctx.beginPath()
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2)
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)'
   ctx.lineWidth = 2
   ctx.stroke()
