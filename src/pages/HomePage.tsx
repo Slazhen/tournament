@@ -6,6 +6,7 @@ import { organizerService, tournamentService } from '../lib/data'
 import type { TournamentSummary } from '../lib/data'
 import type { Organizer } from '../types'
 import Logo from '../components/Logo'
+import Pitch from '../components/Pitch'
 import {
   IconCalendar,
   IconChart,
@@ -52,10 +53,16 @@ export default function HomePage() {
   // The page sells the product to a visitor, and every call to action sent them
   // to the sign-in screen. Signed in, that screen just bounces them back, so
   // the same buttons point at the thing they were being sold instead.
+  //
+  // For a visitor the sign-in screen was the wrong destination for a different
+  // reason: accounts here are opened by hand, so somebody who has never been
+  // here has no way through that door and the page said nothing about how to
+  // get one. /start is that answer — what the product does, and the address to
+  // write to.
   const runsAClub = isTeamManager || (user?.teamIds?.length ?? 0) > 0
   const canOrganize = Boolean(currentOrganizer) || isSuperAdmin
   const callToAction = !signedIn
-    ? { to: '/login', label: 'Start a tournament' }
+    ? { to: '/start', label: 'Start a new Tournament' }
     : canOrganize
       ? { to: '/tournaments/new', label: 'Create a tournament' }
       : runsAClub
@@ -399,41 +406,6 @@ export default function HomePage() {
           <p>Football league and tournament management. Sydney, Australia.</p>
         </div>
       </footer>
-    </div>
-  )
-}
-
-/**
- * The background.
- *
- * A photograph would have been a megabyte of somebody else's stadium; these are
- * the markings of a pitch, drawn once and kept faint enough to stay behind the
- * text.
- */
-function Pitch() {
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden>
-      <div className="absolute -top-40 -left-32 w-[36rem] h-[36rem] rounded-full bg-blue-600/10 blur-[120px]" />
-      <div className="absolute top-1/3 -right-40 w-[32rem] h-[32rem] rounded-full bg-purple-600/10 blur-[120px]" />
-      <div className="absolute bottom-0 left-1/4 w-[28rem] h-[28rem] rounded-full bg-emerald-500/[0.06] blur-[120px]" />
-
-      <svg
-        className="absolute inset-0 w-full h-full opacity-[0.07]"
-        viewBox="0 0 1200 800"
-        preserveAspectRatio="xMidYMid slice"
-        fill="none"
-        stroke="white"
-        strokeWidth="2"
-      >
-        <rect x="60" y="40" width="1080" height="720" rx="4" />
-        <line x1="600" y1="40" x2="600" y2="760" />
-        <circle cx="600" cy="400" r="110" />
-        <circle cx="600" cy="400" r="4" fill="white" stroke="none" />
-        <rect x="60" y="220" width="160" height="360" />
-        <rect x="60" y="320" width="60" height="160" />
-        <rect x="980" y="220" width="160" height="360" />
-        <rect x="1080" y="320" width="60" height="160" />
-      </svg>
     </div>
   )
 }

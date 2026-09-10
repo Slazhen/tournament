@@ -435,3 +435,12 @@ export function IconEyeOff(props: IconProps) {
     </Svg>
   )
 }
+
+export function IconMail(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+      <path d="M3.5 7l7.4 5.3a2 2 0 0 0 2.2 0L20.5 7" />
+    </Svg>
+  )
+}

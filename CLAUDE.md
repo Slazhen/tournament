@@ -570,9 +570,19 @@ existed as an address long before it existed as a page and answered with a
 blank screen. Two things follow. Any one-segment address now lands there, so
 the page has to answer 404 itself for a slug that names nobody. And a static
 route ranks above `/:orgSlug`, so an organiser whose name slugifies to
-`teams`, `login`, `dashboard`, `tournaments`, `calendar`, `organizers`,
-`changes`, `join`, `public`, `admin` or `my-club` would have an unreachable
-page — nothing refuses such a name yet.
+`teams`, `login`, `start`, `dashboard`, `tournaments`, `calendar`,
+`organizers`, `changes`, `join`, `public`, `admin` or `my-club` would have an
+unreachable page — nothing refuses such a name yet.
+
+**There is no self-serve sign-up, and the landing page says so.** An
+organiser's account is opened by hand. The call to action a visitor sees used
+to be "Start a tournament" pointing at `/login`, which is a door with nothing
+behind it for somebody who has never been here: no way in, and nothing on the
+screen saying how to get one. It is `/start` now — `StartPage.tsx`, what the
+product does and the address to write to, `mft@slazhen.com`. The signed-in
+branches of that button are unchanged, because an organiser can create a
+competition and a coach has a club to go to. When sign-up does exist, this page
+is what it replaces.
 
 **A cached list has a reader-dependent age.** `lib/cache.ts` keeps table reads
 in the Lambda's memory, and `invalidate` after a write clears only the

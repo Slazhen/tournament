@@ -14,6 +14,9 @@ import { isSignedIn } from './lib/api'
  * asked for. Signed out there is now no chrome at all, and the landing page
  * owns its full width.
  */
+/** The pages that paint their own full-width chrome for a visitor. */
+const FULL_WIDTH_PAGES = new Set(['/', '/start'])
+
 function App() {
   const loadOrganizers = useAppStore((s) => s.loadOrganizers)
   const location = useLocation()
@@ -30,8 +33,9 @@ function App() {
 
   const signedIn = useSignedIn()
 
-  // The landing page brings its own header and footer, edge to edge.
-  if (location.pathname === '/' && !signedIn) {
+  // The landing page and the page it sends a visitor to bring their own header
+  // and footer, edge to edge. Signed in, the admin bar belongs above them.
+  if (FULL_WIDTH_PAGES.has(location.pathname) && !signedIn) {
     return <Outlet />
   }
 

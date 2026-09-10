@@ -54,6 +54,7 @@ function lazyPage<T extends ComponentType<any>>(load: () => Promise<{ default: T
   })
 }
 const HomePage = lazyPage(() => import('./pages/HomePage.tsx'))
+const StartPage = lazyPage(() => import('./pages/StartPage.tsx'))
 const AdminPage = lazyPage(() => import('./pages/AdminPage.tsx'))
 const LoginPage = lazyPage(() => import('./pages/LoginPage.tsx'))
 const ForgotPasswordPage = lazyPage(() => import('./pages/ForgotPasswordPage.tsx'))
@@ -128,6 +129,12 @@ const router = createBrowserRouter([
       // One door for everybody, organiser, super admin and club manager alike.
       // The old /admin/login is answered below, because it is in bookmarks and
       // in messages people were sent.
+      // Where the landing page's call to action leads. There is no self-serve
+      // sign-up, so this is what a visitor gets instead of a sign-in screen
+      // they have no account for: what the product does and the address to
+      // write to. Being a one-segment static route, it also takes the slug
+      // `start` away from /:orgSlug — see the reserved names in CLAUDE.md.
+      { path: 'start', element: <StartPage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'forgot-password', element: <ForgotPasswordPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
