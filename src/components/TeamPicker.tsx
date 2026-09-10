@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Team, Tournament } from '../types'
-import { cdnUrl } from '../utils/images'
+import { Crest } from './Crest'
 
 type TeamPickerProps = {
   teams: Team[]
@@ -120,16 +120,8 @@ export default function TeamPicker({
                 onChange={() => toggle(team.id)}
                 className="rounded"
               />
-              {team.logo ? (
-                <img
-                  loading="lazy"
-                  decoding="async"
-                  src={cdnUrl(team.logo)}
-                  alt=""
-                  className="w-5 h-5 rounded-full object-cover shrink-0"
-                />
-              ) : (
-                <span className="w-5 h-5 rounded-full bg-white/10 shrink-0" />
+              {(
+                <Crest logo={team.logo} name={team.name} className="w-5 h-5" />
               )}
               <span className="text-sm truncate">{team.name}</span>
               {isSelected && <span className="ml-auto text-[10px] opacity-50">#{index + 1}</span>}

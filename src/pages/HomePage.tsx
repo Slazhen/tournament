@@ -23,7 +23,7 @@ import {
 } from '../utils/seasons'
 import { getOrganizerUrl } from '../utils/urls'
 import { useAuth, useSignedIn } from '../contexts/AuthContext'
-import { cdnUrl } from '../utils/images'
+import { Crest } from '../components/Crest'
 
 /**
  * The front page.
@@ -307,18 +307,17 @@ export default function HomePage() {
                 className="rounded-2xl bg-white/[0.03] border border-white/10 hover:border-white/20 transition-colors p-5"
               >
                 <div className="flex items-center gap-3 mb-4">
-                  {organizer.logo ? (
-                    <img
-                      loading="lazy"
-                      decoding="async"
-                      src={cdnUrl(organizer.logo)}
-                      alt=""
-                      className="w-11 h-11 rounded-full object-cover border border-white/15"
+                  {(
+                    <Crest
+                      logo={organizer.logo}
+                      name={organizer.name}
+                      className="w-11 h-11"
+                      fallback={
+                        <span className="font-semibold">
+                          {organizer.name?.charAt(0).toUpperCase() || 'O'}
+                        </span>
+                      }
                     />
-                  ) : (
-                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500/30 to-purple-500/30 border border-white/15 flex items-center justify-center font-semibold">
-                      {organizer.name?.charAt(0).toUpperCase() || 'O'}
-                    </div>
                   )}
                   <div className="min-w-0">
                     {/* The organiser's own page, which lists everything they
@@ -344,18 +343,16 @@ export default function HomePage() {
                         className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors group"
                       >
                         <span className="flex items-center gap-2.5 min-w-0">
-                          {competition.current.logo ? (
-                            <img
-                              loading="lazy"
-                              decoding="async"
-                              src={cdnUrl(competition.current.logo)}
-                              alt=""
-                              className="w-6 h-6 rounded object-contain"
+                          {(
+                            <Crest
+                              logo={competition.current.logo}
+                              className="w-6 h-6"
+                              fallback={
+                                <span className="text-white/50">
+                                  <IconBall size={14} />
+                                </span>
+                              }
                             />
-                          ) : (
-                            <span className="w-6 h-6 rounded bg-white/5 flex items-center justify-center text-white/50">
-                              <IconBall size={14} />
-                            </span>
                           )}
                           <span className="truncate group-hover:text-blue-300 transition-colors">
                             {competition.name}

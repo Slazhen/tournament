@@ -15,7 +15,7 @@ import {
   IconLink,
   IconTrash,
 } from '../components/icons'
-import { cdnUrl } from '../utils/images'
+import { Crest } from '../components/Crest'
 
 interface Organizer {
   id: string
@@ -454,20 +454,17 @@ export default function OrganizersPage() {
                 <div key={organizer.id} className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      {organizer.logo ? (
-                        <img
-              loading="lazy"
-              decoding="async" 
-                          src={cdnUrl(organizer.logo)} 
-                          alt={`${organizer.name} logo`}
-                          className="w-12 h-12 rounded-full object-cover border border-white/20"
+                      {(
+                        <Crest
+                          logo={organizer.logo}
+                          name={organizer.name}
+                          className="w-12 h-12"
+                          fallback={
+                            <span className="text-lg font-bold text-white">
+                              {organizer.name.charAt(0)}
+                            </span>
+                          }
                         />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border border-white/20">
-                          <span className="text-lg font-bold text-white">
-                            {organizer.name.charAt(0)}
-                          </span>
-                        </div>
                       )}
                       <div>
                         <h3 className="text-xl font-semibold text-white">{organizer.name}</h3>

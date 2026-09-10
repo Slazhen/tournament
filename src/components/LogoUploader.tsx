@@ -124,7 +124,7 @@ export default function LogoUploader({
           }
         }}
         className={`
-          group relative rounded-full overflow-hidden cursor-pointer transition-all
+          group relative rounded-[22%] overflow-hidden cursor-pointer transition-all
           ${isDragging 
             ? 'border-blue-400 bg-blue-50/20' 
             : 'border-white/30 hover:border-white/50'
@@ -145,7 +145,7 @@ export default function LogoUploader({
               decoding="async"
               src={cdnUrl(displayLogo)}
               alt="Logo"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain p-[8%]"
             />
             {/* Nothing said the logo could be replaced by clicking it. */}
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs font-medium">
@@ -153,7 +153,7 @@ export default function LogoUploader({
             </div>
           </>
         ) : (
-          // The circle is small, so the label has to fit inside it: the old
+          // The tile is small, so the label has to fit inside it: the old
           // two-line caption spilled over the dashed border.
           <div className="w-full h-full flex items-center justify-center p-2 group-hover:bg-white/5 transition-colors">
             <div className="text-center leading-tight">

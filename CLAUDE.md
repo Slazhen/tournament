@@ -919,6 +919,28 @@ round: a row whose player cannot be found still counts, under "Former player".
   a new logo re-reads `logoColor`, and a colour somebody chose deliberately must
   survive that. Every season that predates this has neither, so its header is
   the fallback blue until the logo is uploaded again or a colour is picked.
+- **A crest is drawn whole, and one component decides how.**
+  `src/components/Crest.tsx` is the tile every crest and competition logo sits
+  in: a square box with the badge inside it at its own proportions, and a faint
+  plate behind it. Before it there was no such component at all - forty
+  hand-written `<img>` tags, most of them a circle with `object-cover` in it,
+  which fills the box and therefore cuts everything outside the badge's middle
+  square before the circle takes its corners. Five of the twelve clubs in
+  Futsal Sydney 2026 are shaped between 400x285 and 213x400, so the round frame
+  cost them up to half the crest, and clubs do not have round badges to begin
+  with. Three places had already been fixed one at a time - the club header,
+  the season header, the match scoreboard - which is what a rule living nowhere
+  looks like.
+
+  The caller passes the size as width and height classes and nothing else; the
+  corner, the inset and the plate are the component's. The inset is a
+  percentage of the tile (`inset-[8%]`), not a padding class, because
+  percentage padding resolves against whatever the tile sits in - a table cell
+  as often as not - while the tile itself is square and a share of its width is
+  a share of its height. `drawCrest` in `utils/instagramPost.ts` draws the same
+  tile on the posters, and `LogoUploader` previews it, so an organiser choosing
+  a crest sees the frame the site will actually put it in.
+
 - **A crest is measured while the browser still holds the file.** The public
   club header is painted in `team.crestColor`, read from the image at upload
   time by `readCrestAppearance` in `src/utils/crest.ts` and saved beside

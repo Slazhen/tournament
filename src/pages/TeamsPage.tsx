@@ -6,7 +6,7 @@ import { canEditClub, checkTeamName, parseBulkNames } from "../utils/teams"
 import { useAuth } from "../contexts/AuthContext"
 import { clubService, type DirectoryClub } from "../lib/data"
 import { headerColor } from "../utils/crest"
-import { cdnUrl } from '../utils/images'
+import { Crest } from '../components/Crest'
 
 /**
  * The clubs.
@@ -390,17 +390,20 @@ export default function TeamsPage() {
             return (
             <div key={team.id} className="glass rounded-xl p-6">
               <div className="flex items-center gap-4 mb-4">
-                {team.logo ? (
-                  <img
-              loading="lazy"
-              decoding="async" src={cdnUrl(team.logo)} alt={team.name} className="w-16 h-16 rounded-lg object-cover" />
-                ) : (
-                  <div 
-                    className="w-16 h-16 rounded-lg flex items-center justify-center text-white font-bold text-xl"
-                    style={{ backgroundColor: team.colors[0] }}
-                  >
-                    {team.name.charAt(0).toUpperCase()}
-                  </div>
+                {(
+                  <Crest
+                    logo={team.logo}
+                    name={team.name}
+                    className="w-16 h-16"
+                    fallback={
+                      <span
+                        className="absolute inset-0 flex items-center justify-center text-white font-bold text-xl"
+                        style={{ backgroundColor: team.colors[0] }}
+                      >
+                        {team.name.charAt(0).toUpperCase()}
+                      </span>
+                    }
+                  />
                 )}
                 <div>
                   <h3 className="text-xl font-semibold">{team.name}</h3>
@@ -636,18 +639,17 @@ function ClubPool({ mine, onAdded }: { mine: Set<string>; onAdded: () => Promise
               className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
             >
               <span className="flex items-center gap-3 min-w-0">
-                {club.logo ? (
-                  <img
-                    loading="lazy"
-                    decoding="async"
-                    src={cdnUrl(club.logo)}
-                    alt=""
-                    className="w-8 h-8 rounded-md object-cover shrink-0"
-                  />
-                ) : (
-                  <span
-                    className="w-8 h-8 rounded-md shrink-0"
-                    style={{ backgroundColor: headerColor(club) }}
+                {(
+                  <Crest
+                    logo={club.logo}
+                    name={club.name}
+                    className="w-8 h-8"
+                    fallback={
+                      <span
+                        className="absolute inset-0"
+                        style={{ backgroundColor: headerColor(club) }}
+                      />
+                    }
                   />
                 )}
                 <span className="min-w-0">

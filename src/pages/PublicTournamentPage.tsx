@@ -23,6 +23,7 @@ import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
 import { cdnUrl } from '../utils/images'
+import { Crest } from '../components/Crest'
 import { kickOffClock } from '../utils/datetime'
 import PostButton from '../components/PostButton'
 import { renderFixturesPost, renderTablePost, standingsNote } from '../utils/instagramPost'
@@ -824,23 +825,17 @@ export default function PublicTournamentPage() {
                                       to={publicTeamUrl(row.id, tournament?.id)}
                                       className="group flex items-center gap-1 sm:gap-4 hover:text-blue-300 transition-colors duration-300"
                                     >
-                                      {team?.logo ? (
-                                        <div className="relative">
-                                          <img
-              loading="lazy"
-              decoding="async" 
-                                            src={cdnUrl(team.logo)} 
-                                            alt={`${team.name} logo`}
-                                            className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
-                                          />
-                                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
-                                        </div>
-                                      ) : (
-                                        <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                                          <span className="text-xs sm:text-base font-bold text-white">
-                                            {team?.name?.charAt(0) || 'T'}
-                                          </span>
-                                        </div>
+                                      {(
+                                        <Crest
+                                          logo={team?.logo}
+                                          name={team?.name}
+                                          className="w-10 h-10 sm:w-14 sm:h-14 group-hover:border-blue-400/50 transition-colors duration-300"
+                                          fallback={
+                                            <span className="text-xs sm:text-base font-bold text-white">
+                                              {team?.name?.charAt(0) || 'T'}
+                                            </span>
+                                          }
+                                        />
                                       )}
                                       <span className="font-medium text-xs sm:text-lg group-hover:text-blue-300 transition-colors duration-300">
                                         {team?.name || 'Unknown Team'}
@@ -930,24 +925,18 @@ export default function PublicTournamentPage() {
                               to={publicTeamUrl(row.id, tournament?.id)}
                               className="group flex items-center gap-1 sm:gap-4 hover:text-blue-300 transition-colors duration-300"
                             >
-                              {team?.logo ? (
-                                <div className="relative">
-                                  <img
-              loading="lazy"
-              decoding="async" 
-                                    src={cdnUrl(team.logo)} 
-                                    alt={`${team.name} logo`}
-                                    className="w-10 h-10 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300"
-                                  />
-                                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400/20 to-purple-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
-                                </div>
-                              ) : (
-                                <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center border-2 border-white/20 group-hover:border-blue-400/50 transition-colors duration-300">
-                                  <span className="text-xs sm:text-base font-bold text-white">
-                                    {team?.name?.charAt(0) || 'T'}
-                                  </span>
-                                </div>
-                              )}
+                              {(
+                                        <Crest
+                                          logo={team?.logo}
+                                          name={team?.name}
+                                          className="w-10 h-10 sm:w-14 sm:h-14 group-hover:border-blue-400/50 transition-colors duration-300"
+                                          fallback={
+                                            <span className="text-xs sm:text-base font-bold text-white">
+                                              {team?.name?.charAt(0) || 'T'}
+                                            </span>
+                                          }
+                                        />
+                                      )}
                               <span className="font-medium text-xs sm:text-lg group-hover:text-blue-300 transition-colors duration-300">
                                 {team?.name || 'Unknown Team'}
                               </span>
@@ -1467,20 +1456,17 @@ export default function PublicTournamentPage() {
                             </td>
                             <td className="py-2 px-1 sm:px-6">
                               <div className="flex items-center gap-1 sm:gap-2">
-                                {team?.logo ? (
-                                  <img
-                                    loading="lazy"
-                                    decoding="async"
-                                    src={cdnUrl(team.logo)}
-                                    alt={`${team.name} logo`}
-                                    className="w-6 h-6 sm:w-10 sm:h-10 rounded-full object-cover"
+                                {(
+                                  <Crest
+                                    logo={team?.logo}
+                                    name={team?.name}
+                                    className="w-6 h-6 sm:w-10 sm:h-10"
+                                    fallback={
+                                      <span className="text-xs font-bold text-white">
+                                        {team?.name?.charAt(0) || '?'}
+                                      </span>
+                                    }
                                   />
-                                ) : (
-                                  <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-white/20 to-white/10 flex items-center justify-center">
-                                    <span className="text-xs font-bold text-white">
-                                      {team?.name?.charAt(0) || '?'}
-                                    </span>
-                                  </div>
                                 )}
                                 <span className="text-white font-medium text-xs sm:text-lg">
                                   {team?.name || 'Unknown club'}
@@ -1985,12 +1971,7 @@ function SeasonHeader({
                 style={{ color: ink }}
               >
                 {organizer.logo && (
-                  <img
-                    decoding="async"
-                    src={cdnUrl(organizer.logo)}
-                    alt=""
-                    className="w-5 h-5 rounded-full object-cover border border-white/25"
-                  />
+                  <Crest logo={organizer.logo} className="w-5 h-5" />
                 )}
                 <span className="text-xs sm:text-sm font-medium uppercase tracking-[0.08em] truncate">
                   {organizer.name}
@@ -2187,21 +2168,12 @@ function SideWash({ team, side }: { team: any; side: 'home' | 'away' }) {
 
 /** The crest in a fixture row, or the club's initial where there is none. */
 function ClubBadge({ team, fallback }: { team: any; fallback: string }) {
-  if (!team?.logo) {
-    return (
-      <div className="w-9 h-9 sm:w-11 sm:h-11 shrink-0 rounded-full bg-white/10 flex items-center justify-center border border-white/20">
-        <span className="text-sm font-bold text-white">{team?.name?.charAt(0) || fallback}</span>
-      </div>
-    )
-  }
-
   return (
-    <img
-      loading="lazy"
-      decoding="async"
-      src={cdnUrl(team.logo)}
-      alt=""
-      className="w-9 h-9 sm:w-11 sm:h-11 shrink-0 rounded-full object-cover border border-white/25"
+    <Crest
+      logo={team?.logo}
+      name={team?.name}
+      className="w-9 h-9 sm:w-11 sm:h-11"
+      fallback={<span className="text-sm font-bold text-white">{team?.name?.charAt(0) || fallback}</span>}
     />
   )
 }

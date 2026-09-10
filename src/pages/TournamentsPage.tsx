@@ -17,7 +17,7 @@ import {
   IconGear,
   IconGlobe,
 } from '../components/icons'
-import { cdnUrl } from '../utils/images'
+import { Crest } from '../components/Crest'
 
 type OrganizerSection = {
   key: string
@@ -218,19 +218,12 @@ function TournamentCard({
     <div className="glass rounded-lg p-4">
       <div className="flex items-center gap-4">
         {/* Tournament Logo */}
-        <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10 flex-shrink-0">
-          {tournament.logo ? (
-            <img
-              loading="lazy"
-              decoding="async"
-              src={cdnUrl(tournament.logo)}
-              alt={`${tournament.name} logo`}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="opacity-40"><IconTrophy size={22} /></div>
-          )}
-        </div>
+        <Crest
+          logo={tournament.logo}
+          name={tournament.name}
+          className="w-16 h-16"
+          fallback={<span className="opacity-40"><IconTrophy size={22} /></span>}
+        />
 
         {/* Tournament Info */}
         <div className="flex-1">

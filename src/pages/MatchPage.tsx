@@ -17,7 +17,7 @@ import { registeredPlayers } from '../utils/squads'
 import { numberInMatch } from '../utils/players'
 import { youtubeEmbedUrl } from '../utils/video'
 import { byMinute, cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
-import { cdnUrl } from '../utils/images'
+import { Crest } from '../components/Crest'
 
 /**
  * The team totals somebody types in, in the order the table shows them.
@@ -206,16 +206,20 @@ export default function MatchPage() {
             <div className="text-center">
               {/* Home Team Logo */}
               <div className="flex justify-center mb-2">
-                {homeTeam.logo ? (
-                  <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                    <img
-              loading="lazy"
-              decoding="async" src={cdnUrl(homeTeam.logo)} alt={`${homeTeam.name} logo`} className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: homeTeam.colors?.[0] || '#3B82F6' }}>
-                    <span className="text-white font-bold text-lg">{homeTeam.name.charAt(0)}</span>
-                  </div>
+                {(
+                  <Crest
+                    logo={homeTeam.logo}
+                    name={homeTeam.name}
+                    className="w-16 h-16"
+                    fallback={
+                      <span
+                        className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg"
+                        style={{ backgroundColor: homeTeam.colors?.[0] || '#3B82F6' }}
+                      >
+                        {homeTeam.name.charAt(0)}
+                      </span>
+                    }
+                  />
                 )}
               </div>
               <div className="text-lg font-semibold">{homeTeam.name}</div>
@@ -238,16 +242,20 @@ export default function MatchPage() {
             <div className="text-center">
               {/* Away Team Logo */}
               <div className="flex justify-center mb-2">
-                {awayTeam.logo ? (
-                  <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
-                    <img
-              loading="lazy"
-              decoding="async" src={cdnUrl(awayTeam.logo)} alt={`${awayTeam.name} logo`} className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: awayTeam.colors?.[0] || '#3B82F6' }}>
-                    <span className="text-white font-bold text-lg">{awayTeam.name.charAt(0)}</span>
-                  </div>
+                {(
+                  <Crest
+                    logo={awayTeam.logo}
+                    name={awayTeam.name}
+                    className="w-16 h-16"
+                    fallback={
+                      <span
+                        className="absolute inset-0 flex items-center justify-center text-white font-bold text-lg"
+                        style={{ backgroundColor: awayTeam.colors?.[0] || '#3B82F6' }}
+                      >
+                        {awayTeam.name.charAt(0)}
+                      </span>
+                    }
+                  />
                 )}
               </div>
               <div className="text-lg font-semibold">{awayTeam.name}</div>
