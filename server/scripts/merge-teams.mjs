@@ -73,6 +73,21 @@ const allowDifferentOrganizer = process.argv.includes('--allow-different-organiz
 // crest of the record it absorbs, and neither is assumed.
 const takeName = process.argv.includes('--take-name')
 const takeCrest = process.argv.includes('--take-crest')
+// Puts the surviving club on the list of any organiser whose competition the
+// duplicate was playing in. Without it their season keeps its fixtures and
+// loses the club's name on their own screens; with it, it is a permission they
+// did not ask for. Neither is a default worth assuming.
+const grantShortlist = process.argv.includes('--grant-shortlist')
+// Whose copy of a player wins where the two clubs hold the same id with
+// different contents. There is no safe default: on a resumed run the survivor's
+// copy is this script's own snapshot and the duplicate's is what the manager
+// has been editing since, but a club's own manager can reach both records, so
+// which is newer is a fact to look at rather than to assume.
+const prefer = flag('prefer')
+if (prefer && prefer !== 'duplicate' && prefer !== 'survivor') {
+  console.error('--prefer takes "duplicate" or "survivor"')
+  process.exit(1)
+}
 const actorEmail = flag('actor') ?? 'scripts/merge-teams.mjs'
 
 if (!fromId || !intoId || fromId === intoId) {
@@ -331,20 +346,61 @@ if (foreign.length) {
       `    after the merge that organiser ${
         willResolve
           ? `still sees the club (${entry?.status === 'accepted' ? 'accepted entry' : 'on their list'})`
-          : 'sees a club with no name on their own screens — no accepted entry, not on their list'
+          : grantShortlist
+            ? 'gets the club on their list, so it keeps its name, crest and squad on their screens'
+            : 'sees a club with no name on their own screens — no accepted entry, not on their list. ' +
+              'Pass --grant-shortlist to put the club on their list instead'
       }`,
     )
   }
 }
 
+// Which organisers would be granted the club, worked out once so the report and
+// the write cannot disagree about it.
+const grantees = grantShortlist
+  ? [
+      ...new Set(
+        foreign
+          .filter((report) => {
+            const owner = report.tournament.organizerId
+            const entry = entriesFrom.find((row) => row.tournamentId === report.tournament.id)
+            return (
+              entry?.status !== 'accepted' &&
+              !(organizerById.get(owner)?.shortlistedTeamIds ?? []).includes(fromId)
+            )
+          })
+          .map((report) => report.tournament.organizerId),
+      ),
+    ]
+  : []
+
 /* ------------------------------------------------------------------ *
  * The squad
  * ------------------------------------------------------------------ */
 
+/**
+ * A player already on both sides is a resumed run, not a clash.
+ *
+ * Every write here is conditional on the record not having changed since it was
+ * read, so an ordinary edit landing mid-run stops the script part-way through —
+ * which is the safe outcome and the expected one on a live database. What comes
+ * next has to be another run of the same command, so each step has to recognise
+ * its own work: a player id on both clubs carrying an identical record has been
+ * moved already and is skipped. Only a player whose two records disagree is a
+ * refusal, because then one of them is about to be lost and which one is a
+ * question this script cannot answer.
+ */
 const moving = (from.players ?? []).filter(Boolean)
-const existingPlayerIds = new Set((into.players ?? []).filter(Boolean).map((player) => player.id))
-const alreadyThere = moving.filter((player) => existingPlayerIds.has(player.id))
-const toMove = moving.filter((player) => !existingPlayerIds.has(player.id))
+const survivorPlayers = new Map(
+  (into.players ?? []).filter(Boolean).map((player) => [player.id, player]),
+)
+const alreadyMoved = moving.filter(
+  (player) => survivorPlayers.has(player.id) && same(survivorPlayers.get(player.id), player),
+)
+const conflicting = moving.filter(
+  (player) => survivorPlayers.has(player.id) && !same(survivorPlayers.get(player.id), player),
+)
+const toMove = moving.filter((player) => !survivorPlayers.has(player.id))
 
 /**
  * The manager link moves with the club, or it is lost.
@@ -410,12 +466,86 @@ if (namesake.length) {
   )
 }
 
-if (alreadyThere.length) {
-  refusals.push(
-    `${alreadyThere.length} player id(s) exist in both clubs (${alreadyThere
-      .map((player) => player.id)
-      .join(', ')}). That is one record read twice, not two clubs.`,
+if (alreadyMoved.length) {
+  console.log(`  ${alreadyMoved.length} already on the survivor from an earlier run — skipped.`)
+}
+
+if (conflicting.length) {
+  // Printed rather than summarised: "13 records disagree" is not something
+  // anybody can decide from, and the difference is usually two or three fields
+  // somebody filled in on one side after the copy was taken.
+  console.log(`\n${conflicting.length} player(s) held by both clubs, with differences:`)
+  const short = (value) => {
+    const text = value === undefined ? '(absent)' : JSON.stringify(value)
+    return text.length > 60 ? `${text.slice(0, 57)}...` : text
+  }
+  for (const player of conflicting) {
+    const mine = survivorPlayers.get(player.id)
+    const keys = [...new Set([...Object.keys(mine ?? {}), ...Object.keys(player)])].filter(
+      (key) => !same(mine?.[key], player[key]),
+    )
+    console.log(`  ${player.id}  ${player.firstName ?? ''} ${player.lastName ?? ''}`.trimEnd())
+    for (const key of keys) {
+      console.log(`      ${key}: survivor ${short(mine?.[key])} | duplicate ${short(player[key])}`)
+    }
+  }
+  console.log(
+    prefer
+      ? `  --prefer ${prefer}: the ${prefer}'s copy is kept for each of these.`
+      : '  Pass --prefer duplicate or --prefer survivor to say which copy wins.',
   )
+}
+
+if (conflicting.length && !prefer) {
+  refusals.push(
+    `${conflicting.length} player id(s) exist in both clubs with different records. ` +
+      'One of the two copies would be lost — say which with --prefer duplicate or --prefer survivor.',
+  )
+}
+
+/**
+ * The survivor's own seasons have the mirror of the registration problem.
+ *
+ * An open competition stores "everybody is registered" as no entry at all, and
+ * the club is about to gain players it did not have. Left alone, every season
+ * the survivor already plays in would register all of them retrospectively —
+ * eight footballers who never played in that league turning up as eligible in a
+ * season that has been played. So the registration those seasons already had is
+ * written out as the list it actually was, before the squad grows.
+ */
+const survivorSeasons = tournaments.filter((tournament) => {
+  const teamIds = tournament.teamIds ?? []
+  return (
+    teamIds.includes(intoId) ||
+    Boolean(tournament.squads?.[intoId]) ||
+    fixturesOf(tournament).some(
+      ({ match }) => match.homeTeamId === intoId || match.awayTeamId === intoId,
+    )
+  )
+})
+// The list to write out is the survivor's own squad: the players that did not
+// come from the duplicate. On a resumed run the arrivals are already sitting in
+// `into.players`, so taking that list whole would write down precisely the
+// retrospective registration this exists to prevent.
+const arrivedIds = new Set(moving.map((player) => player.id))
+const survivorPlayerIds = (into.players ?? [])
+  .filter(Boolean)
+  .filter((player) => !arrivedIds.has(player.id))
+  .map((player) => player.id)
+const freezing = moving.length
+  ? survivorSeasons.filter(
+      (tournament) => !tournament.squads?.[intoId] && !tournament.squadsStrict,
+    )
+  : []
+
+if (freezing.length) {
+  console.log(`\nOpen competitions the survivor already plays in: ${freezing.length}`)
+  for (const tournament of freezing) {
+    console.log(
+      `  ${tournament.name ?? tournament.id} — registration written out as ` +
+        `${survivorPlayerIds.length} player(s), so the arriving squad is not registered there retrospectively`,
+    )
+  }
 }
 
 if (collisions.length) {
@@ -443,22 +573,48 @@ if (!apply) {
  * ------------------------------------------------------------------ */
 
 /**
- * Writes a record back only if nothing has changed since it was read.
+ * Applies a change to a record, computed against whatever is in it right now.
  *
- * These documents are written whole here — a season carries its whole fixture
- * list and the merge touches several fields of it at once — which is exactly
- * what an ordinary route must never do. A migration may, but only if it can
- * tell that it is not overwriting somebody's edit, hence the re-read.
+ * These documents are written whole — a season carries its whole fixture list
+ * and this touches several of its fields at once — which is exactly what an
+ * ordinary route must never do. The first version of this refused whenever the
+ * record had changed since the report and abandoned the run, which is right for
+ * a write that would clobber and wrong for this one: the season being merged is
+ * edited while the script runs, and a migration that can only finish in a quiet
+ * minute never finishes. Every change here is the rewrite of one club's id, so
+ * recomputing it against the freshest copy keeps whatever the person editing
+ * has just saved and still does the thing. The re-read before the write leaves
+ * a window of milliseconds, and the retry is what makes that window small
+ * enough to close on a database somebody is using.
+ *
+ * A transform returning the record unchanged means the step was already done by
+ * an earlier run, which is how this resumes rather than restarts.
  */
-async function writeIfUnchanged(TableName, key, before, after, label) {
-  if (same(before, after)) return false
-  const current = (await ddb.send(new GetCommand({ TableName, Key: key }))).Item
-  if (!same(current, before)) {
-    fail(`${label} changed while this script was running. Nothing further was written; re-run it.`)
+async function updateRecord(TableName, key, transform, label, attempts = 6) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const current = (await ddb.send(new GetCommand({ TableName, Key: key }))).Item
+    if (!current) {
+      console.log(`  gone: ${label}`)
+      return false
+    }
+    const next = transform(clone(current))
+    if (!next || same(current, next)) {
+      console.log(`  already done: ${label}`)
+      return false
+    }
+    const check = (await ddb.send(new GetCommand({ TableName, Key: key }))).Item
+    if (!same(check, current)) {
+      console.log(`  ${label}: edited under us, reading again (attempt ${attempt})`)
+      continue
+    }
+    await ddb.send(new PutCommand({ TableName, Item: next }))
+    console.log(`  written: ${label}`)
+    return true
   }
-  await ddb.send(new PutCommand({ TableName, Item: after }))
-  console.log(`  written: ${label}`)
-  return true
+  fail(
+    `${label} is being edited continuously — gave up after ${attempts} attempts. ` +
+      'Nothing is broken and nothing was half-written: run the same command again.',
+  )
 }
 
 console.log('\nWriting.\n')
@@ -466,75 +622,115 @@ console.log('\nWriting.\n')
 // The squad first. If anything fails after this the players exist in both
 // clubs, which is visible and repairable; the reverse order would leave
 // fixtures pointing at a club whose squad has already gone.
-{
-  const after = clone(into)
-  after.players = [...(into.players ?? []).filter(Boolean), ...clone(toMove)]
-  await writeIfUnchanged(TABLE_TEAMS, { id: intoId }, into, after, `squad of ${into.name}`)
-}
+await updateRecord(
+  TABLE_TEAMS,
+  { id: intoId },
+  (team) => {
+    const have = new Set((team.players ?? []).filter(Boolean).map((player) => player.id))
+    team.players = [
+      ...(team.players ?? []).filter(Boolean),
+      ...clone(moving.filter((player) => !have.has(player.id))),
+    ]
+    if (prefer === 'duplicate' && conflicting.length) {
+      const newer = new Map(conflicting.map((player) => [player.id, player]))
+      team.players = team.players.map((player) =>
+        player && newer.has(player.id) ? clone(newer.get(player.id)) : player,
+      )
+    }
+    const managers = team.managerUserIds ?? []
+    const arriving = (from.managerUserIds ?? []).filter((id) => !managers.includes(id))
+    if (arriving.length) team.managerUserIds = [...managers, ...arriving]
+    if (takeName && from.name) team.name = from.name
+    if (takeCrest && from.logo) {
+      team.logo = from.logo
+      // The crest's colour was read from the file when it was uploaded and
+      // cannot be read again — the image bucket answers a canvas without CORS
+      // headers — so it travels with the crest or the club header falls back to
+      // a colour that is wrong for about half of them.
+      team.crestColor = from.crestColor ?? null
+      team.crestOpaqueBackground = from.crestOpaqueBackground ?? null
+    }
+    return team
+  },
+  `club record of ${into.name}`,
+)
 
 for (const report of affected) {
-  const before = report.tournament
-  const after = clone(before)
-
-  if (after.teamIds) {
-    after.teamIds = after.teamIds.map((id) => (id === fromId ? intoId : id))
-    after.teamIds = after.teamIds.filter((id, index) => after.teamIds.indexOf(id) === index)
-  }
-
-  // The registration has to be written out rather than moved, where it was
-  // never written down. An open competition stores "everybody" as no entry at
-  // all, and after the merge the surviving club has players the duplicate never
-  // had — leaving it absent would register them retrospectively in a season
-  // that was played without them.
-  if (report.squadEntry) {
-    after.squads = { ...(after.squads ?? {}) }
-    after.squads[intoId] = report.squadEntry
-    delete after.squads[fromId]
-  } else if (!report.strict && toMove.length) {
-    after.squads = { ...(after.squads ?? {}) }
-    after.squads[intoId] = toMove.map((player) => player.id)
-    delete after.squads[fromId]
-    console.log(
-      `  ${before.name ?? before.id}: registration written out as ${toMove.length} player(s) — it was open before`,
-    )
-  }
-
-  for (const match of after.matches ?? []) {
-    if (!match) continue
-    if (match.homeTeamId === fromId) match.homeTeamId = intoId
-    if (match.awayTeamId === fromId) match.awayTeamId = intoId
-  }
-  for (const round of after.format?.customPlayoffConfig?.playoffRounds ?? []) {
-    for (const match of round?.matches ?? []) {
-      if (!match) continue
-      if (match.homeTeamId === fromId) match.homeTeamId = intoId
-      if (match.awayTeamId === fromId) match.awayTeamId = intoId
-    }
-  }
-
-  // Old records carry a bracket that names its clubs beside the fixtures.
-  // Nothing reads it any more, and a stale id in it would still be a wrong
-  // answer to anyone who looked.
-  if (Array.isArray(after.playoffBrackets)) {
-    const rewrite = (value) =>
-      typeof value === 'string'
-        ? value === fromId
-          ? intoId
-          : value
-        : Array.isArray(value)
-          ? value.map(rewrite)
-          : value && typeof value === 'object'
-            ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rewrite(v)]))
-            : value
-    after.playoffBrackets = rewrite(after.playoffBrackets)
-  }
-
-  await writeIfUnchanged(
+  await updateRecord(
     TABLE_TOURNAMENTS,
-    { id: before.id },
-    before,
-    after,
-    `competition ${before.name ?? before.id}`,
+    { id: report.tournament.id },
+    (season) => {
+      if (Array.isArray(season.teamIds)) {
+        const mapped = season.teamIds.map((id) => (id === fromId ? intoId : id))
+        season.teamIds = mapped.filter((id, index) => mapped.indexOf(id) === index)
+      }
+
+      // The registration is moved where it was written down, and written out
+      // where it was not. An open competition stores "everybody" as no entry at
+      // all, and the surviving club has players the duplicate never had —
+      // leaving it absent would register them retrospectively in a season that
+      // was played without them. The list is the arriving squad, not the
+      // players still to be copied: on a resumed run they are already across.
+      const entry = season.squads?.[fromId]
+      if (entry) {
+        season.squads = { ...season.squads }
+        season.squads[intoId] = entry
+        delete season.squads[fromId]
+      } else if (!season.squadsStrict && moving.length && !season.squads?.[intoId]) {
+        season.squads = { ...(season.squads ?? {}) }
+        season.squads[intoId] = moving.map((player) => player.id)
+      }
+
+      for (const match of season.matches ?? []) {
+        if (!match) continue
+        if (match.homeTeamId === fromId) match.homeTeamId = intoId
+        if (match.awayTeamId === fromId) match.awayTeamId = intoId
+      }
+      for (const round of season.format?.customPlayoffConfig?.playoffRounds ?? []) {
+        for (const match of round?.matches ?? []) {
+          if (!match) continue
+          if (match.homeTeamId === fromId) match.homeTeamId = intoId
+          if (match.awayTeamId === fromId) match.awayTeamId = intoId
+        }
+      }
+
+      // Old records carry a bracket that names its clubs beside the fixtures.
+      // Nothing reads it any more, and a stale id in it would still be a wrong
+      // answer to anyone who looked.
+      if (Array.isArray(season.playoffBrackets)) {
+        const rewrite = (value) =>
+          typeof value === 'string'
+            ? value === fromId
+              ? intoId
+              : value
+            : Array.isArray(value)
+              ? value.map(rewrite)
+              : value && typeof value === 'object'
+                ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rewrite(v)]))
+                : value
+        season.playoffBrackets = rewrite(season.playoffBrackets)
+      }
+
+      return season
+    },
+    `competition ${report.tournament.name ?? report.tournament.id}`,
+  )
+}
+
+// Written before the squad grows would be better still, but the squad write has
+// to come first for the reason given above; these seasons are the survivor's
+// own, and the registration they are being given is the one they already had.
+for (const season of freezing) {
+  await updateRecord(
+    TABLE_TOURNAMENTS,
+    { id: season.id },
+    (current) => {
+      if (current.squads?.[intoId] || current.squadsStrict) return null
+      current.squads = { ...(current.squads ?? {}) }
+      current.squads[intoId] = survivorPlayerIds
+      return current
+    },
+    `registration of ${into.name} in ${season.name ?? season.id}`,
   )
 }
 
@@ -561,31 +757,52 @@ for (const entry of entriesFrom) {
 }
 
 for (const organizer of organizers) {
-  const after = clone(organizer)
-  after.shortlistedTeamIds = (after.shortlistedTeamIds ?? []).map((id) =>
-    id === fromId ? intoId : id,
-  )
-  after.shortlistedTeamIds = after.shortlistedTeamIds.filter(
-    (id, index) => after.shortlistedTeamIds.indexOf(id) === index,
-  )
-  await writeIfUnchanged(
+  await updateRecord(
     TABLE_ORGANIZERS,
     { id: organizer.id },
-    organizer,
-    after,
+    (current) => {
+      const mapped = (current.shortlistedTeamIds ?? []).map((id) =>
+        id === fromId ? intoId : id,
+      )
+      current.shortlistedTeamIds = mapped.filter((id, index) => mapped.indexOf(id) === index)
+      return current
+    },
     `list of organiser ${organizer.name ?? organizer.id}`,
   )
 }
 
+// The grant is what keeps the other organiser's season readable: `/admin/teams`
+// returns a club they do not own only where it is on this list or has agreed to
+// play for them, and their fixtures already name it either way. It is capped at
+// 200 by the route that normally writes it, and the cap is honoured here — that
+// list is read on every admin request and every id on it costs a read.
+for (const organizerId of grantees) {
+  await updateRecord(
+    TABLE_ORGANIZERS,
+    { id: organizerId },
+    (current) => {
+      const listed = current.shortlistedTeamIds ?? []
+      if (listed.includes(intoId)) return null
+      if (listed.length >= 200) {
+        console.log(`  skipped: ${current.name ?? organizerId} already lists 200 clubs`)
+        return null
+      }
+      current.shortlistedTeamIds = [...listed, intoId]
+      return current
+    },
+    `${into.name} added to the list of ${organizerName(organizerId)}`,
+  )
+}
+
 for (const account of accounts) {
-  const after = clone(account)
-  after.teamIds = (after.teamIds ?? []).map((id) => (id === fromId ? intoId : id))
-  after.teamIds = after.teamIds.filter((id, index) => after.teamIds.indexOf(id) === index)
-  await writeIfUnchanged(
+  await updateRecord(
     TABLE_AUTH_USERS,
     { id: account.id },
-    account,
-    after,
+    (current) => {
+      const mapped = (current.teamIds ?? []).map((id) => (id === fromId ? intoId : id))
+      current.teamIds = mapped.filter((id, index) => mapped.indexOf(id) === index)
+      return current
+    },
     `account ${account.email ?? account.id}`,
   )
 }
