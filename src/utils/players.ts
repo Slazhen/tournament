@@ -24,3 +24,21 @@ export function byShirtNumber(a: Player, b: Player): number {
   if (one !== two) return one - two
   return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
 }
+
+/**
+ * The number this player wore in one match.
+ *
+ * A teamsheet stores only the numbers it overrides, so absence is the answer
+ * rather than a gap: the club's own number, which is what every sheet written
+ * before the field showed. Every screen that draws a number inside a match asks
+ * this, and none of them reaches into the map itself — two readings of the same
+ * record is how a scorer ends up numbered differently from the line-up he is
+ * listed in.
+ */
+export function numberInMatch(
+  player: Pick<Player, 'id' | 'number'>,
+  numbers: Record<string, number> | undefined,
+): number | undefined {
+  const worn = numbers?.[player.id]
+  return typeof worn === 'number' ? worn : player.number
+}

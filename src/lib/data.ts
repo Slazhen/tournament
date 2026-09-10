@@ -478,10 +478,14 @@ export const matchService = {
     matchId: string,
     teamId: string,
     playerIds: string[],
-  ): Promise<{ playerIds: string[] }> {
+    numbers: Record<string, number> = {},
+  ): Promise<{ playerIds: string[]; numbers: Record<string, number> }> {
     return api.put(
       `/admin/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/lineup`,
-      { teamId, playerIds },
+      // The numbers travel with the sheet they belong to. They are only the
+      // ones this match overrides — a player left out of the map wore their
+      // club number — and the server cuts them to whoever is actually named.
+      { teamId, playerIds, numbers },
     )
   },
 
@@ -767,10 +771,11 @@ export const clubService = {
     matchId: string,
     teamId: string,
     playerIds: string[],
-  ): Promise<{ playerIds: string[] }> {
+    numbers: Record<string, number> = {},
+  ): Promise<{ playerIds: string[]; numbers: Record<string, number> }> {
     return api.put(
       `/manager/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/lineup`,
-      { teamId, playerIds },
+      { teamId, playerIds, numbers },
     )
   },
 

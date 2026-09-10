@@ -154,6 +154,22 @@ export type Team = {
   enterable?: boolean
 }
 
+/**
+ * One club's teamsheet for one match.
+ *
+ * `numbers` holds only the shirt numbers this match overrides. A player absent
+ * from it wore the number on their club record, which is what every teamsheet
+ * written before the field meant and still means — so a squad renumbered in
+ * June moves the number on the sheets nobody overrode, and only a deliberate
+ * change is pinned to the match. Read it through `numberInMatch` rather than
+ * reaching into the map, so no screen invents its own answer.
+ */
+export type MatchLineup = {
+  starting: string[]
+  substitutes: string[]
+  numbers?: Record<string, number>
+}
+
 export type Match = {
   id: string
   homeTeamId: string
@@ -257,14 +273,8 @@ export type Match = {
    * does not promise.
    */
   lineups?: {
-    home?: {
-      starting: string[]
-      substitutes: string[]
-    }
-    away?: {
-      starting: string[]
-      substitutes: string[]
-    }
+    home?: MatchLineup
+    away?: MatchLineup
   }
   /**
    * Set by the API on a fixture of a round the season is keeping back.

@@ -1,5 +1,5 @@
 import type { Player, Team, Tournament } from '../types'
-import { byShirtNumber } from './players'
+import { byShirtNumber, numberInMatch } from './players'
 
 /** Everything about a competition these functions need. */
 type SquadRules = Pick<Tournament, 'squads' | 'squadsStrict'>
@@ -112,13 +112,28 @@ export function squadInTournament(
  */
 export function playersNamedInMatch(
   team: Pick<Team, 'players'> | null | undefined,
-  lineup: { starting?: string[]; substitutes?: string[] } | null | undefined,
+  lineup:
+    | { starting?: string[]; substitutes?: string[]; numbers?: Record<string, number> }
+    | null
+    | undefined,
   ...alreadyNamed: Array<string | undefined>
 ): Player[] {
   const players = team?.players ?? []
   const named = new Set([...(lineup?.starting ?? []), ...(lineup?.substitutes ?? [])])
 
-  const sheet = players.filter((player) => named.has(player.id)).sort(byShirtNumber)
+  // A player on the sheet carries the number they wore in this match, not the
+  // one on their club record. Every caller of this is inside one match — a
+  // scorer picker, a booking, a label on a teamsheet — so this is that player
+  // as this match knew them, and the shirt the list is sorted by is the shirt
+  // that was on the pitch. Anyone here only because they are already named on
+  // the record being edited is not on the sheet and keeps the club's number.
+  const sheet = players
+    .filter((player) => named.has(player.id))
+    .map((player) => {
+      const worn = numberInMatch(player, lineup?.numbers)
+      return worn === player.number ? player : { ...player, number: worn }
+    })
+    .sort(byShirtNumber)
   const extras = players.filter(
     (player) => !named.has(player.id) && alreadyNamed.includes(player.id),
   )

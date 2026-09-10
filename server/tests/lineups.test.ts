@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pickLineup, registeredPlayerIds, sideOfTeam } from '../src/lib/lineups.js'
+import { pickLineup, pickNumbers, registeredPlayerIds, sideOfTeam } from '../src/lib/lineups.js'
 import type { Team, Tournament } from '../src/lib/types.js'
 
 const team = {
@@ -79,5 +79,40 @@ describe('the teamsheet that gets stored', () => {
   it('treats anything that is not a list as an empty teamsheet', () => {
     expect(pickLineup(undefined, allowed)).toEqual([])
     expect(pickLineup('p1', allowed)).toEqual([])
+  })
+})
+
+describe('the shirt numbers a teamsheet overrides', () => {
+  it('keeps a number for a player who is on the sheet', () => {
+    expect(pickNumbers({ p1: 7, p2: 10 }, ['p1', 'p2'])).toEqual({ p1: 7, p2: 10 })
+  })
+
+  // A number belongs to somebody on the sheet. Left behind, it would sit in the
+  // record for a player nobody named and reappear the next time they were.
+  it('drops a number for a player who is not', () => {
+    expect(pickNumbers({ p1: 7, p3: 9 }, ['p1'])).toEqual({ p1: 7 })
+  })
+
+  it('drops anything that is not a shirt number', () => {
+    expect(
+      pickNumbers({ p1: '7', p2: 7.5, p3: -1 }, ['p1', 'p2', 'p3']),
+    ).toEqual({})
+    expect(pickNumbers({ p1: 100 }, ['p1'])).toEqual({})
+    expect(pickNumbers({ p1: 0, p2: 99 }, ['p1', 'p2'])).toEqual({ p1: 0, p2: 99 })
+  })
+
+  // A sheet that overrides nothing is stored exactly as every sheet written
+  // before this field was invented.
+  it('treats anything that is not a map as no overrides at all', () => {
+    expect(pickNumbers(undefined, ['p1'])).toEqual({})
+    expect(pickNumbers([7, 9], ['p1'])).toEqual({})
+    expect(pickNumbers('7', ['p1'])).toEqual({})
+  })
+
+  // Two players in one shirt is allowed on purpose: a teamsheet filled in after
+  // the whistle is a record of what happened, and refusing it would refuse the
+  // record. The screens mark it.
+  it('allows two players to wear the same number', () => {
+    expect(pickNumbers({ p1: 7, p2: 7 }, ['p1', 'p2'])).toEqual({ p1: 7, p2: 7 })
   })
 })

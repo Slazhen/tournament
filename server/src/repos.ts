@@ -1225,6 +1225,10 @@ export const tournaments = {
     teamId: string,
     side: 'home' | 'away',
     starting: string[],
+    // Required rather than defaulted. The side is written whole, so a call that
+    // omits this does not leave the stored numbers alone — it deletes them, and
+    // a default would make that silent instead of a type error.
+    numbers: Record<string, number>,
   ): Promise<void> {
     const tournament = await this.getOrThrow(tournamentId)
     const located = locateMatch(tournament, matchId)
@@ -1284,6 +1288,12 @@ export const tournaments = {
             ':lineup': {
               starting,
               substitutes: Array.isArray(current.substitutes) ? current.substitutes : [],
+              // Written with the teamsheet rather than beside it: the numbers
+              // belong to the players named in the same request, and one author
+              // writing both in one go is what keeps them from disagreeing. The
+              // key is left off when nothing was overridden, so a sheet nobody
+              // renumbered is stored exactly as it was before this existed.
+              ...(Object.keys(numbers).length > 0 ? { numbers } : {}),
             },
             ':matchId': matchId,
             ':teamId': teamId,

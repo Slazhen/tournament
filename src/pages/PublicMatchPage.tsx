@@ -15,6 +15,7 @@ import {
   unattributedGoals,
 } from '../utils/matches'
 import { publicTeamUrl } from '../utils/teams'
+import { numberInMatch } from '../utils/players'
 import { tableForMatch } from '../utils/standings'
 import type { Tournament, Team, Match, Organizer, Player } from '../types'
 import { getSeasonUrl, seasonLabel, seriesName } from '../utils/seasons'
@@ -749,7 +750,7 @@ function SideSheet({
   lineup,
 }: {
   team: Team
-  lineup?: { starting?: string[]; substitutes?: string[] }
+  lineup?: { starting?: string[]; substitutes?: string[]; numbers?: Record<string, number> }
 }) {
   const base = headerColor(team)
   const starting = lineup?.starting ?? []
@@ -770,7 +771,12 @@ function SideSheet({
             <SectionTitle>Starting</SectionTitle>
             <ul className="grid gap-1">
               {starting.map((playerId) => (
-                <PlayerRow key={playerId} team={team} playerId={playerId} />
+                <PlayerRow
+                  key={playerId}
+                  team={team}
+                  playerId={playerId}
+                  numbers={lineup?.numbers}
+                />
               ))}
             </ul>
           </div>
@@ -783,7 +789,12 @@ function SideSheet({
             <SectionTitle>Substitutes</SectionTitle>
             <ul className="grid gap-1">
               {substitutes.map((playerId) => (
-                <PlayerRow key={playerId} team={team} playerId={playerId} />
+                <PlayerRow
+                  key={playerId}
+                  team={team}
+                  playerId={playerId}
+                  numbers={lineup?.numbers}
+                />
               ))}
             </ul>
           </div>
@@ -793,16 +804,28 @@ function SideSheet({
   )
 }
 
-function PlayerRow({ team, playerId }: { team: Team; playerId: string }) {
+function PlayerRow({
+  team,
+  playerId,
+  numbers,
+}: {
+  team: Team
+  playerId: string
+  numbers?: Record<string, number>
+}) {
   // A squad list can contain a hole: `null` sits in `players` in records from
   // the browser-side era, and one dereferenced without a guard took the whole
   // page down.
   const player: Player | undefined = team.players?.find((one) => one?.id === playerId)
+  // The number on the sheet, which is the number they played in. It is the club
+  // number for everybody the sheet did not renumber, so this reads the same as
+  // it always did on every teamsheet filled in before the field existed.
+  const worn = player ? numberInMatch(player, numbers) : undefined
 
   return (
     <li className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors">
       <span className="w-6 shrink-0 text-xs tabular-nums text-gray-400 text-right">
-        {typeof player?.number === 'number' ? player.number : ''}
+        {typeof worn === 'number' ? worn : ''}
       </span>
       {player ? (
         <Link

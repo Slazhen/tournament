@@ -14,6 +14,7 @@ import {
   IconClipboard,
 } from '../components/icons'
 import { registeredPlayers } from '../utils/squads'
+import { numberInMatch } from '../utils/players'
 import { youtubeEmbedUrl } from '../utils/video'
 import { byMinute, cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
 import { cdnUrl } from '../utils/images'
@@ -504,8 +505,9 @@ export default function MatchPage() {
             <div>
               <h3 className="font-semibold">Team Lineups</h3>
               <p className="text-sm opacity-70 mt-1">
-                Who played. Each club's manager can name their own side from their club page, and
-                either teamsheet can be corrected here afterwards.
+                Who played, and in which shirt. Each club's manager can name their own side from
+                their club page, and either teamsheet can be corrected here afterwards. A number is
+                the club's own unless it is changed here, and then it applies to this match alone.
               </p>
             </div>
             <div className="grid md:grid-cols-2 gap-6">
@@ -514,8 +516,9 @@ export default function MatchPage() {
                 accent="text-blue-400"
                 players={registeredPlayers(tournament, homeTeam)}
                 saved={match.lineups?.home?.starting ?? []}
-                onSave={(playerIds) =>
-                  setLineup(tournament.id, match.id, homeTeam.id, playerIds)
+                savedNumbers={match.lineups?.home?.numbers}
+                onSave={(playerIds, numbers) =>
+                  setLineup(tournament.id, match.id, homeTeam.id, playerIds, numbers)
                 }
               />
               <LineupPicker
@@ -523,8 +526,9 @@ export default function MatchPage() {
                 accent="text-red-400"
                 players={registeredPlayers(tournament, awayTeam)}
                 saved={match.lineups?.away?.starting ?? []}
-                onSave={(playerIds) =>
-                  setLineup(tournament.id, match.id, awayTeam.id, playerIds)
+                savedNumbers={match.lineups?.away?.numbers}
+                onSave={(playerIds, numbers) =>
+                  setLineup(tournament.id, match.id, awayTeam.id, playerIds, numbers)
                 }
               />
             </div>
@@ -604,26 +608,35 @@ export default function MatchPage() {
 
 
 /**
- * One club's teamsheet.
+ * One club's teamsheet, and the shirt each of them wore.
  *
  * Saved a tick at a time, and only ever this club's side of the fixture: the
  * opposing manager may be naming theirs on a phone at the same moment, and a
  * write that carried both would undo them.
+ *
+ * The number box is pre-filled with the club's own number and only what somebody
+ * changes is stored, so a sheet nobody renumbers is written exactly as it was
+ * before this existed. Clearing the box puts the player back on the club number
+ * rather than leaving them with none — a player wearing no shirt number at all
+ * is not a thing this is for.
  */
 function LineupPicker({
   name,
   accent,
   players,
   saved,
+  savedNumbers,
   onSave,
 }: {
   name: string
   accent: string
   players: Player[]
   saved: string[]
-  onSave: (playerIds: string[]) => Promise<void>
+  savedNumbers?: Record<string, number>
+  onSave: (playerIds: string[], numbers: Record<string, number>) => Promise<void>
 }) {
   const [chosen, setChosen] = useState<string[]>(saved)
+  const [numbers, setNumbers] = useState<Record<string, number>>(savedNumbers ?? {})
   const [error, setError] = useState<string | null>(null)
 
   // The stored list is the truth. Re-syncing on its contents rather than its
@@ -634,21 +647,77 @@ function LineupPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saved.join(',')])
 
-  const toggle = async (playerId: string) => {
-    const before = chosen
-    const next = before.includes(playerId)
-      ? before.filter((id) => id !== playerId)
-      : [...before, playerId]
+  // The same rule for the numbers, and by their contents for the same reason:
+  // the map is rebuilt on every render of the page above, so its identity says
+  // nothing about whether anything changed.
+  const storedNumbers = JSON.stringify(savedNumbers ?? {})
+  useEffect(() => {
+    setNumbers(savedNumbers ?? {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedNumbers])
 
-    setChosen(next)
+  const save = async (nextChosen: string[], nextNumbers: Record<string, number>) => {
+    const wasChosen = chosen
+    const wasNumbers = numbers
+
+    setChosen(nextChosen)
+    setNumbers(nextNumbers)
     setError(null)
     try {
-      await onSave(next)
+      await onSave(nextChosen, nextNumbers)
     } catch (caught) {
-      setChosen(before)
+      setChosen(wasChosen)
+      setNumbers(wasNumbers)
       setError(caught instanceof Error && caught.message ? caught.message : 'That could not be saved.')
     }
   }
+
+  const toggle = (playerId: string) => {
+    const on = chosen.includes(playerId)
+    const nextChosen = on ? chosen.filter((id) => id !== playerId) : [...chosen, playerId]
+
+    // A number belongs to somebody on the sheet, so taking a player off takes
+    // their number with them. The server cuts it either way; doing it here as
+    // well keeps the box from reappearing with a number nobody stored.
+    const nextNumbers = { ...numbers }
+    if (on) delete nextNumbers[playerId]
+
+    return save(nextChosen, nextNumbers)
+  }
+
+  const setNumber = (player: Player, entered: string) => {
+    const next = { ...numbers }
+    const typed = entered.trim()
+    const value = Number(typed)
+    const override =
+      typed !== '' && Number.isInteger(value) && value >= 0 && value <= 99 && value !== player.number
+
+    if (override) {
+      if (next[player.id] === value) return
+      next[player.id] = value
+    } else {
+      // Empty, out of range, or the club's own number: there is nothing to
+      // override, and storing the club number would pin a copy of it that a
+      // later renumbering could not move.
+      if (!(player.id in next)) return
+      delete next[player.id]
+    }
+
+    return save(chosen, next)
+  }
+
+  // Two players in the same shirt is allowed — a teamsheet filled in after the
+  // whistle is a record of what happened, and refusing it would refuse the
+  // record — so the screen says so rather than the server.
+  const worn = new Map<string, number>()
+  for (const player of players) {
+    if (!chosen.includes(player.id)) continue
+    const shirt = numberInMatch(player, numbers)
+    if (typeof shirt === 'number') worn.set(player.id, shirt)
+  }
+  const shared = new Set(
+    [...worn.values()].filter((shirt, index, all) => all.indexOf(shirt) !== index),
+  )
 
   return (
     <div className="glass rounded-lg p-4">
@@ -660,36 +729,62 @@ function LineupPicker({
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {players.map((player) => {
               const on = chosen.includes(player.id)
+              const shirt = worn.get(player.id)
+              const clash = typeof shirt === 'number' && shared.has(shirt)
               return (
-                <label
+                <div
                   key={player.id}
-                  className="flex items-center justify-between p-2 glass rounded cursor-pointer"
+                  className="flex items-center justify-between gap-2 p-2 glass rounded"
                 >
-                  <div className="flex items-center gap-3">
+                  {/* The label covers the tick and the name only. An input
+                      inside it would toggle the checkbox on every click. */}
+                  <label className="flex items-center gap-3 min-w-0 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={on}
                       onChange={() => toggle(player.id)}
-                      className="w-4 h-4 rounded border border-white/20"
+                      className="w-4 h-4 shrink-0 rounded border border-white/20"
                     />
-                    <span className="text-sm">
+                    <span className="text-sm truncate">
                       {player.firstName} {player.lastName}
                     </span>
-                    {player.number && <span className="text-xs opacity-70">#{player.number}</span>}
                     {player.position && (
-                      <span className="text-xs opacity-70">({player.position})</span>
+                      <span className="text-xs opacity-70 shrink-0">({player.position})</span>
                     )}
-                  </div>
-                  {on && (
-                    <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">
-                      Playing
+                  </label>
+
+                  {on ? (
+                    <InlineInput
+                      type="number"
+                      min={0}
+                      max={99}
+                      value={typeof shirt === 'number' ? shirt : ''}
+                      onCommit={(entered) => setNumber(player, entered)}
+                      aria-label={`Shirt number for ${player.firstName} ${player.lastName} in this match`}
+                      title="The shirt worn in this match. Clear it to go back to the club number."
+                      className={`w-16 shrink-0 px-2 py-1 rounded bg-transparent border text-sm text-center tabular-nums focus:outline-none ${
+                        clash
+                          ? 'border-amber-400/70 text-amber-300'
+                          : 'border-white/20 focus:border-white/40'
+                      }`}
+                    />
+                  ) : (
+                    <span className="w-16 shrink-0 text-xs opacity-50 text-center tabular-nums">
+                      {player.number ?? ''}
                     </span>
                   )}
-                </label>
+                </div>
               )
             })}
           </div>
           <div className="mt-3 text-sm opacity-70">Selected: {chosen.length} players</div>
+          {shared.size > 0 && (
+            <p className="text-sm text-amber-300 mt-2">
+              {shared.size === 1
+                ? 'Two players are down to wear the same number in this match.'
+                : 'Some numbers are worn by more than one player in this match.'}
+            </p>
+          )}
           {error && <p className="text-sm text-red-300 mt-2">{error}</p>}
         </>
       )}

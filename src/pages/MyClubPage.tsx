@@ -15,7 +15,8 @@ import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
 import { hasSquadEntry, playersNamedInMatch, registeredPlayers } from '../utils/squads'
 import { byMinute, unattributedGoals } from '../utils/matches'
-import { playerLabel } from '../utils/players'
+import { numberInMatch, playerLabel } from '../utils/players'
+import InlineInput from '../components/InlineInput'
 import { readCrestAppearance } from '../utils/crest'
 import { getPublicTournamentUrl } from '../utils/urls'
 import Trophy from '../components/Trophy'
@@ -1355,16 +1356,22 @@ function TeamsheetRow({
   const players = registeredPlayers(tournament, team)
   const side = match.homeTeamId === team.id ? 'home' : 'away'
   const stored = match.lineups?.[side]?.starting ?? []
+  // Only the shirt numbers this match overrides. Everybody else wore the number
+  // on their club record, which is what the box below is pre-filled with.
+  const storedNumbers = match.lineups?.[side]?.numbers ?? {}
 
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<string[]>(stored)
+  const [numbers, setNumbers] = useState<Record<string, number>>(storedNumbers)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const storedNumbersKey = JSON.stringify(storedNumbers)
   useEffect(() => {
     setSelected(stored)
+    setNumbers(storedNumbers)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [match.id, stored.join(',')])
+  }, [match.id, stored.join(','), storedNumbersKey])
 
   const opponentId = side === 'home' ? match.awayTeamId : match.homeTeamId
   const opponent = teamNames[opponentId] || 'Opponent to be confirmed'
@@ -1387,7 +1394,7 @@ function TeamsheetRow({
     setSaving(true)
     setError(null)
     try {
-      await clubService.saveLineup(tournament.id, match.id, team.id, selected)
+      await clubService.saveLineup(tournament.id, match.id, team.id, selected, numbers)
       await onReload()
       setOpen(false)
     } catch (caught) {
@@ -1396,6 +1403,44 @@ function TeamsheetRow({
       setSaving(false)
     }
   }
+
+  /**
+   * A shirt number for this match, or none.
+   *
+   * Only the difference from the squad number is kept: an empty box, something
+   * out of range, or the squad's own number all mean there is nothing to
+   * override, and storing the squad number would pin a copy of it that a later
+   * renumbering could not move.
+   */
+  const setNumber = (player: Player, entered: string) => {
+    const next = { ...numbers }
+    const typed = entered.trim()
+    const value = Number(typed)
+    const override =
+      typed !== '' && Number.isInteger(value) && value >= 0 && value <= 99 && value !== player.number
+
+    if (override) {
+      if (next[player.id] === value) return
+      next[player.id] = value
+    } else {
+      if (!(player.id in next)) return
+      delete next[player.id]
+    }
+    setNumbers(next)
+  }
+
+  // Two players in the same shirt is not refused — a teamsheet filled in after
+  // the whistle is a record of what happened, and refusing it would refuse the
+  // record — so the screen marks it instead.
+  const worn = new Map<string, number>()
+  for (const player of players) {
+    if (!selected.includes(player.id)) continue
+    const shirt = numberInMatch(player, numbers)
+    if (typeof shirt === 'number') worn.set(player.id, shirt)
+  }
+  const shared = new Set(
+    [...worn.values()].filter((shirt, index, all) => all.indexOf(shirt) !== index),
+  )
 
   return (
     <div className="rounded-lg bg-white/[0.03]">
@@ -1427,42 +1472,81 @@ function TeamsheetRow({
           ) : (
             <>
               <p className="text-xs text-gray-400 mb-3">
-                Tick everyone who played. There is no deadline: a teamsheet filled in after the
-                final whistle is still the record of who was on the pitch.
+                Tick everyone who played, and change a number where somebody wore a different
+                shirt. The number is the one on your squad list unless you change it here, and
+                then it counts for this match alone. There is no deadline: a teamsheet filled in
+                after the final whistle is still the record of who was on the pitch.
               </p>
 
               <ul className="grid gap-1 sm:grid-cols-2">
                 {players.map((player) => {
                   const on = selected.includes(player.id)
+                  const shirt = worn.get(player.id)
+                  const clash = typeof shirt === 'number' && shared.has(shirt)
                   return (
-                    <li key={player.id}>
-                      <label
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-white/10 ${
-                          on ? 'bg-white/[0.06]' : 'bg-transparent opacity-50'
-                        }`}
-                      >
+                    <li
+                      key={player.id}
+                      className={`flex items-center gap-2 pr-2 rounded-lg transition-colors ${
+                        on ? 'bg-white/[0.06]' : 'bg-transparent opacity-50'
+                      }`}
+                    >
+                      {/* The label stops at the name. An input inside it would
+                          toggle the tick on every click. */}
+                      <label className="flex items-center gap-2 min-w-0 flex-1 px-3 py-1.5 cursor-pointer hover:bg-white/10 rounded-lg">
                         <input
                           type="checkbox"
                           checked={on}
-                          onChange={() =>
+                          onChange={() => {
                             setSelected(
                               on
                                 ? selected.filter((id) => id !== player.id)
                                 : [...selected, player.id],
                             )
-                          }
+                            // A number belongs to somebody on the sheet: taking
+                            // a player off takes their number with them, which
+                            // is what the server does with it anyway.
+                            if (on && player.id in numbers) {
+                              const next = { ...numbers }
+                              delete next[player.id]
+                              setNumbers(next)
+                            }
+                          }}
                         />
                         <span className="text-sm truncate">
-                          {player.number ? (
-                            <span className="opacity-60 mr-2">{player.number}</span>
-                          ) : null}
                           {player.firstName} {player.lastName}
                         </span>
                       </label>
+
+                      {on ? (
+                        <InlineInput
+                          type="number"
+                          min={0}
+                          max={99}
+                          value={typeof shirt === 'number' ? shirt : ''}
+                          onCommit={(entered) => setNumber(player, entered)}
+                          aria-label={`Shirt number for ${player.firstName} ${player.lastName} in this match`}
+                          title="The shirt worn in this match. Clear it to go back to your squad number."
+                          className={`w-14 shrink-0 px-2 py-1 rounded bg-transparent border text-sm text-center tabular-nums focus:outline-none ${
+                            clash
+                              ? 'border-amber-400/70 text-amber-300'
+                              : 'border-white/20 focus:border-white/40'
+                          }`}
+                        />
+                      ) : (
+                        <span className="w-14 shrink-0 text-xs opacity-60 text-center tabular-nums">
+                          {player.number ?? ''}
+                        </span>
+                      )}
                     </li>
                   )
                 })}
               </ul>
+
+              {shared.size > 0 && (
+                <p className="text-sm text-amber-300 mt-2">
+                  More than one player is down to wear the same number in this match.
+                </p>
+              )}
 
               {error && <p className="text-sm text-red-300 mt-2">{error}</p>}
 

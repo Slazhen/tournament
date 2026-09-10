@@ -29,6 +29,7 @@ import {
 import {
   nameableInMatch,
   pickLineup,
+  pickNumbers,
   refusedByRegistration,
   sideOfTeam,
 } from '../lib/lineups.js'
@@ -1538,17 +1539,32 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     }
 
     const playerIds = pickLineup(ctx.body.playerIds, allowed)
-    await tournaments.setLineup(params.tournamentId!, params.matchId!, teamId, side, playerIds)
+    // Cut to the players actually named: a number belongs to somebody on the
+    // sheet, and an entry left behind for a player taken off it is a number
+    // nobody wears in this match.
+    const numbers = pickNumbers(ctx.body.numbers, playerIds)
+    await tournaments.setLineup(
+      params.tournamentId!,
+      params.matchId!,
+      teamId,
+      side,
+      playerIds,
+      numbers,
+    )
 
     await record(user, {
       action: 'lineup.update',
       entity: 'match',
       entityId: `${params.tournamentId}/${params.matchId}`,
-      summary: `Named ${playerIds.length} players for ${team.name} in ${tournament.name}`,
+      summary: `Named ${playerIds.length} players for ${team.name} in ${tournament.name}${
+        Object.keys(numbers).length > 0
+          ? `, ${Object.keys(numbers).length} in a different shirt`
+          : ''
+      }`,
       organizerId: tournament.organizerId,
     })
 
-    return { playerIds }
+    return { playerIds, numbers }
   })
 
   /**

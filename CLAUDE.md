@@ -550,6 +550,37 @@ somebody looking at a screen that has gone stale, and silence would cost them
 the record. An id belonging to no club at all is still dropped quietly, since
 that is a hand-made request rather than a mistake anyone can make on screen.
 
+**A shirt number can belong to one match.** A teamsheet stores `numbers` beside
+`starting` — a map of player id to the number that player wore in *this* match,
+holding only what somebody deliberately changed. Absent means the number on the
+club record, which is what every teamsheet written before the field meant and
+still means, so nothing had to be migrated and an old sheet reads unchanged. The
+other half of that choice is real and deliberate: renumbering a squad in June
+moves the number shown on every sheet nobody overrode, and only an override is
+pinned to the match. `numberInMatch` in `src/utils/players.ts` is the one place
+that answers "what did he wear", and `playersNamedInMatch` hands a player out
+with that number already on them, because every caller of it is inside one
+match.
+
+It rides on the teamsheet write rather than having a route of its own: same
+author, same side, same conditional write, so the two cannot disagree.
+`pickNumbers` cuts the map to the players actually named — a number belongs to
+somebody on the sheet — and the side is written whole, which means a save that
+sends no numbers *clears* them rather than leaving them alone. That is why the
+repository method takes them as a required argument: a caller who forgets is a
+type error and not a teamsheet quietly losing its numbers. Only `starting` is
+covered; nothing edits `substitutes` today, and a number sent for one is dropped.
+
+Two players in the same shirt is not refused. A teamsheet is filled in after the
+whistle as often as before it, and a save refused over a duplicate would refuse
+the record of what actually happened; both screens mark the clash instead.
+
+The one way round all of this is the one CLAUDE.md already names: `matches` is
+passed through whole by `POST /admin/tournaments` and `PATCH
+/admin/tournaments/:id`, so an organiser can write a `numbers` map of any shape
+by that route with none of the validation above running. It is the same debt as
+the rest of that paragraph and this does not pay it.
+
 Writes that reach the database are recorded by `lib/audit.ts`. A failed audit
 write never fails the request that caused it.
 

@@ -127,3 +127,38 @@ export function pickLineup(requested: unknown, allowed: Set<string>): string[] {
   }
   return chosen
 }
+
+/**
+ * The shirt numbers this teamsheet overrides, cut down to the players on it.
+ *
+ * Only the difference is stored. A number here is what the player wore in this
+ * match; absent means the number on their club record, which is what every
+ * teamsheet written before this field meant and still means — so nothing has to
+ * be migrated and an old sheet keeps reading correctly. The cost of that choice
+ * is the other half of it: renumbering a squad moves the number shown on the
+ * sheets nobody overrode, exactly as it did before, and only a deliberate
+ * override is pinned to the match.
+ *
+ * Cut to the players named, because a number belongs to somebody on the sheet:
+ * without that, a stale map would keep growing entries for players taken off it.
+ *
+ * A duplicate is not refused. Two players wearing the same number is a mistake
+ * the club made on the pitch as often as one the person typing made, and a
+ * teamsheet filled in after the whistle is a record of what happened — refusing
+ * it would refuse the record. The screens mark it instead.
+ */
+export function pickNumbers(requested: unknown, named: string[]): Record<string, number> {
+  if (!requested || typeof requested !== 'object' || Array.isArray(requested)) return {}
+
+  const allowed = new Set(named)
+  const numbers: Record<string, number> = {}
+  for (const [playerId, value] of Object.entries(requested as Record<string, unknown>)) {
+    if (!allowed.has(playerId)) continue
+    // Dropped rather than refused, like an unknown id in `pickLineup`: the
+    // screens cap the field at two digits, so anything outside this is a
+    // hand-made request and not a mistake anybody can make on a form.
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 99) continue
+    numbers[playerId] = value
+  }
+  return numbers
+}

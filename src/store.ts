@@ -173,6 +173,7 @@ type AppStore = {
     matchId: string,
     teamId: string,
     playerIds: string[],
+    numbers?: Record<string, number>,
   ) => Promise<void>
 
   /**
@@ -857,12 +858,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     matchId: string,
     teamId: string,
     playerIds: string[],
+    numbers: Record<string, number> = {},
   ) => {
-    const { playerIds: saved } = await matchService.saveLineup(
+    const { playerIds: saved, numbers: savedNumbers } = await matchService.saveLineup(
       tournamentId,
       matchId,
       teamId,
       playerIds,
+      numbers,
     )
 
     set(state => ({
@@ -871,19 +874,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
         return applyMatchUpdate(tournament, matchId, match => {
           if (match.homeTeamId !== teamId && match.awayTeamId !== teamId) return match
           const side = match.homeTeamId === teamId ? 'home' : 'away'
-          const lineups = {
+          const lineups: NonNullable<Match['lineups']> = {
             home: {
               starting: match.lineups?.home?.starting ?? [],
               substitutes: match.lineups?.home?.substitutes ?? [],
+              numbers: match.lineups?.home?.numbers,
             },
             away: {
               starting: match.lineups?.away?.starting ?? [],
               substitutes: match.lineups?.away?.substitutes ?? [],
+              numbers: match.lineups?.away?.numbers,
             },
           }
           // The server's answer, not the request: it drops anyone no longer
-          // registered, and the screen should show what was actually stored.
-          lineups[side] = { ...lineups[side], starting: saved }
+          // registered along with the numbers that were theirs, and the screen
+          // should show what was actually stored. An empty map is written as an
+          // absent key, the way the record itself stores it.
+          lineups[side] = {
+            substitutes: lineups[side]?.substitutes ?? [],
+            starting: saved,
+            numbers: savedNumbers && Object.keys(savedNumbers).length > 0 ? savedNumbers : undefined,
+          }
           return { ...match, lineups }
         })
       }),
