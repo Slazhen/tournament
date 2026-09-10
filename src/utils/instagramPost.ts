@@ -133,6 +133,25 @@ function roundedRect(
 }
 
 /**
+ * The address a canvas has to fetch an image from.
+ *
+ * The page has already drawn every one of these crests with a plain `<img>`,
+ * and the browser answers the canvas's `crossOrigin` request from that cached
+ * copy — which carries no `Access-Control-Allow-Origin`, because the request
+ * that fetched it asked for none — so the check fails and the image does not
+ * load at all. It is the same object under both addresses; the query string
+ * exists only to keep the two apart in the browser's own cache. The
+ * distribution forwards no query string, so the edge sees the same key and
+ * answers both from the same cached object, and S3 behind it ignores a
+ * parameter it does not know.
+ *
+ * `data:` and `blob:` are left alone: nothing is cached under them and they
+ * take no query string.
+ */
+const forCanvas = (src: string): string =>
+  /^https?:/i.test(src) ? `${src}${src.includes('?') ? '&' : '?'}canvas=1` : src
+
+/**
  * An image, or nothing.
  *
  * Nothing is a normal answer here and never an error: a club with no crest, an
@@ -160,7 +179,7 @@ function loadImage(src: string | undefined): Promise<HTMLImageElement | null> {
     image.crossOrigin = 'anonymous'
     image.onload = () => settle(image)
     image.onerror = () => settle(null)
-    image.src = src
+    image.src = forCanvas(src)
   })
 }
 

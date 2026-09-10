@@ -927,7 +927,19 @@ round: a row whose player cannot be found still counts, under "Former player".
   Two things hold it up. Every image on it is loaded with `crossOrigin`, which
   is what the CORS header above is for, and a crest that will not load is drawn
   as the club's initial on the club's own colour — one refused image has to cost
-  one badge and not the whole poster. And what a row is marked as — the medals,
+  one badge and not the whole poster.
+
+  The header alone was not enough, and the reason is worth keeping. The page
+  draws every crest first with a plain `<img>`, and the browser then answers the
+  canvas's `crossOrigin` request out of that cached copy — which carries no
+  `Access-Control-Allow-Origin`, because the request that filled the cache asked
+  for none. The check fails and the image does not load at all, while a `fetch`
+  of the same address succeeds: measured on the deployed site, every crest and
+  the competition's own logo were missing from the poster with the CORS header
+  live and correct. `forCanvas` in `instagramPost.ts` therefore appends a query
+  string to every http(s) address the canvas loads, which costs nothing — the
+  distribution forwards no query string, so the edge answers from the same
+  cached object — and only keeps the two answers apart in the browser's cache. And what a row is marked as — the medals,
   the green of a qualifying place — is `standingMark` in
   `PublicTournamentPage.tsx`, read by the table and by the poster alike: two
   answers to who is on the podium would disagree the first time either of them
