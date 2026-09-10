@@ -1,30 +1,39 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import InstagramIcon from './InstagramIcon'
-import { renderTablePost } from '../utils/instagramPost'
-import type { TablePost } from '../utils/instagramPost'
 
 /**
- * The button that turns a table into something postable.
+ * The button that turns what is on screen into something postable.
  *
- * The label says as little as fits on it and the tooltip says the rest: this
- * sits on a page visitors read, above a table, and a sentence in a button there
- * is a sentence competing with the table.
+ * One button for three kinds of poster — a table, a round, a match — because
+ * everything around the drawing is the same: press, wait, look at it, download
+ * it or hand it to the phone's share sheet. Which poster it is, is the `draw`
+ * it was given.
+ *
+ * The label says as little as fits on it and the tooltip says the rest: these
+ * sit on pages visitors read, and a sentence in a button there is a sentence
+ * competing with what the page is about.
  *
  * The poster is drawn only when the button is pressed. It costs the crests a
  * second fetch — the page has them, the canvas needs them again with CORS — and
- * a page that drew one for every group on load would pay for posts nobody asked
+ * a page that drew one for every round on load would pay for posts nobody asked
  * for.
  */
-export default function TablePostButton({
-  build,
+export default function PostButton({
+  draw,
   filename,
   label = 'Post table',
+  title = 'Generate an Instagram post',
 }: {
-  /** Built on the press rather than passed in, so the poster holds the table as it stands. */
-  build: () => TablePost
+  /**
+   * Called on the press rather than handed a finished poster, so what is drawn
+   * is what the page holds at that moment.
+   */
+  draw: () => Promise<Blob>
   filename: string
   label?: string
+  /** What the tooltip says, since the label has room for two words. */
+  title?: string
 }) {
   const [image, setImage] = useState<{ blob: Blob; url: string } | null>(null)
   const [drawing, setDrawing] = useState(false)
@@ -50,7 +59,7 @@ export default function TablePostButton({
     setDrawing(true)
     setError(null)
     try {
-      const blob = await renderTablePost(build())
+      const blob = await draw()
       setImage({ blob, url: URL.createObjectURL(blob) })
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'The post could not be generated.')
@@ -82,8 +91,8 @@ export default function TablePostButton({
         type="button"
         onClick={generate}
         disabled={drawing}
-        title="Generate an Instagram post with this table"
-        aria-label="Generate an Instagram post with this table"
+        title={title}
+        aria-label={title}
         className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs sm:text-sm text-gray-300 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-60"
       >
         <InstagramIcon size={15} />
@@ -114,7 +123,7 @@ export default function TablePostButton({
                 image && (
                   <img
                     src={image.url}
-                    alt="The table as an Instagram post"
+                    alt="The Instagram post"
                     className="w-full rounded-xl border border-white/10"
                   />
                 )

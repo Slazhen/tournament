@@ -53,3 +53,33 @@ export function formatMatchDateTime(iso?: string): string {
     minute: '2-digit',
   })
 }
+
+/**
+ * The clock a fixture kicks off at, or nothing where only the day is known.
+ *
+ * Two things this data does that a plain read of `dateISO` gets wrong. A round
+ * built by hand keeps the day in `dateISO` at midnight and the clock beside it
+ * in `time`, so the timestamp's own hours are not the kick-off. And a fixture
+ * somebody entered a date for and no time is stored at local midnight too — so
+ * "00:00" here means "no time recorded", not a game in the small hours, and a
+ * poster that prints it announces a fixture nobody will turn up to.
+ *
+ * The pages' own fixture rows are unchanged and still print what they always
+ * did; this is the one answer the posters ask.
+ */
+export function kickOffClock(match: { dateISO?: string; time?: string } | null | undefined): string | undefined {
+  if (match?.time) return match.time
+  if (!match?.dateISO) return undefined
+  const date = new Date(match.dateISO)
+  if (Number.isNaN(date.getTime())) return undefined
+  const clock = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return clock === '00:00' ? undefined : clock
+}
+
+/** The day a fixture is played on, without the clock. */
+export function matchDay(iso?: string): string | undefined {
+  if (!iso) return undefined
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return undefined
+  return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+}

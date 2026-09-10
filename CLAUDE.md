@@ -914,15 +914,33 @@ round: a row whose player cannot be found still counts, under "Former player".
   passes it through `headerColor` first, which returns a colour or the fallback
   and nothing else. **A validation that runs on the update and not on the
   create has not been done.**
-- **The table is also a picture.** `src/utils/instagramPost.ts` draws the
-  standings as a 1080x1350 PNG — the season's colour, its logo, the clubs'
-  crests, the application's mark — and `TablePostButton` puts it behind one
-  button above each table on the public season page. Instagram accepts nothing
-  from a web page, so what the button produces is a file to download or hand to
-  the phone's share sheet. It is drawn on a canvas rather than photographed off
-  the page: ten columns of small type built for a browser window read as
-  nothing in a feed, so the poster is a different layout of the same rows, and
-  the rows still come from `utils/standings.ts`.
+- **The season is also a set of pictures.** `src/utils/instagramPost.ts` draws
+  three posters, each 1080x1350 in the season's colour with its logo, the clubs'
+  crests and the application's mark on it: the table, a round
+  (`renderFixturesPost` — one line per fixture, the score where it has been
+  played and the kick-off where it has not, one layout for both, because what
+  changes between the announcement and the result is only what stands in the
+  middle of the line), and a match (`renderMatchPost` — the plate with the
+  score on it, and under it every goal and booking on the side it belongs to,
+  the busiest matches cut short with a line counting what did not fit).
+  `PostButton` is
+  the one button behind all three: above each table, on each round's card
+  (`RoundCard`'s `action`, beside its title rather than inside it — a button
+  inside a button is neither), and on the line of facts under a match's
+  scoreboard. Instagram accepts nothing from a web page, so what a button
+  produces is a file to download or hand to the phone's share sheet.
+
+  They are drawn on a canvas rather than photographed off the page: ten columns
+  of small type built for a browser window read as nothing in a feed, so a
+  poster is a different layout of the same records. `drawChrome` and
+  `finishPost` are the half that is the same on all three — three headers
+  written out separately would be three different headers within a month — and
+  what goes on them still comes from where the pages get it: the rows from
+  `utils/standings.ts`, the events from `timeline` in `PublicMatchPage.tsx`,
+  which the Events panel and the poster both read so that a goal nobody has
+  named cannot appear on one and not the other. A round the organiser is
+  holding back is offered no button at all: its fixtures arrive with no clubs on
+  them, and the poster would be a column of TBA.
 
   Two things hold it up. Every image on it is loaded with `crossOrigin`, which
   is what the CORS header above is for, and a crest that will not load is drawn

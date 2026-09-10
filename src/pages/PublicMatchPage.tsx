@@ -18,8 +18,8 @@ import { publicTeamUrl } from '../utils/teams'
 import { tableForMatch } from '../utils/standings'
 import type { Tournament, Team, Match, Organizer, Player } from '../types'
 import { getSeasonUrl, seasonLabel, seriesName } from '../utils/seasons'
-import { formatMatchDateTime } from '../utils/datetime'
-import { headerColor, inkOn, shade } from '../utils/crest'
+import { formatMatchDateTime, kickOffClock, matchDay } from '../utils/datetime'
+import { competitionColor, headerColor, inkOn, shade } from '../utils/crest'
 import {
   IconBall,
   IconCard,
@@ -33,6 +33,10 @@ import {
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import MatchScoreboard from '../components/MatchScoreboard'
+import PostButton from '../components/PostButton'
+import { renderMatchPost } from '../utils/instagramPost'
+import type { MatchPost, PostClub, PostEvent } from '../utils/instagramPost'
+import { slugify } from '../utils/urls'
 import { youtubeEmbedUrl } from '../utils/video'
 import { cdnUrl } from '../utils/images'
 
@@ -237,6 +241,37 @@ export default function PublicMatchPage() {
 
   const teamOf = (side: 'home' | 'away') => (side === 'home' ? homeTeam : awayTeam)
 
+  /* ---------- The match as a picture ---------- */
+
+  const postClub = (team: Team): PostClub => ({
+    name: team.name,
+    logo: team.logo,
+    color: headerColor(team),
+  })
+
+  const matchPost = (): MatchPost => ({
+    competition: seriesName(tournament),
+    season: seasonLabel(tournament),
+    group: roundLabel(match),
+    // The day and the clock separately rather than through
+    // `formatMatchDateTime`, which reads the hours off `dateISO`: on a fixture
+    // that keeps its kick-off in `time` the header would have said 00:00 while
+    // the plate under it said 18:30.
+    note:
+      [matchDay(match.dateISO), kickOffClock(match), match.venue]
+        .filter(Boolean)
+        .join(' · ') || undefined,
+    logo: tournament.logo,
+    logoDimmed: Boolean(tournament.logoOpaqueBackground),
+    color: competitionColor(tournament),
+    home: postClub(homeTeam),
+    away: postClub(awayTeam),
+    homeGoals: typeof match.homeGoals === 'number' ? match.homeGoals : undefined,
+    awayGoals: typeof match.awayGoals === 'number' ? match.awayGoals : undefined,
+    when: kickOffClock(match),
+    events: postEvents(match, teamOf),
+  })
+
   return (
     <div className="grid gap-4 place-items-center">
       <div className="w-full">
@@ -280,6 +315,14 @@ export default function PublicMatchPage() {
               <IconWhistle size={14} className="opacity-70" /> {match.referee}
             </span>
           )}
+          {/* On the line of facts under the plate: in plain sight for anybody
+              who has just read the score, and out of the plate's way. */}
+          <PostButton
+            draw={() => renderMatchPost(matchPost())}
+            filename={`${slugify(homeTeam.name)}-${slugify(awayTeam.name)}-${slugify(seasonLabel(tournament))}.png`}
+            label="Post match"
+            title="Generate an Instagram post with this match"
+          />
         </div>
 
         {/* The tabs. Sticky, because the panels below them are long enough that
@@ -364,36 +407,7 @@ function EventsPanel({
   match: Match
   teamOf: (side: 'home' | 'away') => Team | null
 }) {
-  // The goals of this result nobody has named a scorer for. They are drawn as
-  // rows rather than left out, because a 3-1 with one scorer named is a story
-  // with two goals missing from it, and a timeline that quietly showed one
-  // event read as the whole of what happened. Whoever can fill them in — the
-  // organiser, or the club's own manager — sees the same gap from their screens.
-  const unnamed = unattributedGoals(match)
-
-  // Copied before sorting: the arrays belong to the match record this page is
-  // holding. A goal nobody timed sorts to the end rather than to the kick-off.
-  const events: TimelineEvent[] = byMinute([
-    ...(match.goals ?? []).map((goal) => ({
-      kind: 'goal' as const,
-      id: goal.id,
-      minute: goal.minute,
-      goal,
-    })),
-    ...(match.cards ?? [])
-      // A booking with nobody named is a half-filled row somebody is still
-      // typing: there is no score counting it and nothing to show.
-      .filter((card) => Boolean(card?.playerId))
-      .map((card) => ({ kind: 'card' as const, id: card.id, minute: card.minute, card })),
-    ...(['home', 'away'] as const).flatMap((side) =>
-      Array.from({ length: unnamed[side] }, (_, index) => ({
-        kind: 'unnamed' as const,
-        id: `unnamed-${side}-${index}`,
-        minute: undefined,
-        side,
-      })),
-    ),
-  ])
+  const events = timeline(match)
 
   if (events.length === 0 && !match.preview && !match.report) {
     return <Nothing>No goals or bookings have been recorded for this match.</Nothing>
@@ -463,6 +477,88 @@ function EventsPanel({
       )}
     </div>
   )
+}
+
+/**
+ * Everything that happened, in the order it happened.
+ *
+ * The panel above draws it and the Instagram poster draws it, and the awkward
+ * half is the same for both: the goals this result counts that nobody has named
+ * are derived and have no record of their own, so they are assembled here or
+ * they are missing from whichever of the two forgot to.
+ */
+function timeline(match: Match): TimelineEvent[] {
+  // The goals of this result nobody has named a scorer for. They are drawn as
+  // rows rather than left out, because a 3-1 with one scorer named is a story
+  // with two goals missing from it, and a timeline that quietly showed one
+  // event read as the whole of what happened. Whoever can fill them in — the
+  // organiser, or the club's own manager — sees the same gap from their screens.
+  const unnamed = unattributedGoals(match)
+
+  // Copied before sorting: the arrays belong to the match record this page is
+  // holding. A goal nobody timed sorts to the end rather than to the kick-off.
+  return byMinute([
+    ...(match.goals ?? []).map((goal) => ({
+      kind: 'goal' as const,
+      id: goal.id,
+      minute: goal.minute,
+      goal,
+    })),
+    ...(match.cards ?? [])
+      // A booking with nobody named is a half-filled row somebody is still
+      // typing: there is no score counting it and nothing to show.
+      .filter((card) => Boolean(card?.playerId))
+      .map((card) => ({ kind: 'card' as const, id: card.id, minute: card.minute, card })),
+    ...(['home', 'away'] as const).flatMap((side) =>
+      Array.from({ length: unnamed[side] }, (_, index) => ({
+        kind: 'unnamed' as const,
+        id: `unnamed-${side}-${index}`,
+        minute: undefined,
+        side,
+      })),
+    ),
+  ])
+}
+
+/**
+ * The same timeline, as the poster draws it: a side, a minute, a name and a
+ * mark. The rules about who a goal is named against are the panel's rules,
+ * because they are the match's rules — an own goal is put in by a player of the
+ * other side, and one nobody has named is still an event the score counts.
+ */
+function postEvents(
+  match: Match,
+  teamOf: (side: 'home' | 'away') => Team | null,
+): PostEvent[] {
+  return timeline(match).map((event) => {
+    if (event.kind === 'unnamed') {
+      return { side: event.side, minute: event.minute, label: 'Unknown', kind: 'goal' as const }
+    }
+
+    if (event.kind === 'card') {
+      const side = event.card.team === 'away' ? ('away' as const) : ('home' as const)
+      return {
+        side,
+        minute: event.minute,
+        label: playerName(teamOf(side), event.card.playerId),
+        kind: event.card.type,
+      }
+    }
+
+    const { goal } = event
+    const side = goal.team === 'away' ? ('away' as const) : ('home' as const)
+    const counted = teamOf(side)
+    const named = scorerSide(goal) === side ? counted : teamOf(side === 'home' ? 'away' : 'home')
+    const label = goal.playerId
+      ? `${playerName(named, goal.playerId, counted)}${
+          goal.type === 'own_goal' ? ' (OG)' : goal.type === 'penalty' ? ' (P)' : ''
+        }`
+      : goal.type === 'own_goal'
+        ? 'Own goal'
+        : 'Unknown'
+
+    return { side, minute: event.minute, label, kind: 'goal' as const }
+  })
 }
 
 type TimelineEvent =

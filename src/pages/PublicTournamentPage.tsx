@@ -23,9 +23,10 @@ import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
 import { cdnUrl } from '../utils/images'
-import TablePostButton from '../components/TablePostButton'
-import { standingsNote } from '../utils/instagramPost'
-import type { PostMark, PostRow, TablePost } from '../utils/instagramPost'
+import { kickOffClock } from '../utils/datetime'
+import PostButton from '../components/PostButton'
+import { renderFixturesPost, renderTablePost, standingsNote } from '../utils/instagramPost'
+import type { FixturesPost, PostClub, PostMark, PostRow, TablePost } from '../utils/instagramPost'
 
 const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
 
@@ -439,8 +440,101 @@ export default function PublicTournamentPage() {
     rows: rows.map((row: any, index: number) => postRow(row, mark(index, row.id))),
   })
 
-  const postFilename = (group?: string) =>
-    `${slugify(competition)}-${slugify(thisSeason)}${group ? `-${slugify(group)}` : ''}-table.png`
+  const postFilename = (part: string) =>
+    `${slugify(competition)}-${slugify(thisSeason)}-${slugify(part)}.png`
+
+  /** What every poster of this season carries, whatever is drawn on it. */
+  const postChrome = {
+    competition,
+    season: thisSeason,
+    logo: tournament.logo,
+    logoDimmed: Boolean(tournament.logoOpaqueBackground),
+    color: competitionColor(tournament),
+  }
+
+  const postClub = (teamId: string): PostClub => {
+    const team = teams.find((candidate: any) => candidate.id === teamId)
+    return {
+      name: team?.name || 'Unknown Team',
+      logo: team?.logo,
+      color: team ? headerColor(team) : '#3B82F6',
+    }
+  }
+
+  /** Which days a round is played over, ignoring anything unreadable as a date. */
+  const roundDays = (matches: any[]): string[] => [
+    ...new Set(
+      matches
+        .map((match) => {
+          const date = match?.dateISO ? new Date(match.dateISO) : null
+          return date && !Number.isNaN(date.getTime()) ? date.toDateString() : ''
+        })
+        .filter(Boolean),
+    ),
+  ]
+
+  /**
+   * The line under the season's name on a round's poster.
+   *
+   * A round that has been played is dated by the day it was played on; one that
+   * has not is the announcement of that day. Where its fixtures span more than
+   * one day the poster says so rather than picking the first, since each line
+   * carries its own kick-off anyway.
+   */
+  const roundNote = (matches: any[]): string | undefined => {
+    const days = roundDays(matches)
+    const played = matches.length > 0 && matches.every((match) => matchStatus(match) === 'finished')
+    const day =
+      days.length === 1
+        ? new Date(days[0]).toLocaleDateString('en-GB', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })
+        : days.length > 1
+          ? 'Across several days'
+          : ''
+    if (played) return day ? `Results · ${day}` : 'Results'
+    return day || undefined
+  }
+
+  const roundPost = (matches: any[], title: string): FixturesPost => {
+    // A round played on one day is dated once, in the header. A round spread
+    // over several says so there and carries the day on each line instead —
+    // without that the announcement of such a round names no date at all.
+    const spread = roundDays(matches).length > 1
+    return {
+      ...postChrome,
+      group: title,
+      note: roundNote(matches),
+      fixtures: matches.map((match: any) => ({
+        home: postClub(match.homeTeamId),
+        away: postClub(match.awayTeamId),
+        homeGoals: typeof match.homeGoals === 'number' ? match.homeGoals : undefined,
+        awayGoals: typeof match.awayGoals === 'number' ? match.awayGoals : undefined,
+        when:
+          [spread ? shortDate(match) : '', kickOffClock(match) ?? ''].filter(Boolean).join(' · ') ||
+          undefined,
+      })),
+    }
+  }
+
+  /**
+   * The button on a round's card, or nothing.
+   *
+   * A round the organiser is holding back arrives with no clubs on it at all —
+   * a poster of it would be a column of TBA — so it is not offered one.
+   */
+  const roundPostButton = (matches: any[], title: string) =>
+    matches.length === 0 || matches.some((match: any) => match.hidden) ? undefined : (
+      <PostButton
+        draw={() => renderFixturesPost(roundPost(matches, title))}
+        filename={postFilename(title)}
+        label="Post round"
+        title={`Generate an Instagram post with ${title}`}
+      />
+    )
   const otherSeasons = seasons.filter((season) => season.id !== tournament.id)
   const seasonHref = (season: TournamentSummary) =>
     `/${organizerSlug}/${slugify(seriesName(season))}/${slugify(seasonLabel(season))}`
@@ -691,9 +785,12 @@ export default function PublicTournamentPage() {
                       <div className="relative mb-4">
                         <h3 className="text-xl sm:text-2xl font-bold text-white text-center">Group {groupLetter}</h3>
                         <div className="mt-3 flex justify-center sm:mt-0 sm:absolute sm:right-0 sm:top-0">
-                          <TablePostButton
-                            build={() => tablePost(groupTable, groupMark, `Group ${groupLetter}`)}
-                            filename={postFilename(`Group ${groupLetter}`)}
+                          <PostButton
+                            draw={() =>
+                              renderTablePost(tablePost(groupTable, groupMark, `Group ${groupLetter}`))
+                            }
+                            filename={postFilename(`Group ${groupLetter} table`)}
+                            title="Generate an Instagram post with this table"
                           />
                         </div>
                       </div>
@@ -780,9 +877,14 @@ export default function PublicTournamentPage() {
               {/* Above the table and to the right: visible to anybody who has
                   just read it, and out of the way of everybody else. */}
               <div className="flex justify-end mb-3">
-                <TablePostButton
-                  build={() => tablePost(table, (index, teamId) => standingMark(index, teamId, qualified))}
-                  filename={postFilename()}
+                <PostButton
+                  draw={() =>
+                    renderTablePost(
+                      tablePost(table, (index, teamId) => standingMark(index, teamId, qualified)),
+                    )
+                  }
+                  filename={postFilename('table')}
+                  title="Generate an Instagram post with this table"
                 />
               </div>
               <div className="overflow-x-auto">
@@ -919,6 +1021,7 @@ export default function PublicTournamentPage() {
                   accent="border-amber-400/25"
                   badgeAccent="from-amber-500/20 to-orange-500/20 border-amber-400/25"
                   defaultOpen
+                  action={roundPostButton(matches, round.name || `Playoff round ${roundIndex + 1}`)}
                 >
                   {matches.length > 0 ? (
                     matches.map(renderMatch)
@@ -1068,6 +1171,7 @@ export default function PublicTournamentPage() {
                         title={`Round ${roundNumber + 1} — Group Stage`}
                         subtitle={roundSubtitle(roundMatches)}
                         defaultOpen={groupRoundOpen[index]}
+                        action={roundPostButton(roundMatches, `Round ${roundNumber + 1}`)}
                       >
                         {roundMatches.map(renderMatch)}
                       </RoundCard>
@@ -1098,6 +1202,7 @@ export default function PublicTournamentPage() {
                               // A knockout round is short and it is the sharp end
                               // of the tournament: never folded away.
                               defaultOpen
+                              action={roundPostButton(roundMatches, `Division 1 — ${roundName}`)}
                             >
                               {roundMatches.map(renderMatch)}
                             </RoundCard>
@@ -1129,6 +1234,7 @@ export default function PublicTournamentPage() {
                               accent="border-blue-500/20"
                               badgeAccent="from-blue-500/20 to-cyan-500/20 border-blue-400/20"
                               defaultOpen
+                              action={roundPostButton(roundMatches, `Division 2 — ${roundName}`)}
                             >
                               {roundMatches.map(renderMatch)}
                             </RoundCard>
@@ -1183,6 +1289,7 @@ export default function PublicTournamentPage() {
                     .filter(Boolean)
                     .join(' · ')}
                   defaultOpen={roundOpen[index]}
+                  action={roundPostButton(roundMatches, `Round ${roundNumber + 1}`)}
                 >
                   {roundMatches.map(renderMatch)}
                 </RoundCard>
@@ -1666,6 +1773,7 @@ function RoundCard({
   accent = 'border-white/20',
   badgeAccent = 'from-blue-500/20 to-purple-500/20 border-white/20',
   defaultOpen,
+  action,
   children,
 }: {
   badge: string
@@ -1674,6 +1782,8 @@ function RoundCard({
   accent?: string
   badgeAccent?: string
   defaultOpen: boolean
+  /** Beside the title rather than inside it: a button inside a button is neither. */
+  action?: ReactNode
   children: ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -1681,11 +1791,12 @@ function RoundCard({
   return (
     <div className="mb-4 sm:mb-6">
       <div className={`glass rounded-2xl shadow-2xl border ${accent}`}>
-        <button
+        <div className="flex items-stretch">
+          <button
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
-          className="w-full flex items-center justify-between gap-3 p-3 sm:p-6 text-left hover:bg-white/[0.03] rounded-2xl transition-colors"
+          className="flex-1 min-w-0 flex items-center justify-between gap-3 p-3 sm:p-6 text-left hover:bg-white/[0.03] rounded-2xl transition-colors"
         >
           <div className="flex items-center gap-2 sm:gap-4">
             <div
@@ -1705,6 +1816,8 @@ function RoundCard({
             ▾
           </span>
         </button>
+          {action && <div className="flex items-center pr-3 sm:pr-6">{action}</div>}
+        </div>
         {open && (
           <div className="grid gap-2 sm:gap-4 px-3 pb-3 sm:px-6 sm:pb-6">{children}</div>
         )}

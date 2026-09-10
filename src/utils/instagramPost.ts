@@ -26,7 +26,7 @@ import { cdnUrl } from './images'
 import { allMatches, isPlayed } from './matches'
 import { logoMarkDataUrl } from './logoMark'
 import type { Match, Tournament } from '../types'
-import { shade } from './crest'
+import { shade, translucent } from './crest'
 
 /** What a row is marked as, in the same vocabulary the page's table uses. */
 export type PostMark = 'gold' | 'silver' | 'bronze' | 'advance' | 'second' | 'none'
@@ -44,19 +44,63 @@ export type PostRow = {
   eliminated?: boolean
 }
 
-export type TablePost = {
+/**
+ * What every poster carries whatever is drawn on it: whose competition this is,
+ * which season, and the colour and logo it is painted in.
+ */
+export type PostChrome = {
   competition: string
   season: string
-  /** "Group A", where the season is drawn as more than one table. */
+  /** The line above the name: "Group A", "Round 5", "Division 1 — Final". */
   group?: string
-  /** "After Round 7 · 8 Sep 2026". */
+  /** "After Round 7 · 8 Sep 2026", or a kick-off and a ground. */
   note?: string
   logo?: string
   /** A logo uploaded with its own background on it, which cannot be a watermark at full strength. */
   logoDimmed?: boolean
   /** The season's colour — `competitionColor(tournament)`. */
   color: string
-  rows: PostRow[]
+}
+
+/** A club, reduced to what a poster draws of it. */
+export type PostClub = {
+  name: string
+  logo?: string
+  /** The club's own colour, for the disc its initial sits on when the crest will not load. */
+  color: string
+}
+
+export type TablePost = PostChrome & { rows: PostRow[] }
+
+/** One fixture on the poster of a round, played or still to be played. */
+export type PostFixture = {
+  home: PostClub
+  away: PostClub
+  homeGoals?: number
+  awayGoals?: number
+  /** What stands in the middle where there is no score yet: "Sat 18:30", or nothing. */
+  when?: string
+}
+
+export type FixturesPost = PostChrome & { fixtures: PostFixture[] }
+
+/** A goal or a booking, on the side it belongs to. */
+export type PostEvent = {
+  side: 'home' | 'away'
+  minute?: number
+  /** The player, or "Unknown" for a goal the result counts and nobody has named. */
+  label: string
+  kind: 'goal' | 'yellow' | 'second_yellow' | 'red'
+}
+
+export type MatchPost = PostChrome & {
+  home: PostClub
+  away: PostClub
+  homeGoals?: number
+  awayGoals?: number
+  /** The kick-off, drawn in place of the score while there is none. */
+  when?: string
+  events: PostEvent[]
 }
 
 const WIDTH = 1080
@@ -268,23 +312,81 @@ function fitSize(
   return sizes[sizes.length - 1]
 }
 
+/** A club's crest, or its initial on its own colour where there is no crest to draw. */
+function drawCrest(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement | null,
+  club: { name: string; color: string },
+  x: number,
+  y: number,
+  size: number,
+): void {
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2)
+  ctx.closePath()
+  ctx.clip()
+  if (image) {
+    drawCover(ctx, image, x, y, size)
+  } else {
+    ctx.fillStyle = club.color
+    ctx.fillRect(x, y, size, size)
+    ctx.fillStyle = '#ffffff'
+    ctx.font = font(size * 0.46, 700)
+    ctx.textAlign = 'center'
+    ctx.fillText((club.name.trim().charAt(0) || 'T').toUpperCase(), x + size / 2, y + size * 0.66)
+  }
+  ctx.restore()
+  ctx.beginPath()
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)'
+  ctx.lineWidth = 2
+  ctx.stroke()
+}
+
+/** The dark plate everything below the header is drawn on. */
+function drawPanel(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  ctx.fillStyle = 'rgba(8, 10, 14, 0.55)'
+  roundedRect(ctx, x, y, w, h, 28)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
+  ctx.lineWidth = 2
+  ctx.stroke()
+}
+
+/** A poster with its ground and header drawn, and the room left for the rest. */
+type Sheet = {
+  canvas: HTMLCanvasElement
+  ctx: CanvasRenderingContext2D
+  mark: HTMLImageElement | null
+  /** Where what this poster is about may start, and how much height it has. */
+  top: number
+  height: number
+}
+
 /**
- * Draw the poster and hand back the PNG.
+ * The half of a poster that is the same on all of them.
  *
- * Throws only where the browser refuses to produce an image at all, which the
- * caller shows as a message: everything that can be missing — a logo, a crest,
- * the round — is drawn as its absence instead.
+ * The ground, the coloured header, the competition's logo as a tile and as a
+ * watermark behind its name, and the seam under it. Three kinds of poster are
+ * drawn from here — the table, a round, a match — and a header written out
+ * three times would be three headers within a month.
  */
-export async function renderTablePost(post: TablePost): Promise<Blob> {
+async function drawChrome(post: PostChrome): Promise<Sheet> {
   const canvas = document.createElement('canvas')
   canvas.width = WIDTH
   canvas.height = HEIGHT
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('This browser cannot draw the post.')
 
-  const [logo, crests, mark] = await Promise.all([
+  const [logo, mark] = await Promise.all([
     loadImage(cdnUrl(post.logo)),
-    Promise.all(post.rows.map((row) => loadImage(cdnUrl(row.logo)))),
     loadImage(logoMarkDataUrl(96)),
   ])
 
@@ -370,12 +472,72 @@ export async function renderTablePost(post: TablePost): Promise<Blob> {
     ctx.fillText(fit(ctx, post.note, textWidth), textX, y)
   }
 
+  const top = HEADER + 24
+  return { canvas, ctx, mark, top, height: HEIGHT - FOOTER - 16 - top }
+}
+
+/**
+ * The footer, and the PNG.
+ *
+ * Throws only where the browser refuses to produce an image at all, which the
+ * caller shows as a message: everything that can be missing — a logo, a crest,
+ * the round — is drawn as its absence instead.
+ */
+async function finishPost({ canvas, ctx, mark }: Sheet): Promise<Blob> {
+  /* ---------- The footer ---------- */
+
+  const markSize = 46
+  const name = 'MFTournament'
+  const site = 'myfootballtournament.com'
+  ctx.font = font(30, 700)
+  const nameW = ctx.measureText(name).width
+  ctx.font = font(26, 400)
+  const siteW = ctx.measureText(site).width
+  const total = markSize + 16 + nameW + 18 + siteW
+  const footerY = HEIGHT - FOOTER / 2
+  let cursor = (WIDTH - total) / 2
+
+  if (mark) {
+    ctx.drawImage(mark, cursor, footerY - markSize / 2, markSize, markSize)
+  }
+  cursor += markSize + 16
+  ctx.textAlign = 'left'
+  ctx.font = font(30, 700)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
+  ctx.fillText(name, cursor, footerY + 10)
+  cursor += nameW + 18
+  ctx.font = font(26, 400)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+  ctx.fillText(site, cursor, footerY + 9)
+
+  const blob = await new Promise<Blob | null>((resolve) => {
+    try {
+      canvas.toBlob((value) => resolve(value), 'image/png')
+    } catch {
+      // A tainted canvas. Everything drawn here is either same-origin or loaded
+      // with CORS, so this means the CDN answered without the header.
+      resolve(null)
+    }
+  })
+  if (!blob) throw new Error('The post could not be saved as an image in this browser.')
+  return blob
+}
+
+/** The league table, drawn as a poster. */
+export async function renderTablePost(post: TablePost): Promise<Blob> {
+  // Started before the header is drawn rather than after it, so the crests are
+  // on their way while the chrome's own two images are being fetched.
+  const crestsLoading = Promise.all(post.rows.map((row) => loadImage(cdnUrl(row.logo))))
+  const sheet = await drawChrome(post)
+  const crests = await crestsLoading
+  const { ctx } = sheet
+
   /* ---------- The table ---------- */
 
   const panelX = MARGIN
   const panelW = WIDTH - MARGIN * 2
-  const areaTop = HEADER + 24
-  const area = HEIGHT - FOOTER - 16 - areaTop
+  const areaTop = sheet.top
+  const area = sheet.height
   // Room for the top padding, the column labels and the rule under them.
   const labels = 96
   const padding = 24
@@ -389,12 +551,7 @@ export async function renderTablePost(post: TablePost): Promise<Blob> {
   // sits in the middle of the poster instead of leaving a hole under itself.
   const panelY = areaTop + (area - panelH) / 2
 
-  ctx.fillStyle = 'rgba(8, 10, 14, 0.55)'
-  roundedRect(ctx, panelX, panelY, panelW, panelH, 28)
-  ctx.fill()
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'
-  ctx.lineWidth = 2
-  ctx.stroke()
+  drawPanel(ctx, panelX, panelY, panelW, panelH)
 
   const left = panelX + 28
   const right = panelX + panelW - 28
@@ -468,35 +625,7 @@ export async function renderTablePost(post: TablePost): Promise<Blob> {
       ctx.fillText(String(index + 1), left + 22, middle + badgeR * 0.36)
     }
 
-    // The crest, or the club's initial on the club's own colour.
-    const crestX = left + 56
-    const crestY = middle - crestSize / 2
-    const crest = crests[index]
-    ctx.save()
-    ctx.beginPath()
-    ctx.arc(crestX + crestSize / 2, crestY + crestSize / 2, crestSize / 2, 0, Math.PI * 2)
-    ctx.closePath()
-    ctx.clip()
-    if (crest) {
-      drawCover(ctx, crest, crestX, crestY, crestSize)
-    } else {
-      ctx.fillStyle = row.color
-      ctx.fillRect(crestX, crestY, crestSize, crestSize)
-      ctx.fillStyle = '#ffffff'
-      ctx.font = font(crestSize * 0.46, 700)
-      ctx.textAlign = 'center'
-      ctx.fillText(
-        (row.name.trim().charAt(0) || 'T').toUpperCase(),
-        crestX + crestSize / 2,
-        crestY + crestSize * 0.66,
-      )
-    }
-    ctx.restore()
-    ctx.beginPath()
-    ctx.arc(crestX + crestSize / 2, crestY + crestSize / 2, crestSize / 2, 0, Math.PI * 2)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)'
-    ctx.lineWidth = 2
-    ctx.stroke()
+    drawCrest(ctx, crests[index], row, left + 56, middle - crestSize / 2, crestSize)
 
     ctx.textAlign = 'left'
     ctx.font = font(nameSize, 600)
@@ -518,41 +647,354 @@ export async function renderTablePost(post: TablePost): Promise<Blob> {
 
   ctx.restore()
 
-  /* ---------- The footer ---------- */
+  return finishPost(sheet)
+}
 
-  const markSize = 46
-  const name = 'MFTournament'
-  const site = 'myfootballtournament.com'
-  ctx.font = font(30, 700)
-  const nameW = ctx.measureText(name).width
-  ctx.font = font(26, 400)
-  const siteW = ctx.measureText(site).width
-  const total = markSize + 16 + nameW + 18 + siteW
-  const footerY = HEIGHT - FOOTER / 2
-  let cursor = (WIDTH - total) / 2
+/**
+ * A round, drawn as a poster: one line per fixture, the score where it has been
+ * played and the kick-off where it has not.
+ *
+ * One layout for both, because a round is one thing whether or not it has been
+ * played. What changes between the announcement and the result is only what
+ * stands in the middle of the line.
+ */
+export async function renderFixturesPost(post: FixturesPost): Promise<Blob> {
+  const crestsLoading = Promise.all(
+    post.fixtures.flatMap((fixture) => [
+      loadImage(cdnUrl(fixture.home.logo)),
+      loadImage(cdnUrl(fixture.away.logo)),
+    ]),
+  )
+  const sheet = await drawChrome(post)
+  const crests = await crestsLoading
+  const { ctx } = sheet
 
-  if (mark) {
-    ctx.drawImage(mark, cursor, footerY - markSize / 2, markSize, markSize)
-  }
-  cursor += markSize + 16
-  ctx.textAlign = 'left'
-  ctx.font = font(30, 700)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)'
-  ctx.fillText(name, cursor, footerY + 10)
-  cursor += nameW + 18
-  ctx.font = font(26, 400)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
-  ctx.fillText(site, cursor, footerY + 9)
+  const panelX = MARGIN
+  const panelW = WIDTH - MARGIN * 2
+  const padding = 28
+  const count = post.fixtures.length
+  const rowH = count > 0 ? Math.min(176, (sheet.height - padding * 2) / count) : 0
+  const panelH = Math.min(sheet.height, rowH * count + padding * 2)
+  const panelY = sheet.top + (sheet.height - panelH) / 2
 
-  const blob = await new Promise<Blob | null>((resolve) => {
-    try {
-      canvas.toBlob((value) => resolve(value), 'image/png')
-    } catch {
-      // A tainted canvas. Everything drawn here is either same-origin or loaded
-      // with CORS, so this means the CDN answered without the header.
-      resolve(null)
+  drawPanel(ctx, panelX, panelY, panelW, panelH)
+
+  const left = panelX + 30
+  const right = panelX + panelW - 30
+  const centre = WIDTH / 2
+  const crestSize = Math.max(14, Math.min(84, rowH - 52))
+  const nameSize = Math.max(13, Math.min(32, rowH * 0.21))
+  const scoreSize = Math.max(18, Math.min(52, rowH * 0.32))
+  const whenSize = Math.max(15, Math.min(34, rowH * 0.22))
+  const nameX = left + crestSize + 18
+
+  ctx.save()
+  roundedRect(ctx, panelX, panelY, panelW, panelH, 28)
+  ctx.clip()
+
+  post.fixtures.forEach((fixture, index) => {
+    const top = panelY + padding + rowH * index
+    const middle = top + rowH / 2
+    const home = fixture.homeGoals
+    const away = fixture.awayGoals
+    const played = typeof home === 'number' && typeof away === 'number'
+
+    if (index > 0) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.07)'
+      ctx.fillRect(left, top, right - left, 1)
     }
+
+    drawCrest(ctx, crests[index * 2], fixture.home, left, middle - crestSize / 2, crestSize)
+    drawCrest(
+      ctx,
+      crests[index * 2 + 1],
+      fixture.away,
+      right - crestSize,
+      middle - crestSize / 2,
+      crestSize,
+    )
+
+    // The side that lost is dimmed rather than marked. A poster of a round is
+    // read at a glance, and a glance takes in which name is brighter long
+    // before it takes in which number is larger.
+    const beaten = (side: 'home' | 'away') =>
+      played && (side === 'home' ? (home as number) < (away as number) : (away as number) < (home as number))
+
+    // The middle is measured before the names are drawn rather than reserved in
+    // advance: "0 : 2" and "18:30" are not the same width, and a gutter wide
+    // enough for the widest of them cuts a club's name short on every line that
+    // does not need it.
+    ctx.textAlign = 'center'
+    let middleWidth: number
+    if (played) {
+      const score = `${home} : ${away}`
+      ctx.font = font(scoreSize, 700)
+      middleWidth = ctx.measureText(score).width
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(score, centre, middle + scoreSize * 0.35)
+    } else {
+      const when = fixture.when ?? 'vs'
+      ctx.font = font(whenSize, 600)
+      middleWidth = ctx.measureText(when).width
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)'
+      ctx.fillText(when, centre, middle + whenSize * 0.34)
+    }
+
+    const nameWidth = centre - middleWidth / 2 - 26 - nameX
+
+    ctx.font = font(nameSize, 600)
+    ctx.textAlign = 'left'
+    ctx.fillStyle = beaten('home') ? 'rgba(255, 255, 255, 0.6)' : '#ffffff'
+    ctx.fillText(fit(ctx, fixture.home.name, nameWidth), nameX, middle + nameSize * 0.34)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = beaten('away') ? 'rgba(255, 255, 255, 0.6)' : '#ffffff'
+    ctx.fillText(
+      fit(ctx, fixture.away.name, nameWidth),
+      right - crestSize - 18,
+      middle + nameSize * 0.34,
+    )
   })
-  if (!blob) throw new Error('The post could not be saved as an image in this browser.')
-  return blob
+
+  ctx.restore()
+  return finishPost(sheet)
+}
+
+/**
+ * What an event is drawn as: a ball for a goal, a card for a booking, and two
+ * overlapping cards for a second yellow.
+ *
+ * Drawn rather than set in type, because this application has no emoji in it
+ * and a letter in a circle is not what anybody reads a scoresheet as.
+ */
+function drawEventIcon(
+  ctx: CanvasRenderingContext2D,
+  kind: PostEvent['kind'],
+  x: number,
+  y: number,
+  size: number,
+): void {
+  if (kind === 'goal') {
+    ctx.beginPath()
+    ctx.arc(x, y, size / 2, 0, Math.PI * 2)
+    ctx.fillStyle = '#ffffff'
+    ctx.fill()
+    // One dark panel in the middle. Enough for it to read as a ball at this
+    // size rather than as a bullet point.
+    const radius = size * 0.2
+    ctx.beginPath()
+    for (let corner = 0; corner < 5; corner += 1) {
+      const angle = -Math.PI / 2 + (corner * 2 * Math.PI) / 5
+      const px = x + Math.cos(angle) * radius
+      const py = y + Math.sin(angle) * radius
+      if (corner === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }
+    ctx.closePath()
+    ctx.fillStyle = '#141c33'
+    ctx.fill()
+    return
+  }
+
+  const width = size * 0.6
+  const height = size * 0.88
+  const card = (offset: number, color: string) => {
+    ctx.fillStyle = color
+    roundedRect(ctx, x - width / 2 + offset, y - height / 2, width, height, 3)
+    ctx.fill()
+  }
+  if (kind === 'second_yellow') {
+    card(-3, '#EAB308')
+    card(3, '#EF4444')
+    return
+  }
+  card(0, kind === 'red' ? '#EF4444' : '#EAB308')
+}
+
+/**
+ * One match, drawn as a poster: the plate with the score on it, and under it
+ * everything that happened, on the side it happened to.
+ *
+ * The same shape as the match page — two clubs washed in their own colours with
+ * the score between them, and a timeline down the middle — because somebody who
+ * has read the page recognises the poster as the same match.
+ */
+export async function renderMatchPost(post: MatchPost): Promise<Blob> {
+  const crestsLoading = Promise.all([
+    loadImage(cdnUrl(post.home.logo)),
+    loadImage(cdnUrl(post.away.logo)),
+  ])
+  const sheet = await drawChrome(post)
+  const [homeCrest, awayCrest] = await crestsLoading
+  const { ctx } = sheet
+
+  const home = post.homeGoals
+  const away = post.awayGoals
+  const played = typeof home === 'number' && typeof away === 'number'
+  const centre = WIDTH / 2
+
+  /* ---------- The plate ---------- */
+
+  const boardX = MARGIN
+  const boardW = WIDTH - MARGIN * 2
+  // A match with nothing recorded against it has no second panel, and an empty
+  // one below the plate reads as a match nobody knows anything about. The plate
+  // then has the poster to itself: it sits in the middle and is drawn larger,
+  // because a fixture announcement is a picture of two clubs and a time.
+  const told = post.events.length > 0
+  const boardH = told ? 292 : 356
+  const boardY = told ? sheet.top : sheet.top + (sheet.height - boardH) / 2
+
+  drawPanel(ctx, boardX, boardY, boardW, boardH)
+
+  ctx.save()
+  roundedRect(ctx, boardX, boardY, boardW, boardH, 28)
+  ctx.clip()
+
+  // Each half washed in from its own edge and gone by the middle, so the score
+  // reads on the dark ground whatever the two clubs happen to wear.
+  const wash = (color: string, side: 'home' | 'away') => {
+    const from = side === 'home' ? boardX : boardX + boardW
+    const to = boardX + boardW * 0.5
+    const gradient = ctx.createLinearGradient(from, 0, to, 0)
+    gradient.addColorStop(0, translucent(color, 0.5))
+    gradient.addColorStop(1, translucent(color, 0))
+    ctx.fillStyle = gradient
+    ctx.fillRect(boardX, boardY, boardW, boardH)
+  }
+  wash(post.home.color, 'home')
+  wash(post.away.color, 'away')
+
+  const crestSize = told ? 148 : 190
+  const crestTop = boardY + (told ? 52 : 58)
+  ;(['home', 'away'] as const).forEach((side) => {
+    const club = side === 'home' ? post.home : post.away
+    const image = side === 'home' ? homeCrest : awayCrest
+    const x = boardX + boardW * (side === 'home' ? 0.21 : 0.79)
+    drawCrest(ctx, image, club, x - crestSize / 2, crestTop, crestSize)
+
+    const width = boardW * 0.36
+    const size = fitSize(ctx, club.name, width, 700, [34, 30, 26, 22])
+    ctx.font = font(size, 700)
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(fit(ctx, club.name, width), x, crestTop + crestSize + 52)
+  })
+
+  // Everything in the middle hangs off the crests beside it rather than off the
+  // top of the plate, so the plate can be drawn at either size.
+  ctx.textAlign = 'center'
+  if (played) {
+    ctx.font = font(told ? 94 : 110, 700)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(`${home} : ${away}`, centre, crestTop + crestSize * 0.76)
+    ctx.font = font(23, 600)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
+    ctx.fillText('FULL TIME', centre, crestTop + crestSize * 0.76 + 46)
+  } else {
+    ctx.font = font(56, 700)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
+    ctx.fillText('vs', centre, crestTop + crestSize * 0.64)
+    if (post.when) {
+      ctx.font = font(30, 600)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.78)'
+      ctx.fillText(fit(ctx, post.when, boardW * 0.28), centre, crestTop + crestSize * 0.64 + 52)
+    }
+  }
+  ctx.restore()
+
+  /* ---------- What happened ---------- */
+
+  if (!told) {
+    // One line under the plate rather than a panel with one sentence in it, and
+    // only where there is something to say: a match still to be played says so
+    // in the header and on the plate already.
+    if (played) {
+      ctx.textAlign = 'center'
+      ctx.font = font(26, 500)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+      ctx.fillText('No goals or bookings recorded', centre, boardY + boardH + 52)
+    }
+  } else {
+    const eventsY = boardY + boardH + 16
+    const eventsH = sheet.top + sheet.height - eventsY
+
+    drawPanel(ctx, boardX, eventsY, boardW, eventsH)
+
+    ctx.save()
+    roundedRect(ctx, boardX, eventsY, boardW, eventsH, 28)
+    ctx.clip()
+    const padding = 30
+    // A row cannot be thinner than the pill the minute sits on. A match with
+    // more events than the panel has room for shows what fits and counts the
+    // rest: squeezing thirty rows in does not make them readable, it makes them
+    // overlap, and a poster that overlaps is worse than one that says there was
+    // more.
+    const room = Math.max(4, Math.floor((eventsH - padding * 2) / 26))
+    const over = post.events.length > room
+    const shown = over ? post.events.slice(0, room - 1) : post.events
+    const lines = shown.length + (over ? 1 : 0)
+    const rowH = Math.min(68, (eventsH - padding * 2) / lines)
+    // Centred in the panel rather than hung from its top: a match with six
+    // events would otherwise leave a third of the panel blank under the last.
+    const rowsTop = eventsY + (eventsH - rowH * lines) / 2
+    const labelSize = Math.max(13, Math.min(28, rowH * 0.42))
+    const iconSize = Math.max(12, Math.min(26, rowH * 0.4))
+    const minuteWidth = 86
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'
+    ctx.fillRect(centre - 1, eventsY + 20, 2, eventsH - 40)
+
+    shown.forEach((event, index) => {
+      const middle = rowsTop + rowH * index + rowH / 2
+
+      // Only where there is one. Plenty of scoresheets here are filled in from
+      // memory days later, with every scorer named and not a single minute
+      // among them, and a column of pills each saying "-" is a column of
+      // nothing that the eye still has to travel down.
+      if (typeof event.minute === 'number') {
+        const minute = `${event.minute}'`
+        const minuteSize = Math.max(12, labelSize * 0.72)
+        ctx.textAlign = 'center'
+        ctx.font = font(minuteSize, 600)
+        // On a pill, because the divider runs down the middle and a number with
+        // a line through it is a number somebody has to look at twice.
+        const pillW = Math.max(minuteWidth * 0.62, ctx.measureText(minute).width + 24)
+        const pillH = minuteSize * 1.9
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'
+        roundedRect(ctx, centre - pillW / 2, middle - pillH / 2, pillW, pillH, pillH / 2)
+        ctx.fill()
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)'
+        ctx.fillText(minute, centre, middle + minuteSize * 0.34)
+      }
+
+      // Everything about a row is mirrored: the side it belongs to decides
+      // which way out of the middle it is drawn.
+      const outward = event.side === 'home' ? -1 : 1
+      const iconX = centre + outward * (minuteWidth / 2 + 16 + iconSize * 0.5)
+      drawEventIcon(ctx, event.kind, iconX, middle, iconSize)
+
+      const textX = iconX + outward * (iconSize * 0.5 + 14)
+      const space =
+        event.side === 'home' ? textX - (boardX + 26) : boardX + boardW - 26 - textX
+      ctx.textAlign = event.side === 'home' ? 'right' : 'left'
+      ctx.font = font(labelSize, 600)
+      ctx.fillStyle = event.kind === 'goal' ? '#ffffff' : 'rgba(255, 255, 255, 0.78)'
+      ctx.fillText(fit(ctx, event.label, Math.max(40, space)), textX, middle + labelSize * 0.34)
+    })
+
+    if (over) {
+      ctx.textAlign = 'center'
+      ctx.font = font(Math.max(13, labelSize * 0.8), 600)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'
+      ctx.fillText(
+        `+ ${post.events.length - shown.length} more`,
+        centre,
+        rowsTop + rowH * shown.length + rowH / 2 + labelSize * 0.3,
+      )
+    }
+
+    ctx.restore()
+  }
+
+  return finishPost(sheet)
 }
