@@ -12,7 +12,7 @@ import type { TournamentFormat } from '../utils/fixtures'
 import { clubService, tournamentService } from '../lib/data'
 import type { ClubManager, Entry } from '../lib/data'
 import type { Team, Tournament } from '../types'
-import { hasSquadEntry, registeredPlayers } from '../utils/squads'
+import { activeSquad, hasSquadEntry, registeredPlayers } from '../utils/squads'
 import { competitionColor } from '../utils/crest'
 import Trophy from '../components/Trophy'
 import { IconLink, IconUser, IconUsers } from '../components/icons'
@@ -1162,7 +1162,9 @@ function SquadRow({
   team: Team
   onReload: () => Promise<void>
 }) {
-  const players = team.players ?? []
+  // The squad as the club has it today: an archived player is in no entry, so
+  // there is no box to tick for them.
+  const players = activeSquad(team)
   const entered = registeredPlayers(tournament, team)
   const submitted = hasSquadEntry(tournament, team.id)
   const strict = tournament.squadsStrict === true

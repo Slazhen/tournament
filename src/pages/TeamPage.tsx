@@ -7,7 +7,7 @@ import YoutubeIcon from '../components/YoutubeIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
-import { registeredPlayers } from '../utils/squads'
+import { activeSquad, archivedSquad, registeredPlayers } from '../utils/squads'
 import { formatOptionFor } from '../utils/formats'
 import { clubService, type ClubManager } from '../lib/data'
 import { useAuth } from '../contexts/AuthContext'
@@ -19,12 +19,13 @@ import {
   IconUser,
   IconGlobe,
   IconTrash,
+  IconRepeat,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
 
 export default function TeamPage() {
   const { teamId } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, removePlayer: deletePlayer, uploadTeamLogo, uploadTeamPhoto, loadTeams, setSquad, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateTeam, addPlayer: createPlayer, updatePlayer: savePlayer, archivePlayer, restorePlayer, uploadTeamLogo, uploadTeamPhoto, loadTeams, setSquad, superAdmin } = useAppStore()
 
   // Whether this organiser also runs the club is asked of the session rather
   // than of the club record: the answer decides both the button below and the
@@ -62,6 +63,9 @@ export default function TeamPage() {
   // itself is drawn from the record and only moves once the server has agreed.
   const [savingEntry, setSavingEntry] = useState<string | null>(null)
   const [entryFailed, setEntryFailed] = useState<string | null>(null)
+  // Archiving and restoring share it: they are the same decision in two
+  // directions and never in flight together.
+  const [squadFailed, setSquadFailed] = useState<string | null>(null)
   const [draftPlayer, setDraftPlayer] = useState({ firstName: '', lastName: '', number: '', position: 'Forward' })
   // Hooks must run on every render (before any early return) to keep hook order stable.
   const logoFileRef = useRef<HTMLInputElement>(null)
@@ -216,9 +220,32 @@ export default function TeamPage() {
     void savePlayer(team.id, playerId, updates)
   }
 
-  const removePlayer = (playerId: string) => {
+  /**
+   * Taking a player off the club's books, and putting them back.
+   *
+   * Archiving, not deleting: the player's goals, cards and appearances name
+   * them by id, and the record being removed is the only place their name
+   * lives. They leave the squad, every entry and every teamsheet picker, and
+   * everything they did keeps their name on it.
+   */
+  const archive = async (playerId: string) => {
     if (!team) return
-    void deletePlayer(team.id, playerId)
+    setSquadFailed(null)
+    try {
+      await archivePlayer(team.id, playerId)
+    } catch {
+      setSquadFailed('That player could not be archived, so nothing was changed.')
+    }
+  }
+
+  const restore = async (playerId: string) => {
+    if (!team) return
+    setSquadFailed(null)
+    try {
+      await restorePlayer(team.id, playerId)
+    } catch {
+      setSquadFailed('That player could not be returned to the squad.')
+    }
   }
 
   // Find tournaments where this team participates
@@ -226,10 +253,12 @@ export default function TeamPage() {
     t.teamIds.includes(teamId!)
   )
 
-  // Records from the browser-side era have a null sitting in `players`, and
-  // this screen reads the stored squad rather than a public projection, so it
-  // has to drop them itself — one hole is a blank screen for the whole club.
-  const squad = (team.players ?? []).filter((player) => player != null)
+  // The squad as the club has it today. Holes — a `null` in `players` on a
+  // record from the browser-side era — and archived players are both left out
+  // by `activeSquad`; the archive is drawn under the table from the same
+  // record, because a player who has left is still the club's history.
+  const squad = activeSquad(team)
+  const archived = archivedSquad(team)
 
   // Who this club has entered in each of them, worked out once rather than per
   // cell. An ordinary competition the club has never been entered in reads as
@@ -564,7 +593,7 @@ export default function TeamPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="opacity-70">Players:</span>
-                <div className="font-semibold">{team.players?.length || 0}</div>
+                <div className="font-semibold">{squad.length}</div>
               </div>
               <div>
                 <span className="opacity-70">Colors:</span>
@@ -786,7 +815,7 @@ export default function TeamPage() {
             <div className="text-sm opacity-70">Tournaments</div>
           </div>
           <div className="p-4 glass rounded-lg">
-            <div className="text-2xl font-bold text-green-400">{team.players?.length || 0}</div>
+            <div className="text-2xl font-bold text-green-400">{squad.length}</div>
             <div className="text-sm opacity-70">Players</div>
           </div>
           <div className="p-4 glass rounded-lg">
@@ -803,7 +832,7 @@ export default function TeamPage() {
       {/* Players Section */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Players ({team.players?.length || 0})</h2>
+          <h2 className="text-xl font-semibold">Players ({squad.length})</h2>
           {clubIsMineToEdit ? (
             <button
               onClick={() => setIsAddingPlayer((open) => !open)}
@@ -881,7 +910,9 @@ export default function TeamPage() {
           </form>
         )}
         
-        {(!team.players || team.players.length === 0) ? (
+        {squadFailed && <p className="text-sm text-red-300 mb-3">{squadFailed}</p>}
+
+        {squad.length === 0 ? (
           <p className="text-center opacity-70">
             {clubIsMineToEdit
               ? 'No players yet. Add your first player!'
@@ -1002,10 +1033,11 @@ export default function TeamPage() {
                     <td className="py-3 px-4 text-center">
                       {clubIsMineToEdit && (
                         <button
-                          onClick={() => removePlayer(player.id)}
+                          onClick={() => void archive(player.id)}
+                          title="Take this player off the club's books. Everything they did keeps their name on it."
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all text-red-400 hover:text-red-300"
                         >
-                          <IconTrash size={14} /> Remove
+                          <IconTrash size={14} /> Archive
                         </button>
                       )}
                     </td>
@@ -1013,6 +1045,48 @@ export default function TeamPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {archived.length > 0 && (
+          <div className="mt-6 pt-4 border-t border-white/10">
+            <h3 className="text-sm uppercase tracking-widest opacity-60 mb-1">Former players</h3>
+            <p className="text-xs opacity-60 mb-3">
+              Off the squad and out of every competition entry. Their goals, cards and appearances
+              keep their name, and they can be returned to the squad at any time.
+            </p>
+            <ul className="grid gap-1">
+              {archived.map((player) => (
+                <li
+                  key={player.id}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
+                >
+                  <span className="w-8 text-sm tabular-nums opacity-60 text-right">
+                    {player.number ?? ''}
+                  </span>
+                  <Link
+                    to={`/public/players/${player.id}`}
+                    target="_blank"
+                    className="text-sm hover:opacity-80 transition-opacity truncate"
+                  >
+                    {player.firstName} {player.lastName}
+                  </Link>
+                  <span className="text-xs opacity-50 truncate">
+                    {player.archivedAt
+                      ? `Archived ${new Date(player.archivedAt).toLocaleDateString()}`
+                      : 'Archived'}
+                  </span>
+                  {clubIsMineToEdit && (
+                    <button
+                      onClick={() => void restore(player.id)}
+                      className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 rounded glass text-sm hover:bg-white/10 transition-all"
+                    >
+                      <IconRepeat size={14} /> Return to squad
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </section>

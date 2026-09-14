@@ -13,7 +13,7 @@ import {
   IconArrowLeft,
   IconClipboard,
 } from '../components/icons'
-import { registeredPlayers } from '../utils/squads'
+import { playersForPicking } from '../utils/squads'
 import { numberInMatch } from '../utils/players'
 import { youtubeEmbedUrl } from '../utils/video'
 import { byMinute, cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
@@ -514,7 +514,17 @@ export default function MatchPage() {
               <LineupPicker
                 name={homeTeam.name}
                 accent="text-blue-400"
-                players={registeredPlayers(tournament, homeTeam)}
+                // Registered for this competition, plus whoever is already on
+                // this sheet. Without the second half, narrowing an entry or
+                // archiving a player took a row off a teamsheet that records a
+                // match already played — the server keeps them
+                // (`nameableInMatch`), and a screen that did not show them
+                // looked like the appearance had been deleted.
+                players={playersForPicking(
+                  tournament,
+                  homeTeam,
+                  ...(match.lineups?.home?.starting ?? []),
+                )}
                 saved={match.lineups?.home?.starting ?? []}
                 savedNumbers={match.lineups?.home?.numbers}
                 onSave={(playerIds, numbers) =>
@@ -524,7 +534,11 @@ export default function MatchPage() {
               <LineupPicker
                 name={awayTeam.name}
                 accent="text-red-400"
-                players={registeredPlayers(tournament, awayTeam)}
+                players={playersForPicking(
+                  tournament,
+                  awayTeam,
+                  ...(match.lineups?.away?.starting ?? []),
+                )}
                 saved={match.lineups?.away?.starting ?? []}
                 savedNumbers={match.lineups?.away?.numbers}
                 onSave={(playerIds, numbers) =>

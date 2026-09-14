@@ -43,6 +43,7 @@ import {
   scoreAfterMoving,
 } from '../lib/goals.js'
 import { locateMatch } from '../lib/matches.js'
+import { allPlayerIds, isArchivedPlayer } from '../lib/players.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { emailIsTaken, findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
@@ -176,6 +177,23 @@ const PLAYER_FIELDS = [
 
 const FEET = new Set(['left', 'right', 'both'])
 
+/** One player of a club as it is stored, holes in the list stepped over. */
+function findPlayer(team: Team, playerId: string): Record<string, unknown> | undefined {
+  const players = Array.isArray(team.players) ? team.players : []
+  return players.find(
+    (player): player is Record<string, unknown> =>
+      Boolean(player) && typeof player === 'object' && (player as { id?: unknown }).id === playerId,
+  )
+}
+
+/** What to call a player in an audit line, when the record has a name to use. */
+function playerName(player: Record<string, unknown> | undefined): string {
+  const parts = [player?.firstName, player?.lastName].filter(
+    (part): part is string => typeof part === 'string' && part.trim() !== '',
+  )
+  return parts.length === 0 ? 'a player' : parts.join(' ')
+}
+
 /**
  * The player fields worth typing, checked.
  *
@@ -220,8 +238,9 @@ function newPlayerFields(body: Record<string, unknown>): Record<string, unknown>
 // `players` is deliberately absent. A squad is a list, and a list written back
 // whole loses whatever a second writer put there in the meantime — the same
 // failure that cost `managerUserIds` a removal and `teamIds` an entry. The
-// three routes below write one player at a time, under a condition, and they
-// are the only way in.
+// player routes below write one player at a time, under a condition, and they
+// are the only way in. None of them removes an element: leaving the club is
+// `archivedAt`, written by the delete route — see `lib/players.ts`.
 
 /**
  * What the organiser may change about one fixture.
@@ -395,6 +414,10 @@ const VISITING_PLAYER_FIELDS = [
   'socialMedia',
   'isPublic',
   'createdAtISO',
+  // Whether this player is still on the club's books. The organiser names this
+  // club's teamsheets, and a picker that cannot tell an archived player from a
+  // current one would offer somebody the club has released.
+  'archivedAt',
 ] as const
 
 /**
@@ -1326,20 +1349,71 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     return player
   })
 
+  /**
+   * Taking a player off the club's books.
+   *
+   * This archives rather than deletes, and the route kept its method because
+   * that is what the screens mean by it: the player leaves the squad, every
+   * entry and every picker at once. What it does not do any more is destroy the
+   * record, which was the only place the player's name lived — see
+   * `lib/players.ts`. Deleting it left the goals, the cards and the teamsheets
+   * exactly where they were and made all of them anonymous, and nothing could
+   * put the name back.
+   *
+   * Archiving an archived player is refused rather than repeated: the write
+   * rewrites the element from the copy read at the start of this request, so a
+   * second press a minute later would undo an edit made in between for no
+   * change at all — the same reason a PATCH that changes nothing is refused.
+   */
   router.delete('/admin/teams/:id/players/:playerId', async (ctx, params) => {
     const user = await ctx.user()
     const team = await teams.getOrThrow(params.id!)
     assertManagesTeam(user, team)
 
-    await teams.removePlayer(params.id!, params.playerId!)
+    const stored = findPlayer(team, params.playerId!)
+    if (isArchivedPlayer(stored)) throw badRequest('That player is already archived')
+
+    const player = await teams.updatePlayer(params.id!, params.playerId!, {
+      archivedAt: new Date().toISOString(),
+    })
     await record(user, {
-      action: 'player.delete',
+      action: 'player.archive',
       entity: 'team',
       entityId: params.id!,
-      summary: `Removed a player from ${team.name}`,
+      summary: `Archived ${playerName(stored)} of ${team.name}`,
       organizerId: team.organizerId,
     })
-    return { ok: true }
+    return player
+  })
+
+  /**
+   * Putting an archived player back in the squad.
+   *
+   * The other half of the archive, and the reason archiving is not a softer
+   * word for deleting: somebody who left in March and signed again in August is
+   * the same player, with the same id on the goals he scored the first time.
+   */
+  router.post('/admin/teams/:id/players/:playerId/restore', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertManagesTeam(user, team)
+
+    const stored = findPlayer(team, params.playerId!)
+    if (!stored) throw notFound('Player not found in this team')
+    if (!isArchivedPlayer(stored)) throw badRequest('That player is in the squad already')
+
+    // `null` is how a field is cleared: `updatePlayer` deletes the key rather
+    // than storing a null, so a restored player's record reads exactly as one
+    // that has never been archived.
+    const player = await teams.updatePlayer(params.id!, params.playerId!, { archivedAt: null })
+    await record(user, {
+      action: 'player.restore',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Returned ${playerName(stored)} to the squad of ${team.name}`,
+      organizerId: team.organizerId,
+    })
+    return player
   })
 
   /* ---------------- tournaments ---------------- */
@@ -1773,11 +1847,11 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
 
     const team = await teams.getOrThrow(teamId)
     const allowed = nameableInMatch(tournament, team as Team, match, side)
-    const refused = refusedByRegistration(
-      ctx.body.playerIds,
-      allowed,
-      squadPlayerIds(team as Team),
-    )
+    // The club's whole list, the archive included: somebody naming a player
+    // this club has archived is looking at a screen that has gone stale, and
+    // being told is what they need — an id dropped in silence costs them the
+    // teamsheet they thought they saved.
+    const refused = refusedByRegistration(ctx.body.playerIds, allowed, allPlayerIds(team as Team))
     if (refused.length > 0) {
       throw badRequest(
         `${refused.length === 1 ? 'A player' : 'Some players'} in this teamsheet are not registered for this competition. Reload the page and try again.`,

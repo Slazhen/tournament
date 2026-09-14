@@ -571,9 +571,47 @@ their account: the two are written one after the other and can disagree.
 
 **A squad is only written one player at a time.** `PATCH /admin/teams/:id`
 cannot write `players` — the field is absent from `TEAM_FIELDS` on purpose, for
-the same reason `managerUserIds` is. The three player routes each touch one
-player under a condition (`addPlayer`, `updatePlayer`, `removePlayer` in
-`repos.ts`), and they are the only way in.
+the same reason `managerUserIds` is. The player routes each touch one player
+under a condition (`addPlayer` and `updatePlayer` in `repos.ts`), and they are
+the only way in.
+
+**A player leaves the squad; the record does not leave the database.** `DELETE
+/admin/teams/:id/players/:playerId` archives — it writes `archivedAt` and
+nothing else — and `POST /admin/teams/:id/players/:playerId/restore` clears it.
+There is no way to remove the element at all, and `teams.removePlayer` is gone
+with it. The element is the only place a player's name lives: every goal, card
+and teamsheet in the system names a player by id and by nothing else, so
+deleting it left all of that exactly where it was and made it anonymous —
+"Former player" in the scorer table, "Unknown player" on the match page, and
+nothing anywhere to put the name back. That is what was reported as "deleting a
+player deletes everything he did".
+
+`lib/players.ts` is the one place that answers who is still on the books.
+`activePlayerIds` is what `registeredPlayerIds` and `squadPlayerIds` both start
+from, so an archived player is in no entry and may be named in nothing new;
+`allPlayerIds` is what `refusedByRegistration` is given instead, so somebody
+naming a player the club has archived is told to reload rather than having the
+id dropped out of their teamsheet in silence. What an archived player keeps is
+every teamsheet he is already on — `nameableInMatch` unions the stored sheet,
+and always did.
+
+The screens have to make the same union or the server's permission means
+nothing: the write stores the ids the caller sent, so a teamsheet picker drawn
+from the registration alone sends a list with the archived player missing from
+it and the appearance is gone. `playersForPicking` is that union on the site,
+and both teamsheet screens read it — the organiser's match page and the club's
+own. Neither did, which is why narrowing an entry already made an appearance
+vanish from those screens before archiving existed, while the record beside
+them still held it.
+
+The public projection sends `archived: true` and not the date, the same
+arrangement as a date of birth and the age that goes out in its place: that a
+player has left is what a squad list needs to know, when he left is the club's
+own business. `isArchived` in `src/utils/squads.ts` reads either shape. A
+former player is off the club's own squad list and stays in a competition tab
+wherever he actually played in it, which is the union `squadInTournament`
+already made — a name in that season's scorer table and not in the list beside
+it is a visitor looking for somebody who is demonstrably there.
 
 **A teamsheet has two authors.** Who played for a club in one match is written
 by the organiser, for either side, and by that club's own manager, for their own

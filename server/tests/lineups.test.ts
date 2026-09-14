@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { pickLineup, pickNumbers, registeredPlayerIds, sideOfTeam } from '../src/lib/lineups.js'
+import {
+  nameableInMatch,
+  pickLineup,
+  pickNumbers,
+  registeredPlayerIds,
+  sideOfTeam,
+} from '../src/lib/lineups.js'
 import type { Team, Tournament } from '../src/lib/types.js'
 
 const team = {
@@ -114,5 +120,35 @@ describe('the shirt numbers a teamsheet overrides', () => {
   // record. The screens mark it.
   it('allows two players to wear the same number', () => {
     expect(pickNumbers({ p1: 7, p2: 7 }, ['p1', 'p2'])).toEqual({ p1: 7, p2: 7 })
+  })
+})
+
+describe('a player who has left the club', () => {
+  const withArchived = {
+    ...team,
+    players: [
+      { id: 'p1' },
+      { id: 'p2' },
+      { id: 'p3', archivedAt: '2026-03-01T00:00:00.000Z' },
+    ],
+  } as unknown as Team
+
+  it('may not be registered for a competition', () => {
+    expect([...registeredPlayerIds(tournament(), withArchived)]).toEqual(['p1', 'p2'])
+  })
+
+  // The appearance exists nowhere but this teamsheet, and archiving is not a
+  // way of unplaying a match.
+  it('stays on the teamsheet he is already on', () => {
+    const match = {
+      id: 'm-1',
+      homeTeamId: 'team-mine',
+      awayTeamId: 'team-theirs',
+      lineups: { home: { starting: ['p1', 'p3'] } },
+    }
+
+    const allowed = nameableInMatch(tournament(), withArchived, match, 'home')
+    expect(allowed.has('p3')).toBe(true)
+    expect(pickLineup(['p1', 'p3'], allowed)).toEqual(['p1', 'p3'])
   })
 })

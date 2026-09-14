@@ -44,6 +44,25 @@ export type Player = {
   }
   isPublic: boolean // Whether to show on public pages
   createdAtISO: string
+  /**
+   * When this player was taken off the club's books, if they have been.
+   *
+   * A player is archived rather than deleted: this record is the only place
+   * their name lives, and every goal, card and teamsheet names them by id and
+   * by nothing else — so deleting it left all of that in place and anonymous.
+   * An archived player is out of the squad, out of every entry and out of every
+   * picker, and stays on the teamsheets and events they are already named on.
+   */
+  archivedAt?: string
+  /**
+   * The same fact as `archivedAt`, as a public page is told it.
+   *
+   * The date is the club's business and the public projection keeps it, the
+   * way it keeps a date of birth and sends an age instead. Both shapes mean the
+   * player has left, and `isArchived` in `utils/squads.ts` is the one place
+   * that reads either.
+   */
+  archived?: boolean
 }
 
 /**

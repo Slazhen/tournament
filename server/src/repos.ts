@@ -277,24 +277,11 @@ export const teams = {
     return merged
   },
 
-  async removePlayer(teamId: string, playerId: string): Promise<void> {
-    const team = await this.getOrThrow(teamId)
-    const players = (Array.isArray(team.players) ? team.players : []) as Record<string, unknown>[]
-    const index = players.findIndex((player) => player?.id === playerId)
-    if (index === -1) throw notFound('Player not found in this team')
-
-    await ddb.send(
-      new UpdateCommand({
-        TableName: TABLES.TEAMS,
-        Key: { id: teamId },
-        UpdateExpression: `REMOVE #players[${index}]`,
-        ConditionExpression: `#players[${index}].#playerId = :playerId`,
-        ExpressionAttributeNames: { '#players': 'players', '#playerId': 'id' },
-        ExpressionAttributeValues: { ':playerId': playerId },
-      }),
-    )
-    invalidate('teams:')
-  },
+  // There is deliberately no way to remove a player from this list. The element
+  // is the only place a player's name lives, and every goal, card and teamsheet
+  // in the system names them by id alone, so taking it out left the history in
+  // place and anonymous. Leaving the club is `archivedAt`, written through
+  // `updatePlayer` above — see `lib/players.ts`.
 }
 
 /* ------------------------------------------------------------------ *

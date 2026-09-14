@@ -16,7 +16,7 @@ import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
 import LastAndNextMatch from '../components/LastAndNextMatch'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
-import { hasSquadEntry, squadInTournament } from '../utils/squads'
+import { activeSquad, hasSquadEntry, isArchived, squadInTournament } from '../utils/squads'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { formatOptionFor } from '../utils/formats'
 import { cdnUrl } from '../utils/images'
@@ -127,9 +127,14 @@ export default function PublicTeamPage() {
     .filter((record) => record.teamId === team.id)
     .map((record) => record.playerId)
 
+  // The club as it is today, or one competition's squad as that competition
+  // knew it. A player who has left the club is off the first list and stays on
+  // the second wherever he actually played in it, which is the same union the
+  // scorer table below is counted from — a name in that table and not in the
+  // list beside it is a visitor looking for somebody who is demonstrably there.
   const squad = selectedTournament
     ? squadInTournament(selectedTournament, team, appeared)
-    : (team.players ?? [])
+    : activeSquad(team)
 
   // Absent is not empty. In an ordinary competition a club that never opened
   // the squad screen has its whole squad registered, and a list that looks
@@ -354,7 +359,7 @@ export default function PublicTeamPage() {
       )}
 
       {/* Players Section - Only show if players exist */}
-      {team.players && team.players.length > 0 && (
+      {(squad.length > 0 || squadTabs.length > 0) && (
         <section className="glass rounded-xl p-6 w-full max-w-6xl">
           <h2 className="text-xl font-semibold mb-1 text-center">Players ({squad.length})</h2>
 
@@ -433,6 +438,13 @@ export default function PublicTeamPage() {
                           >
                             {`${player.firstName} ${player.lastName}`}
                           </Link>
+                          {/* Only a competition tab can hold one: the club's
+                              own list is the squad as it is today. He played in
+                              this competition and has since left, and the
+                              scorer table below still carries his goals. */}
+                          {isArchived(player) && (
+                            <span className="ml-2 text-xs opacity-60">former player</span>
+                          )}
                         </div>
                       </div>
                     </td>

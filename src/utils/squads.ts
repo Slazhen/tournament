@@ -5,6 +5,39 @@ import { byShirtNumber, numberInMatch } from './players'
 type SquadRules = Pick<Tournament, 'squads' | 'squadsStrict'>
 
 /**
+ * Whether this player has been taken off the club's books.
+ *
+ * Two shapes, one fact: an admin screen holds the stored record and its
+ * `archivedAt`, a public page is told `archived` and not the date — the same
+ * arrangement as a date of birth and the age that goes out in its place.
+ */
+export const isArchived = (
+  player: Pick<Player, 'archivedAt' | 'archived'> | null | undefined,
+): boolean =>
+  player?.archived === true || (typeof player?.archivedAt === 'string' && player.archivedAt !== '')
+
+/**
+ * The squad as the club has it today.
+ *
+ * Two things are left out, and one of them is older than the other. A `null`
+ * sits in `players` on records from the browser-side era, and one dereferenced
+ * without a guard took a whole page down. An archived player is a player who
+ * has left: they are off every squad list, every entry and every picker, and
+ * their name still resolves wherever the history names them — which is the
+ * whole reason leaving is archiving and not deleting.
+ */
+export function activeSquad(team: Pick<Team, 'players'> | null | undefined): Player[] {
+  return (team?.players ?? []).filter((player) => player != null && !isArchived(player))
+}
+
+/** The players the club has archived, most recently first. */
+export function archivedSquad(team: Pick<Team, 'players'> | null | undefined): Player[] {
+  return (team?.players ?? [])
+    .filter((player) => player != null && isArchived(player))
+    .sort((a, b) => (b.archivedAt ?? '').localeCompare(a.archivedAt ?? ''))
+}
+
+/**
  * Whether this club has been entered in this competition at all.
  *
  * Absent is not the same as empty, and only one of the two is a decision
@@ -33,13 +66,15 @@ export function hasSquadEntry(
  * nobody is, because there the entry is the thing that lets a player play.
  *
  * The list is filtered from the club's current players either way, so a player
- * released since the entry was saved cannot come back through a stale id.
+ * released since the entry was saved cannot come back through a stale id, and
+ * an archived player is out of every competition at once rather than club by
+ * club.
  */
 export function registeredPlayers(
   tournament: SquadRules | null | undefined,
   team: Pick<Team, 'id' | 'players'> | null | undefined,
 ): Player[] {
-  const players = team?.players ?? []
+  const players = activeSquad(team)
   if (!tournament || !team) return players
 
   const chosen = tournament.squads?.[team.id]
@@ -65,8 +100,11 @@ export function playersForPicking(
   const registered = registeredPlayers(tournament, team)
   const have = new Set(registered.map((player) => player.id))
 
+  // From the whole squad, archived players included: somebody named on the
+  // record being edited is there because they played, and leaving the club
+  // afterwards does not unplay it.
   const extras = (team?.players ?? []).filter(
-    (player) => !have.has(player.id) && alreadyNamed.includes(player.id),
+    (player) => player != null && !have.has(player.id) && alreadyNamed.includes(player.id),
   )
 
   return extras.length === 0 ? registered : [...registered, ...extras]
@@ -118,7 +156,9 @@ export function playersNamedInMatch(
     | undefined,
   ...alreadyNamed: Array<string | undefined>
 ): Player[] {
-  const players = team?.players ?? []
+  // The whole squad, archived players included: this list answers "who played
+  // in this match", and it is read after the fact as often as before it.
+  const players = (team?.players ?? []).filter((player) => player != null)
   const named = new Set([...(lineup?.starting ?? []), ...(lineup?.substitutes ?? [])])
 
   // A player on the sheet carries the number they wore in this match, not the

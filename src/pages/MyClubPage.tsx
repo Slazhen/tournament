@@ -13,7 +13,14 @@ import type { Organizer, Player, Team, Tournament, Match } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
-import { hasSquadEntry, playersNamedInMatch, registeredPlayers } from '../utils/squads'
+import {
+  activeSquad,
+  archivedSquad,
+  hasSquadEntry,
+  playersForPicking,
+  playersNamedInMatch,
+  registeredPlayers,
+} from '../utils/squads'
 import { byMinute, unattributedGoals } from '../utils/matches'
 import { numberInMatch, playerLabel } from '../utils/players'
 import InlineInput from '../components/InlineInput'
@@ -1102,7 +1109,7 @@ function CompetitionRow({
   team: Team
   onReload: () => Promise<void>
 }) {
-  const players = team.players ?? []
+  const players = activeSquad(team)
   const stored = tournament.squads?.[team.id]
   // Not the stored list: it can name somebody the club has since released, and
   // counting them would tell a manager they have a player more than they can
@@ -1350,12 +1357,15 @@ function TeamsheetRow({
   teamNames: Record<string, string>
   onReload: () => Promise<void>
 }) {
-  // Only the players registered for this competition, which is the same list
-  // the organiser is offered — a club may have signed somebody since the squad
-  // for this competition was agreed, and they are not eligible here.
-  const players = registeredPlayers(tournament, team)
   const side = match.homeTeamId === team.id ? 'home' : 'away'
   const stored = match.lineups?.[side]?.starting ?? []
+  // The players registered for this competition, which is the same list the
+  // organiser is offered — a club may have signed somebody since the squad for
+  // this competition was agreed, and they are not eligible here — plus anyone
+  // already on this sheet. The second half is the rule the server writes by
+  // (`nameableInMatch`): an entry narrowed, or a player archived, after the
+  // match was played must not take a row off a teamsheet that records it.
+  const players = playersForPicking(tournament, team, ...stored)
   // Only the shirt numbers this match overrides. Everybody else wore the number
   // on their club record, which is what the box below is pre-filled with.
   const storedNumbers = match.lineups?.[side]?.numbers ?? {}
@@ -1983,7 +1993,8 @@ function MatchGoals({
 const BLANK_PLAYER = { firstName: '', lastName: '', number: '', position: '' }
 
 function Squad({ team, onReload }: { team: Team; onReload: () => Promise<void> }) {
-  const players = team.players ?? []
+  const players = activeSquad(team)
+  const archived = archivedSquad(team)
   const [draft, setDraft] = useState(BLANK_PLAYER)
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -2010,13 +2021,36 @@ function Squad({ team, onReload }: { team: Team; onReload: () => Promise<void> }
     }
   }
 
-  const remove = async (player: Player) => {
-    if (!confirm(`Remove ${player.firstName} ${player.lastName} from the club?`)) return
+  /**
+   * Taking a player off the club's books, and putting them back.
+   *
+   * Archiving rather than deleting: everything this player did names them by
+   * id, and this record is the only place their name lives. They leave the
+   * squad and every competition entry; the goals, the cards and the teamsheets
+   * keep their name.
+   */
+  const archive = async (player: Player) => {
+    if (
+      !confirm(
+        `Take ${player.firstName} ${player.lastName} off the squad? Everything they have done keeps their name, and you can return them later.`,
+      )
+    ) {
+      return
+    }
     try {
-      await playerService.remove(team.id, player.id)
+      await playerService.archive(team.id, player.id)
       await onReload()
     } catch (caught) {
-      setError(messageOf(caught, 'That player could not be removed.'))
+      setError(messageOf(caught, 'That player could not be archived.'))
+    }
+  }
+
+  const restore = async (player: Player) => {
+    try {
+      await playerService.restore(team.id, player.id)
+      await onReload()
+    } catch (caught) {
+      setError(messageOf(caught, 'That player could not be returned to the squad.'))
     }
   }
 
@@ -2081,9 +2115,9 @@ function Squad({ team, onReload }: { team: Team; onReload: () => Promise<void> }
                   <IconPencil size={14} />
                 </button>
                 <button
-                  onClick={() => remove(player)}
+                  onClick={() => archive(player)}
                   className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-red-500/20 text-red-300"
-                  title="Remove from the club"
+                  title="Take off the squad. Everything they did keeps their name."
                 >
                   <IconTrash size={14} />
                 </button>
@@ -2091,6 +2125,44 @@ function Squad({ team, onReload }: { team: Team; onReload: () => Promise<void> }
             ),
           )}
         </ul>
+      )}
+
+      {archived.length > 0 && (
+        <div className="mb-4 pt-4 border-t border-white/10">
+          <h3 className="text-xs uppercase tracking-widest text-gray-400 mb-1">Former players</h3>
+          <p className="text-xs text-gray-400 mb-3">
+            Off the squad and out of every competition entry. What they did keeps their name, and
+            you can put them back at any time.
+          </p>
+          <ul className="space-y-1">
+            {archived.map((player) => (
+              <li
+                key={player.id}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.03] group"
+              >
+                <span className="w-8 text-center text-sm opacity-60 shrink-0">
+                  {player.number ?? '\u2014'}
+                </span>
+                <Link
+                  to={`/my-club/players/${player.id}`}
+                  className="flex-1 min-w-0 truncate hover:underline text-gray-300"
+                >
+                  {player.firstName} {player.lastName}
+                </Link>
+                <span className="text-xs text-gray-500 shrink-0">
+                  {player.archivedAt ? new Date(player.archivedAt).toLocaleDateString() : ''}
+                </span>
+                <button
+                  onClick={() => restore(player)}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs hover:bg-white/10 transition-colors"
+                  title="Return to the squad"
+                >
+                  <IconRepeat size={13} /> Return
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <div className="pt-4 border-t border-white/10">

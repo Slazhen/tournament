@@ -514,9 +514,24 @@ export const playerService = {
     )
   },
 
-  async remove(teamId: string, playerId: string): Promise<void> {
-    await api.delete(
+  /**
+   * Takes a player off the club's books without destroying the record.
+   *
+   * The API archives rather than deletes: this player's name is named nowhere
+   * else, and every goal, card and teamsheet points at them by id. The reply is
+   * the player as stored, so the screen can show the archive without reloading
+   * the club.
+   */
+  async archive(teamId: string, playerId: string): Promise<Player> {
+    return api.delete<Player>(
       `/admin/teams/${encodeURIComponent(teamId)}/players/${encodeURIComponent(playerId)}`,
+    )
+  },
+
+  async restore(teamId: string, playerId: string): Promise<Player> {
+    return api.post<Player>(
+      `/admin/teams/${encodeURIComponent(teamId)}/players/${encodeURIComponent(playerId)}/restore`,
+      {},
     )
   },
 }

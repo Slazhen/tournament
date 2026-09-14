@@ -124,3 +124,26 @@ describe('naming players once a registration exists', () => {
     expect(refusedByRegistration(['p1'], allowed, squadPlayerIds(team))).toEqual(['p1'])
   })
 })
+
+describe('a player who has left the club', () => {
+  const withArchived = {
+    ...team,
+    players: [
+      { id: 'p1' },
+      { id: 'p2' },
+      { id: 'p3', archivedAt: '2026-03-01T00:00:00.000Z' },
+    ],
+  } as unknown as Team
+
+  it('is not part of the squad an entry is checked against', () => {
+    expect([...squadPlayerIds(withArchived)]).toEqual(['p1', 'p2'])
+  })
+
+  // "Everyone" means everyone the club still has, so archiving somebody does
+  // not quietly enter them again on the next save of the entry.
+  it('is dropped from an entry that names him', () => {
+    const { playerIds, all } = chooseSquad(['p1', 'p2', 'p3'], squadPlayerIds(withArchived), false)
+    expect(playerIds).toEqual(['p1', 'p2'])
+    expect(all).toBe(true)
+  })
+})

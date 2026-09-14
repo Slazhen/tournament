@@ -3,6 +3,7 @@ import { badRequest, notFound } from '../lib/http.js'
 import { organizerSlug, tournamentSlug, seriesSlug, seasonSlug, seriesKey } from '../lib/slugs.js'
 import { isPublic, organizers, teams, toSummary, tournaments } from '../repos.js'
 import { toPublicTournament, toPublicTournaments } from '../lib/rounds.js'
+import { isArchivedPlayer } from '../lib/players.js'
 import type { Organizer, Team, Tournament } from '../lib/types.js'
 import type { RequestContext } from '../context.js'
 
@@ -42,7 +43,16 @@ function toPublicTeam(team: Team): Team {
       // old somebody is, and that is a number the server can work out — sending
       // the date instead handed out a birthday nobody asked to publish, and put
       // the arithmetic in every page that showed it.
-      const { dateOfBirth, ...withoutDate } = player
+      //
+      // A player who has left the club is the same shape of question. That they
+      // have left is what a public page needs — a squad list is the club as it
+      // is today — and the day they left is the club's own business, so it is
+      // answered as a flag and the date stays behind. The record itself still
+      // travels: every goal, card and teamsheet names this player by id and by
+      // nothing else, and a name nothing can resolve reads as "Unknown player"
+      // over somebody who is demonstrably in the match.
+      const { dateOfBirth, archivedAt, ...rest } = player
+      const withoutDate = isArchivedPlayer({ archivedAt }) ? { ...rest, archived: true } : rest
       const age = showAges ? ageFrom(dateOfBirth) : undefined
       return age === undefined ? withoutDate : { ...withoutDate, age }
     })

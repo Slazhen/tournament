@@ -65,6 +65,7 @@ const publicTeam = {
   players: [
     { id: 'p-open', firstName: 'Open', lastName: 'Player', dateOfBirth: bornInJanuary },
     { id: 'p-hidden', firstName: 'Hidden', lastName: 'Player', isPublic: false },
+    { id: 'p-left', firstName: 'Left', lastName: 'Player', archivedAt: '2026-02-02T00:00:00.000Z' },
     null,
   ],
 }
@@ -79,6 +80,9 @@ const ownTeam = {
   players: [
     { id: 'p-1', firstName: 'Vasily', lastName: 'Esipov' },
     { id: 'p-2', firstName: 'Other', lastName: 'Player' },
+    // Somebody who has left. The record stays because every goal, card and
+    // teamsheet names a player by id and by nothing else.
+    { id: 'p-3', firstName: 'Gone', lastName: 'Player', archivedAt: '2026-02-01T00:00:00.000Z' },
   ],
 }
 
@@ -117,7 +121,6 @@ vi.mock('../src/repos.js', async (importOriginal) => {
         id: playerId,
         ...updates,
       })),
-      removePlayer: vi.fn(async () => undefined),
     },
     tournaments: {
       listAll: vi.fn(async () => [publicTournament, privateTournament]),
@@ -318,13 +321,23 @@ describe('authorization', () => {
     expect(repos.teams.addPlayer).not.toHaveBeenCalled()
   })
 
-  it('refuses to remove a player from a club that has a manager', async () => {
+  it('refuses to archive a player of a club that has a manager', async () => {
     const response = await request('DELETE', '/admin/teams/team-public/players/p-open', {
       token: 'good-token',
     })
 
     expect(response.statusCode).toBe(403)
-    expect(repos.teams.removePlayer).not.toHaveBeenCalled()
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
+  })
+
+  it('refuses to restore a player of a club that has a manager', async () => {
+    const response = await request('POST', '/admin/teams/team-public/players/p-open/restore', {
+      token: 'good-token',
+      body: {},
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
   })
 
   // Without this the rule above is one click from being undone: the organizer
@@ -398,7 +411,9 @@ describe('player editing', () => {
     expect(repos.teams.updatePlayer).toHaveBeenCalledWith('team-own', 'p-1', { number: 10 })
   })
 
-  it('adds and removes a player on an own team', async () => {
+  // Leaving the club is a mark on the record, not the record going away: the
+  // goals, cards and teamsheets that name this player name them by id alone.
+  it('adds and archives a player on an own team', async () => {
     const added = await request('POST', '/admin/teams/team-own/players', {
       token: 'good-token',
       body: { firstName: 'New', lastName: 'Player' },
@@ -406,11 +421,44 @@ describe('player editing', () => {
     expect(added.statusCode).toBe(200)
     expect(parse(added.body).id).toBe('p-new')
 
-    const removed = await request('DELETE', '/admin/teams/team-own/players/p-2', {
+    const archived = await request('DELETE', '/admin/teams/team-own/players/p-2', {
       token: 'good-token',
     })
-    expect(removed.statusCode).toBe(200)
-    expect(repos.teams.removePlayer).toHaveBeenCalledWith('team-own', 'p-2')
+    expect(archived.statusCode).toBe(200)
+    expect(repos.teams.updatePlayer).toHaveBeenCalledWith('team-own', 'p-2', {
+      archivedAt: expect.any(String),
+    })
+  })
+
+  it('refuses to archive a player who is archived already', async () => {
+    const response = await request('DELETE', '/admin/teams/team-own/players/p-3', {
+      token: 'good-token',
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
+  })
+
+  // `null` clears the field rather than being stored, so a player who comes
+  // back reads exactly like one who never left.
+  it('returns an archived player to the squad', async () => {
+    const response = await request('POST', '/admin/teams/team-own/players/p-3/restore', {
+      token: 'good-token',
+      body: {},
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(repos.teams.updatePlayer).toHaveBeenCalledWith('team-own', 'p-3', { archivedAt: null })
+  })
+
+  it('refuses to restore a player who is in the squad', async () => {
+    const response = await request('POST', '/admin/teams/team-own/players/p-1/restore', {
+      token: 'good-token',
+      body: {},
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
   })
 
   it('refuses a change to nothing at all', async () => {
@@ -528,6 +576,16 @@ describe('what the public is told about a squad', () => {
     expect(team.players.some((one: any) => one?.id === 'p-hidden')).toBe(false)
     expect(team.managerUserIds).toBeUndefined()
     expect(team.managerLinkedAt).toBeUndefined()
+  })
+
+  // A player who has left is still in the answer — every goal, card and
+  // teamsheet names him by id and by nothing else — and the day he left is not.
+  it('says a player has left without saying when', async () => {
+    const team = parse((await request('GET', '/public/teams/team-public')).body)
+    const player = team.players.find((one: any) => one?.id === 'p-left')
+
+    expect(player.archived).toBe(true)
+    expect(player.archivedAt).toBeUndefined()
   })
 
   // One bad row used to answer 500 to every visitor of every page naming this club.

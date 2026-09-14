@@ -1,3 +1,4 @@
+import { activePlayerIds } from './players.js'
 import type { Team, Tournament } from './types.js'
 
 export type Side = 'home' | 'away'
@@ -32,15 +33,14 @@ export function sideOfTeam(match: unknown, teamId: string): Side | null {
  *
  * Starting from the club's players rather than from the stored registration
  * also drops anyone released since it was saved, so a squad list nobody has
- * revisited cannot put a player who has left back on a teamsheet.
+ * revisited cannot put a player who has left back on a teamsheet. An archived
+ * player is off that list for the same reason and by the same step: they are
+ * off the club's books, so they may not be named in anything new. What they
+ * keep is their place on the teamsheets they are already on, which is the
+ * union below.
  */
 export function registeredPlayerIds(tournament: Tournament, team: Team): Set<string> {
-  const players = Array.isArray(team.players) ? team.players : []
-  const ids = players
-    .map((player) =>
-      player && typeof player === 'object' ? (player as { id?: unknown }).id : undefined,
-    )
-    .filter((id): id is string => typeof id === 'string')
+  const ids = [...activePlayerIds(team)]
 
   const squads =
     tournament.squads && typeof tournament.squads === 'object'

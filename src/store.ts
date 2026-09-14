@@ -87,7 +87,8 @@ type AppStore = {
 
   addPlayer: (teamId: string, player?: Partial<Player>) => Promise<Player | null>
   updatePlayer: (teamId: string, playerId: string, updates: PlayerUpdate) => Promise<void>
-  removePlayer: (teamId: string, playerId: string) => Promise<void>
+  archivePlayer: (teamId: string, playerId: string) => Promise<void>
+  restorePlayer: (teamId: string, playerId: string) => Promise<void>
   
   createTournament: (
     name: string,
@@ -513,19 +514,41 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
-  removePlayer: async (teamId: string, playerId: string) => {
-    try {
-      await playerService.remove(teamId, playerId)
-      set(state => ({
-        teams: state.teams.map(team =>
-          team.id === teamId
-            ? { ...team, players: (team.players || []).filter(p => p.id !== playerId) }
-            : team
-        )
-      }))
-    } catch (error) {
-      console.error('Error removing player:', error)
-    }
+  /**
+   * Takes a player off the club's books, and puts them back.
+   *
+   * The record is kept and marked rather than dropped from the list: it is the
+   * only place the player's name lives, and the goals, cards and teamsheets
+   * that name them by id would all go anonymous without it. The local copy is
+   * the player as the API returned it, so a screen showing the archive shows
+   * what was actually written.
+   */
+  archivePlayer: async (teamId: string, playerId: string) => {
+    const archived = await playerService.archive(teamId, playerId)
+    set(state => ({
+      teams: state.teams.map(team =>
+        team.id === teamId
+          ? {
+              ...team,
+              players: (team.players || []).map(p => (p.id === playerId ? archived : p))
+            }
+          : team
+      )
+    }))
+  },
+
+  restorePlayer: async (teamId: string, playerId: string) => {
+    const restored = await playerService.restore(teamId, playerId)
+    set(state => ({
+      teams: state.teams.map(team =>
+        team.id === teamId
+          ? {
+              ...team,
+              players: (team.players || []).map(p => (p.id === playerId ? restored : p))
+            }
+          : team
+      )
+    }))
   },
 
   // Tournament actions

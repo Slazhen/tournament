@@ -6,6 +6,7 @@ import { canEditClub, checkTeamName, parseBulkNames } from "../utils/teams"
 import { useAuth } from "../contexts/AuthContext"
 import { clubService, type DirectoryClub } from "../lib/data"
 import { headerColor } from "../utils/crest"
+import { activeSquad } from "../utils/squads"
 import { cdnUrl } from '../utils/images'
 
 /**
@@ -405,7 +406,7 @@ export default function TeamsPage() {
                 <div>
                   <h3 className="text-xl font-semibold">{team.name}</h3>
                   <p className="text-sm opacity-80">
-                    {team.players.length} players
+                    {activeSquad(team).length} players
                     {team.visiting && <span className="opacity-70"> · guest club</span>}
                   </p>
                   {!currentOrganizer && (

@@ -45,6 +45,7 @@ import {
   unattributed,
 } from '../lib/goals.js'
 import { locateMatch } from '../lib/matches.js'
+import { activePlayerIds, allPlayerIds } from '../lib/players.js'
 import { isInClubPool } from '../lib/pool.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { toPublicUser, type AuthUser, type Team, type Tournament } from '../lib/types.js'
@@ -306,9 +307,10 @@ export function toDirectoryClub(
     .map((id) => managerNames.get(id))
     .filter((name): name is string => Boolean(name))
 
-  const players = Array.isArray(team.players)
-    ? (team.players as unknown[]).filter(Boolean)
-    : []
+  // The squad a league considering this club would actually get: archived
+  // players have left it, and counting them would offer a club that is smaller
+  // than it says.
+  const players = activePlayerIds(team)
 
   // A club with managers is run by them whatever their accounts are called, so
   // a manager who never set a display name must not make the club read as one
@@ -322,7 +324,7 @@ export function toDirectoryClub(
     colors: Array.isArray(team.colors) ? (team.colors as string[]) : [],
     crestColor: (team.crestColor as string | null | undefined) ?? undefined,
     crestOpaqueBackground: (team.crestOpaqueBackground as boolean | null | undefined) ?? undefined,
-    squadSize: players.length,
+    squadSize: players.size,
     ownerName: named.length > 0 ? named.join(', ') : claimed ? undefined : organizerNames.get(team.organizerId),
     ownerKind: claimed ? 'manager' : 'organizer',
   }
@@ -1123,11 +1125,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     if (!side) throw forbidden('This club is not playing in that match')
 
     const allowed = nameableInMatch(tournament, team as Team, match, side)
-    const refused = refusedByRegistration(
-      ctx.body.playerIds,
-      allowed,
-      squadPlayerIds(team as Team),
-    )
+    // The club's whole list, the archive included: a manager naming somebody
+    // the club has archived is looking at a stale screen and is told so, rather
+    // than having the id dropped out of the teamsheet in silence.
+    const refused = refusedByRegistration(ctx.body.playerIds, allowed, allPlayerIds(team as Team))
     if (refused.length > 0) {
       throw badRequest(
         `${refused.length === 1 ? 'A player' : 'Some players'} in this teamsheet are not registered for this competition. Reload the page and try again.`,

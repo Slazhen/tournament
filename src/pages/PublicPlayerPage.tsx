@@ -133,6 +133,13 @@ export default function PublicPlayerPage() {
           {/* Player Details */}
           <div className="flex-1">
             <h1 className="text-3xl font-bold mb-2">{fullName}</h1>
+            {/* A player who has left the club still has this page: the goals,
+                the cards and the teamsheets that name him are still there, and
+                the scorer tables link here for the name. Saying so is what
+                keeps the page from reading as a current squad member. */}
+            {player.archived === true && (
+              <p className="text-sm opacity-70 mb-2">Former player of {currentTeam.name}</p>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               {player.number && (
                 <div>

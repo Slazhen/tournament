@@ -1,4 +1,5 @@
-import type { Team, Tournament } from './types.js'
+import { activePlayerIds } from './players.js'
+import type { Tournament } from './types.js'
 
 /**
  * Entering a club in a competition, decided in one place.
@@ -13,17 +14,15 @@ import type { Team, Tournament } from './types.js'
  * their own conditions and their own audit lines around it.
  */
 
-/** The ids of the players the club actually has, as strings. */
-export function squadPlayerIds(team: Team): Set<string> {
-  const players = Array.isArray(team.players) ? team.players : []
-  return new Set(
-    players
-      .map((player) =>
-        player && typeof player === 'object' ? (player as { id?: unknown }).id : undefined,
-      )
-      .filter((id): id is string => typeof id === 'string'),
-  )
-}
+/**
+ * The ids of the players the club actually has, as strings.
+ *
+ * Archived players are not among them, which is what keeps "everyone is in"
+ * from quietly re-entering somebody the club took off its books — and, in a
+ * strict competition, from storing their id in an entry that is the thing
+ * letting a player play.
+ */
+export const squadPlayerIds = activePlayerIds
 
 export type SquadChoice = {
   /** Who the caller has entered, after unknown and repeated ids are dropped. */
