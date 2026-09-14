@@ -10,7 +10,7 @@ import {
   calculateTeamStandings,
   sortTeamsByStandings,
 } from './schedule'
-import { groupCuts, groupsOf } from './standings'
+import { playoffTiers, groupsOf } from './standings'
 
 type Format = NonNullable<Tournament['format']>
 export type { Format as TournamentFormat }
@@ -57,6 +57,7 @@ export function generateFixtures(teamIds: string[], format: Format): Match[] {
         existingGroups: config.groups,
         qualifiersPerGroup: config.qualifiersPerGroup,
         secondDivisionPerGroup: config.secondDivisionPerGroup,
+        thirdDivisionPerGroup: config.thirdDivisionPerGroup,
       }).matches
     }
 
@@ -261,6 +262,7 @@ function buildFixtures(teamIds: string[], format: Format): { matches: Match[]; g
       existingGroups: config.groups,
       qualifiersPerGroup: config.qualifiersPerGroup,
       secondDivisionPerGroup: config.secondDivisionPerGroup,
+      thirdDivisionPerGroup: config.thirdDivisionPerGroup,
     })
     return { matches: result.matches, groups: result.groups }
   }
@@ -278,11 +280,14 @@ const sameGroupStage = (a: Format, b: Format) => {
   )
 }
 
-/** And the part that decides only how many playoff slots there are. */
+/** And the part that decides only how many brackets there are and how big. */
 const sameCuts = (a: Format, b: Format) => {
-  const one = groupCuts(a.groupsWithDivisionsConfig)
-  const two = groupCuts(b.groupsWithDivisionsConfig)
-  return one.firstDivision === two.firstDivision && one.secondDivision === two.secondDivision
+  const one = playoffTiers(a.groupsWithDivisionsConfig)
+  const two = playoffTiers(b.groupsWithDivisionsConfig)
+  return (
+    one.length === two.length &&
+    one.every((tier, index) => tier.places === two[index].places)
+  )
 }
 
 const sameFormat = (a: Format, b: Format) =>
@@ -364,12 +369,15 @@ export function planFormatChange(tournament: Tournament, next: Format): FormatCh
     const groupStage = existing.filter((match) => !match.isPlayoff)
     const lostPlayoffs = existing.filter((match) => match.isPlayoff && hasResult(match))
     const offset = groupStage.reduce((max, match) => Math.max(max, match.round ?? 0), -1) + 1
-    const cuts = groupCuts(next.groupsWithDivisionsConfig)
-    const bracket = generateDivisionBrackets(groupsOf(tournament), cuts, offset)
-    const divisions =
-      cuts.secondDivision > 0
-        ? `the top ${cuts.firstDivision} of each group in Division 1 and the next ${cuts.secondDivision} in Division 2`
-        : `the top ${cuts.firstDivision} of each group in Division 1, and no Division 2`
+    const tiers = playoffTiers(next.groupsWithDivisionsConfig)
+    const bracket = generateDivisionBrackets(groupsOf(tournament), tiers, offset)
+    const divisions = tiers
+      .map((tier) =>
+        tier.from === 1
+          ? `the top ${tier.places} of each group in the ${tier.name.toLowerCase()}`
+          : `the next ${tier.places} in the ${tier.name.toLowerCase()}`,
+      )
+      .join(', ')
 
     return {
       // A drawn bracket with results in it is the one thing here that cannot

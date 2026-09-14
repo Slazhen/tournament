@@ -125,30 +125,80 @@ export function groupsOf(tournament: Tournament): string[][] {
 /** How a group is named on screen: the first is A. */
 export const groupName = (index: number): string => `Group ${String.fromCharCode(65 + index)}`
 
-export type GroupCuts = {
-  /** How many of each group's table reach the first division's bracket. */
-  firstDivision: number
-  /** How many of the rest play a second division of their own. Zero means none. */
-  secondDivision: number
+export type TierMark = 'gold' | 'silver' | 'bronze' | 'advance'
+
+export type PlayoffTier = {
+  /** 1-based, and what a fixture of this bracket stores in `division`. */
+  division: number
+  /** The first place of a group's table it takes, 1-based. */
+  from: number
+  /** How many places it takes. */
+  places: number
+  /** What it is called on screen. */
+  name: string
+  /** The same in a badge's worth of characters. */
+  badge: string
+  /** What a qualifying row is marked as. */
+  mark: TierMark
 }
 
+/** Named after the medals, because a season with more than one bracket ranks them. */
+const TIER_NAMES = ['Gold', 'Silver', 'Bronze'] as const
+const TIER_MARKS: TierMark[] = ['gold', 'silver', 'bronze']
+
 /**
- * How far down each group's table the playoffs reach.
+ * The playoff brackets a grouped season runs, strongest first.
  *
- * Absent means two and two: the numbers that used to be written into the
- * generator, the regenerate button and the public table separately, so every
- * season created before the organiser could choose them is drawn exactly as it
- * was. Three copies of one rule are three answers to "who goes through"
- * waiting to disagree, which is why every one of them now asks here.
+ * Each one takes a number of places from every group's table, and the places
+ * run on from the bracket above: top two to the Gold playoffs and the next two
+ * to the Silver is `[2, 2]`, and that pair is what this answers when nothing is
+ * configured — what the generator, the regenerate button and both tables each
+ * had written into them separately before it was a setting, so every season
+ * drawn before then reads exactly as it did.
+ *
+ * A season with one bracket has no ranking to express, so it is called the
+ * playoffs and the clubs through it are simply qualified. The medal names only
+ * appear once there is a second bracket for them to rank against — which is
+ * also why they are names here and not on each screen that prints one.
  */
-export function groupCuts(config?: {
+export function playoffTiers(config?: {
   qualifiersPerGroup?: number
   secondDivisionPerGroup?: number
-}): GroupCuts {
-  return {
-    firstDivision: Math.max(1, Math.round(config?.qualifiersPerGroup ?? 2)),
-    secondDivision: Math.max(0, Math.round(config?.secondDivisionPerGroup ?? 2)),
+  thirdDivisionPerGroup?: number
+}): PlayoffTier[] {
+  const places = [
+    Math.max(1, Math.round(config?.qualifiersPerGroup ?? 2)),
+    Math.max(0, Math.round(config?.secondDivisionPerGroup ?? 2)),
+    Math.max(0, Math.round(config?.thirdDivisionPerGroup ?? 0)),
+  ]
+
+  // A gap is an end: places run on from the bracket above, so nothing can come
+  // after a bracket that takes nobody.
+  const taken: number[] = []
+  for (const count of places) {
+    if (count < 1) break
+    taken.push(count)
   }
+
+  const ranked = taken.length > 1
+  let from = 1
+  return taken.map((count, index) => {
+    const tier = {
+      division: index + 1,
+      from,
+      places: count,
+      name: ranked ? `${TIER_NAMES[index]} playoffs` : 'Playoffs',
+      badge: ranked ? TIER_NAMES[index].charAt(0) : 'PO',
+      mark: ranked ? TIER_MARKS[index] : ('advance' as TierMark),
+    }
+    from += count
+    return tier
+  })
+}
+
+/** Which bracket a place in a group's table goes to, if any. Zero-based index. */
+export function tierAtPlace(tiers: PlayoffTier[], index: number): PlayoffTier | undefined {
+  return tiers.find((tier) => index >= tier.from - 1 && index < tier.from - 1 + tier.places)
 }
 
 /** One table per group, keyed by the 1-based group number. Empty for every other format. */

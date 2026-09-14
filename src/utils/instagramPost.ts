@@ -51,7 +51,7 @@ export type PostRow = {
 export type PostChrome = {
   competition: string
   season: string
-  /** The line above the name: "Group A", "Round 5", "Division 1 — Final". */
+  /** The line above the name: "Group A", "Round 5", "Gold playoffs — Final". */
   group?: string
   /** "After Round 7 · 8 Sep 2026", or a kick-off and a ground. */
   note?: string

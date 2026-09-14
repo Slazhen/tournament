@@ -610,7 +610,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
               groupRounds: config.groupRounds,
               existingGroups: config.groups, // Use existing groups if available
               qualifiersPerGroup: config.qualifiersPerGroup,
-              secondDivisionPerGroup: config.secondDivisionPerGroup
+              secondDivisionPerGroup: config.secondDivisionPerGroup,
+              thirdDivisionPerGroup: config.thirdDivisionPerGroup
             })
             matches = result.matches
             

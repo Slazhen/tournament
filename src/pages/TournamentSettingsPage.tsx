@@ -13,7 +13,7 @@ import { clubService, tournamentService } from '../lib/data'
 import type { ClubManager, Entry } from '../lib/data'
 import type { Team, Tournament } from '../types'
 import { activeSquad, hasSquadEntry, registeredPlayers } from '../utils/squads'
-import { groupCuts } from '../utils/standings'
+import { playoffTiers } from '../utils/standings'
 import { competitionColor } from '../utils/crest'
 import Trophy from '../components/Trophy'
 import { IconLink, IconUser, IconUsers } from '../components/icons'
@@ -85,6 +85,7 @@ export default function TournamentSettingsPage() {
     groupRounds: number
     qualifiersPerGroup: number
     secondDivisionPerGroup: number
+    thirdDivisionPerGroup: number
     // Carried rather than edited: this is who is in which group, and a save
     // that dropped it would put every group table back to nothing.
     groups?: string[][]
@@ -149,15 +150,22 @@ export default function TournamentSettingsPage() {
     tournament.format?.customPlayoffConfig?.playoffTeams ??
     4
   const storedGroups = tournament.format?.groupsWithDivisionsConfig
-  const storedCuts = groupCuts(storedGroups)
+  const storedTiers = playoffTiers(storedGroups)
   const groupsConfig = draftGroups ?? {
     numberOfGroups: storedGroups?.numberOfGroups ?? 4,
     teamsPerGroup: storedGroups?.teamsPerGroup ?? 4,
     groupRounds: storedGroups?.groupRounds ?? 1,
-    qualifiersPerGroup: storedCuts.firstDivision,
-    secondDivisionPerGroup: storedCuts.secondDivision,
+    // Read back through `playoffTiers` rather than off the record, so a season
+    // from before these fields existed opens showing the two and two it is
+    // actually being drawn as.
+    qualifiersPerGroup: storedTiers[0]?.places ?? 2,
+    secondDivisionPerGroup: storedTiers[1]?.places ?? 0,
+    thirdDivisionPerGroup: storedTiers[2]?.places ?? 0,
     groups: storedGroups?.groups,
   }
+  // What the brackets would be called if this draft were saved — the labels on
+  // the fields below name the bracket each one feeds.
+  const draftTiers = playoffTiers(groupsConfig)
 
   // Adding finals to a league keeps the league exactly as it is, so the number
   // of legs has to come from the tournament rather than from the format card.
@@ -415,17 +423,30 @@ export default function TournamentSettingsPage() {
                 { key: 'groupRounds', label: 'Legs in the group', min: 1, max: 2 },
                 {
                   key: 'qualifiersPerGroup',
-                  label: 'Through to Division 1',
+                  // Named for the bracket it fills, which is only called the
+                  // gold playoffs once there is a second one to rank it against.
+                  label: `Per group, to the ${(draftTiers[0]?.name ?? 'Playoffs').toLowerCase()}`,
                   min: 1,
                   // A cut cannot reach past the last place in a group.
                   max: groupsConfig.teamsPerGroup,
                 },
                 {
                   key: 'secondDivisionPerGroup',
-                  label: 'Then to Division 2',
-                  // Zero is how an organiser says there is no second division.
+                  label: 'Then to the silver playoffs',
+                  // Zero is how an organiser says there is no second bracket.
                   min: 0,
                   max: Math.max(0, groupsConfig.teamsPerGroup - groupsConfig.qualifiersPerGroup),
+                },
+                {
+                  key: 'thirdDivisionPerGroup',
+                  label: 'Then to the bronze playoffs',
+                  min: 0,
+                  max: Math.max(
+                    0,
+                    groupsConfig.teamsPerGroup -
+                      groupsConfig.qualifiersPerGroup -
+                      groupsConfig.secondDivisionPerGroup,
+                  ),
                 },
               ] as const
             ).map(({ key, label, min, max }) => (
@@ -439,19 +460,31 @@ export default function TournamentSettingsPage() {
                   onChange={(event) => {
                     const value = Math.min(max, Math.max(min, Number(event.target.value) || min))
                     const next = { ...groupsConfig, [key]: value }
-                    // Shrinking a group, or taking more of it into the first
-                    // division, has to shrink what is left for the second.
+                    // Shrinking a group, or taking more of it into a bracket
+                    // above, has to shrink what is left for the ones below.
+                    next.qualifiersPerGroup = Math.min(next.qualifiersPerGroup, next.teamsPerGroup)
                     next.secondDivisionPerGroup = Math.min(
                       next.secondDivisionPerGroup,
                       Math.max(0, next.teamsPerGroup - next.qualifiersPerGroup),
                     )
-                    next.qualifiersPerGroup = Math.min(next.qualifiersPerGroup, next.teamsPerGroup)
+                    next.thirdDivisionPerGroup = Math.min(
+                      next.thirdDivisionPerGroup,
+                      Math.max(
+                        0,
+                        next.teamsPerGroup - next.qualifiersPerGroup - next.secondDivisionPerGroup,
+                      ),
+                    )
                     setDraftGroups(next)
                   }}
                   className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
                 />
               </label>
             ))}
+            <p className="sm:col-span-3 text-xs opacity-60">
+              {draftTiers.length === 1
+                ? 'One bracket, so the clubs through it are simply qualified.'
+                : `${draftTiers.length} brackets: ${draftTiers.map((tier) => tier.name.toLowerCase()).join(', ')}. A bracket set to nobody ends the list.`}
+            </p>
           </div>
         )}
 

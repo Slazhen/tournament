@@ -14,12 +14,13 @@ import { allMatches, playerRecords } from '../utils/matches'
 import { publicTeamUrl } from '../utils/teams'
 import {
   eliminatedTeams as eliminatedTeamsOf,
-  groupCuts,
   groupTables as groupTablesOf,
   leagueTable,
   playoffCut,
+  playoffTiers,
+  tierAtPlace,
 } from '../utils/standings'
-import type { GroupCuts, PlayoffCut } from '../utils/standings'
+import type { PlayoffCut, PlayoffTier, TierMark } from '../utils/standings'
 import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
@@ -50,19 +51,17 @@ function standingMark(index: number, teamId: string, qualified: PlayoffCut): Pos
 }
 
 /**
- * In a group, the cut decides the marks: the first division's places in green,
- * the second division's under them in blue. It used to be the top two and the
- * next two whatever the season was set up as, which is a table saying a club
- * qualified when it did not.
+ * In a group, the brackets decide the marks, and a club is marked as the one it
+ * is going to: gold, silver or bronze where the season ranks its playoffs, and
+ * plain green where there is only one and nothing to rank.
+ *
+ * It used to be the top two green and the next two blue whatever the season was
+ * set up as, which is a table saying a club qualified when it did not.
  */
 const groupMarkFor =
-  (cuts: GroupCuts) =>
+  (tiers: PlayoffTier[]) =>
   (index: number): PostMark =>
-    index < cuts.firstDivision
-      ? 'advance'
-      : index < cuts.firstDivision + cuts.secondDivision
-        ? 'second'
-        : 'none'
+    tierAtPlace(tiers, index)?.mark ?? 'none'
 
 const BADGE_CLASS: Record<PostMark, string> = {
   gold: 'bg-yellow-500 text-black',
@@ -73,13 +72,28 @@ const BADGE_CLASS: Record<PostMark, string> = {
   none: '',
 }
 
+// The three medals used to share one yellow wash, which was fine while they
+// only ever meant first, second and third on one table. They also name three
+// different playoff brackets now, and three rows a reader cannot tell apart
+// say nothing about which one a club is going to.
 const ROW_CLASS: Record<PostMark, string> = {
-  gold: 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5',
-  silver: 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5',
-  bronze: 'bg-gradient-to-r from-yellow-500/5 to-orange-500/5',
+  gold: 'bg-gradient-to-r from-yellow-500/10 to-orange-500/5',
+  silver: 'bg-gradient-to-r from-slate-300/10 to-slate-400/5',
+  bronze: 'bg-gradient-to-r from-orange-600/10 to-amber-700/5',
   advance: 'bg-gradient-to-r from-green-500/5 to-green-500/10',
   second: 'bg-gradient-to-r from-blue-500/5 to-blue-500/10',
   none: '',
+}
+
+/**
+ * A bracket's colour, keyed by the same mark its qualifying rows carry, so the
+ * green row in a group table and the green round below it are one statement.
+ */
+const TIER_ACCENTS: Record<TierMark, { card: string; badge: string }> = {
+  gold: { card: 'border-yellow-500/20', badge: 'from-yellow-500/20 to-orange-500/20 border-yellow-400/20' },
+  silver: { card: 'border-slate-300/20', badge: 'from-slate-300/20 to-slate-400/20 border-slate-200/20' },
+  bronze: { card: 'border-orange-600/20', badge: 'from-orange-600/20 to-amber-700/20 border-orange-500/20' },
+  advance: { card: 'border-green-500/20', badge: 'from-green-500/20 to-emerald-500/20 border-green-400/20' },
 }
 
 const STATS_TABS = [
@@ -405,7 +419,8 @@ export default function PublicTournamentPage() {
 
   // Calculate table directly without useMemo to avoid infinite loops
   const { table, eliminatedTeams, groupTables, qualified } = calculateTable()
-  const groupMark = groupMarkFor(groupCuts(tournament?.format?.groupsWithDivisionsConfig))
+  const tiers = playoffTiers(tournament?.format?.groupsWithDivisionsConfig)
+  const groupMark = groupMarkFor(tiers)
 
   const venue = describeVenue(tournament.location)
 
@@ -877,8 +892,13 @@ export default function PublicTournamentPage() {
                       </div>
                       <StandingsLegend />
                       <div className="text-center mt-3 text-xs sm:text-sm text-gray-300">
-                        <p>Top 2 teams advance to Division 1 playoffs</p>
-                        <p>3rd and 4th place go to Division 2 playoffs</p>
+                        {tiers.map((tier) => (
+                          <p key={tier.division}>
+                            {tier.from === 1
+                              ? `Top ${tier.places} of each group go to the ${tier.name.toLowerCase()}`
+                              : `The next ${tier.places} go to the ${tier.name.toLowerCase()}`}
+                          </p>
+                        ))}
                       </div>
                     </div>
                   )
@@ -1132,25 +1152,20 @@ export default function PublicTournamentPage() {
                   .sort((a, b) => a - b)
               }
               
-              // Group playoff matches by division and round
-              const div1MatchesByRound: Record<number, any[]> = {}
-              const div2MatchesByRound: Record<number, any[]> = {}
-              
+              // Every bracket the season actually has fixtures for, strongest
+              // first. A division nobody configured but whose fixtures are in
+              // the record still gets a section: the matches exist and a
+              // section missing from the page is a match nobody can find.
+              const playoffDivisions = [
+                ...new Set(playoffMatches.map((match: any) => Number(match.division) || 1)),
+              ].sort((a, b) => a - b)
+
+              const matchesByDivisionAndRound: Record<number, Record<number, any[]>> = {}
               playoffMatches.forEach((match: any) => {
-                const division = match.division || 1
+                const division = Number(match.division) || 1
                 const round = match.playoffRound !== undefined ? match.playoffRound : (match.round || 0)
-                
-                if (division === 1) {
-                  if (!div1MatchesByRound[round]) {
-                    div1MatchesByRound[round] = []
-                  }
-                  div1MatchesByRound[round].push(match)
-                } else if (division === 2) {
-                  if (!div2MatchesByRound[round]) {
-                    div2MatchesByRound[round] = []
-                  }
-                  div2MatchesByRound[round].push(match)
-                }
+                const rounds = (matchesByDivisionAndRound[division] ??= {})
+                ;(rounds[round] ??= []).push(match)
               })
               
               // Helper function to get playoff round name
@@ -1192,71 +1207,46 @@ export default function PublicTournamentPage() {
                     )
                   })}
                   
-                  {/* Division 1 Playoffs */}
-                  {Object.keys(div1MatchesByRound).length > 0 && (
-                    <div className="mb-6 sm:mb-8">
-                      <div className="text-center mb-4">
-                        <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Division 1 Playoffs</h3>
-                      </div>
-                      {(() => {
-                        const div1RoundKeys = Object.keys(div1MatchesByRound).map(Number).sort((a, b) => a - b)
-                        const totalRounds = div1RoundKeys.length
-                        return div1RoundKeys.map(roundNumber => {
-                          const roundMatches = div1MatchesByRound[roundNumber]
-                          const roundName = getPlayoffRoundName(roundNumber, totalRounds)
+                  {playoffDivisions.map((division) => {
+                    const byRound = matchesByDivisionAndRound[division] ?? {}
+                    const roundKeys = Object.keys(byRound).map(Number).sort((a, b) => a - b)
+                    if (roundKeys.length === 0) return null
+                    // A bracket whose places nobody configured any more still
+                    // has a name: the position it sits in is what names it.
+                    const tier = tiers[division - 1]
+                    const label = tier?.name ?? `Playoffs ${division}`
+                    const accents = TIER_ACCENTS[tier?.mark ?? 'advance']
+
+                    return (
+                      <div key={`division-${division}`} className="mb-6 sm:mb-8">
+                        <div className="text-center mb-4">
+                          <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">{label}</h3>
+                        </div>
+                        {roundKeys.map((roundNumber) => {
+                          const roundMatches = byRound[roundNumber]
+                          const roundName = getPlayoffRoundName(roundNumber, roundKeys.length)
+                          const title = `${label} — ${roundName}`
 
                           return (
                             <RoundCard
-                              key={`div1-${roundNumber}`}
-                              badge="D1"
-                              title={`Division 1 — ${roundName}`}
+                              key={`division-${division}-${roundNumber}`}
+                              badge={tier?.badge ?? String(division)}
+                              title={title}
                               subtitle={roundSubtitle(roundMatches)}
-                              accent="border-green-500/20"
-                              badgeAccent="from-green-500/20 to-emerald-500/20 border-green-400/20"
+                              accent={accents.card}
+                              badgeAccent={accents.badge}
                               // A knockout round is short and it is the sharp end
                               // of the tournament: never folded away.
                               defaultOpen
-                              action={roundPostButton(roundMatches, `Division 1 — ${roundName}`)}
+                              action={roundPostButton(roundMatches, title)}
                             >
                               {roundMatches.map(renderMatch)}
                             </RoundCard>
                           )
-                        })
-                      })()}
-                    </div>
-                  )}
-                  
-                  {/* Division 2 Playoffs */}
-                  {Object.keys(div2MatchesByRound).length > 0 && (
-                    <div className="mb-6 sm:mb-8">
-                      <div className="text-center mb-4">
-                        <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Division 2 Playoffs</h3>
+                        })}
                       </div>
-                      {(() => {
-                        const div2RoundKeys = Object.keys(div2MatchesByRound).map(Number).sort((a, b) => a - b)
-                        const totalRounds = div2RoundKeys.length
-                        return div2RoundKeys.map(roundNumber => {
-                          const roundMatches = div2MatchesByRound[roundNumber]
-                          const roundName = getPlayoffRoundName(roundNumber, totalRounds)
-
-                          return (
-                            <RoundCard
-                              key={`div2-${roundNumber}`}
-                              badge="D2"
-                              title={`Division 2 — ${roundName}`}
-                              subtitle={roundSubtitle(roundMatches)}
-                              accent="border-blue-500/20"
-                              badgeAccent="from-blue-500/20 to-cyan-500/20 border-blue-400/20"
-                              defaultOpen
-                              action={roundPostButton(roundMatches, `Division 2 — ${roundName}`)}
-                            >
-                              {roundMatches.map(renderMatch)}
-                            </RoundCard>
-                          )
-                        })
-                      })()}
-                    </div>
-                  )}
+                    )
+                  })}
                 </>
               )
             }

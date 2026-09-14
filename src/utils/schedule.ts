@@ -1,5 +1,5 @@
 import type { Match, PlayoffBracket, CustomPlayoffRound, TeamStanding } from '../types'
-import { groupCuts } from './standings'
+import { playoffTiers } from './standings'
 
 export function generateRoundRobinSchedule(teamIds: string[], roundsMultiplier: number = 1): Match[] {
   if (teamIds.length < 2) return []
@@ -310,34 +310,32 @@ export function generateSwissEliminationSchedule(teamIds: string[], leagueRounds
  */
 export function generateDivisionBrackets(
   groups: string[][],
-  cuts: { firstDivision: number; secondDivision: number },
+  tiers: { division: number; from: number; places: number }[],
   playoffRoundOffset: number,
 ): Match[] {
-  const divisionTeams: Record<1 | 2, string[]> = { 1: [], 2: [] }
+  const draw = (tier: { division: number; from: number; places: number }): Match[] => {
+    const qualifiers: string[] = []
+    groups.forEach((groupTeams, groupIndex) => {
+      // A group shorter than the cut contributes only the places it actually
+      // has, which is what a group of three did before the cut was a setting.
+      for (let place = tier.from; place < tier.from + tier.places; place++) {
+        if (place <= groupTeams.length) qualifiers.push(`group-${groupIndex + 1}-${place}`)
+      }
+    })
 
-  groups.forEach((groupTeams, groupIndex) => {
-    // A group shorter than the cut contributes only the places it actually has,
-    // which is what a group of three did before the cut was a setting.
-    for (let place = 1; place <= groupTeams.length; place++) {
-      if (place <= cuts.firstDivision) divisionTeams[1].push(`group-${groupIndex + 1}-${place}`)
-      else if (place <= cuts.firstDivision + cuts.secondDivision)
-        divisionTeams[2].push(`group-${groupIndex + 1}-${place}`)
-    }
-  })
-
-  const draw = (division: 1 | 2): Match[] =>
-    createPlayoffMatches(generatePlayoffBrackets(divisionTeams[division])).map((match) => ({
+    return createPlayoffMatches(generatePlayoffBrackets(qualifiers)).map((match) => ({
       ...match,
-      id: `div${division}-${match.id}`,
+      id: `div${tier.division}-${match.id}`,
       // Offset so the bracket comes after the group stage; playoffRound keeps
       // its own numbering from zero, which is what the screens draw it by.
       round: playoffRoundOffset + (match.playoffRound || 0),
       isPlayoff: true,
       playoffRound: match.playoffRound,
-      division,
+      division: tier.division,
     }))
+  }
 
-  return [...draw(1), ...draw(2)]
+  return tiers.flatMap(draw)
 }
 
 export function generateGroupsWithDivisionsSchedule(
@@ -349,6 +347,7 @@ export function generateGroupsWithDivisionsSchedule(
     existingGroups?: string[][] // Optional: use existing groups if provided
     qualifiersPerGroup?: number
     secondDivisionPerGroup?: number
+    thirdDivisionPerGroup?: number
   }
 ): { matches: Match[], groups: string[][] } {
   const { numberOfGroups, teamsPerGroup, groupRounds, existingGroups } = config
@@ -401,9 +400,9 @@ export function generateGroupsWithDivisionsSchedule(
     : -1
   const playoffRoundOffset = maxGroupRound + 1
   
-  // Who goes through is the organiser's setting now rather than a constant
-  // here, in the regenerate button and in the public table.
-  const divisionMatches = generateDivisionBrackets(groups, groupCuts(config), playoffRoundOffset)
+  // Who goes through, and into how many brackets, is the organiser's setting
+  // now rather than a constant here, in the regenerate button and both tables.
+  const divisionMatches = generateDivisionBrackets(groups, playoffTiers(config), playoffRoundOffset)
 
   // Combine all matches and return with groups
   return {

@@ -201,7 +201,7 @@ export type Match = {
   playoffRound?: number
   playoffMatch?: number
   isElimination?: boolean // Mark individual matches as elimination for public display
-  division?: number // Division number (1 or 2) for groups_with_divisions format
+  division?: number // Which playoff bracket, 1-based and strongest first, for groups_with_divisions
   groupIndex?: number // Group number (1-based) for groups_with_divisions format
   // Match details
   venue?: string
@@ -412,19 +412,22 @@ export type Tournament = {
       groupRounds: number // 1 or 2 rounds in group stage
       groups?: string[][] // Array of arrays: [[team1, team2, ...], [team3, team4, ...], ...] - stores team assignments per group
       /**
-       * How far down each group's table the playoffs reach: the top
-       * `qualifiersPerGroup` of every group play the first division's bracket
-       * and the next `secondDivisionPerGroup` play a second one of their own.
-       * Zero there means there is no second division at all.
+       * How far down each group's table the playoffs reach, one bracket at a
+       * time: the top `qualifiersPerGroup` of every group play the first, the
+       * next `secondDivisionPerGroup` play the second, the next
+       * `thirdDivisionPerGroup` the third. Zero ends the list, so a season can
+       * run one bracket, two or three.
        *
-       * Both absent means two and two, which is the pair of numbers the
-       * generator, the regenerate button and the public table each had written
-       * into them separately, and therefore what every season created before
-       * these fields existed was drawn as. `groupCuts` in `utils/standings.ts`
-       * is the one place that answers it.
+       * All absent means two and two, which is the pair of numbers the
+       * generator, the regenerate button and both tables each had written into
+       * them separately, and therefore what every season created before these
+       * fields existed was drawn as. `playoffTiers` in `utils/standings.ts` is
+       * the one place that answers it, names the brackets and decides how a
+       * qualifying row is marked.
        */
       qualifiersPerGroup?: number
       secondDivisionPerGroup?: number
+      thirdDivisionPerGroup?: number
     }
   }
   /**

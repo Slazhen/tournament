@@ -5,6 +5,7 @@ import LogoUploader from "../components/LogoUploader"
 import FormatPicker from "../components/FormatPicker"
 import TeamPicker from "../components/TeamPicker"
 import { findFormat, planSchedule, formatOptionFor } from "../utils/formats"
+import { playoffTiers } from "../utils/standings"
 import { adminSeasonUrl, seriesName, nextSeasonLabel, seriesKey } from "../utils/seasons"
 import {
   IconArrowLeft,
@@ -42,6 +43,7 @@ export default function CreateTournamentPage() {
   // this format did before the organiser could choose.
   const [qualifiersPerGroup, setQualifiersPerGroup] = useState(2)
   const [secondDivisionPerGroup, setSecondDivisionPerGroup] = useState(2)
+  const [thirdDivisionPerGroup, setThirdDivisionPerGroup] = useState(0)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string>("")
   const [isCreating, setIsCreating] = useState(false)
@@ -109,6 +111,7 @@ export default function CreateTournamentPage() {
       setGroupRounds(groups.groupRounds)
       setQualifiersPerGroup(groups.qualifiersPerGroup ?? 2)
       setSecondDivisionPerGroup(groups.secondDivisionPerGroup ?? 2)
+      setThirdDivisionPerGroup(groups.thirdDivisionPerGroup ?? 0)
     }
     if (previousSeason.logo) setLogoPreview(previousSeason.logo)
     // A new season belongs to whoever ran the last one.
@@ -118,6 +121,13 @@ export default function CreateTournamentPage() {
 
   const selectedFormat = findFormat(formatId)
   const mode = selectedFormat.mode
+  // What the brackets would be called as the form stands, so a field can name
+  // the one it feeds.
+  const groupTiers = playoffTiers({
+    qualifiersPerGroup,
+    secondDivisionPerGroup,
+    thirdDivisionPerGroup,
+  })
   const plan = planSchedule(selectedFormat, selectedTeamIds.length, qualifiers)
 
   if (!currentOrganizer && !superAdmin) {
@@ -139,9 +149,12 @@ export default function CreateTournamentPage() {
    * past the last place is a bracket with slots nobody can qualify for.
    */
   const applyTeamsPerGroup = (size: number) => {
+    const through = Math.min(qualifiersPerGroup, size)
+    const second = Math.min(secondDivisionPerGroup, Math.max(0, size - through))
     setTeamsPerGroup(size)
-    setQualifiersPerGroup((through) => Math.min(through, size))
-    setSecondDivisionPerGroup((next) => Math.min(next, Math.max(0, size - Math.min(qualifiersPerGroup, size))))
+    setQualifiersPerGroup(through)
+    setSecondDivisionPerGroup(second)
+    setThirdDivisionPerGroup((third) => Math.min(third, Math.max(0, size - through - second)))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -168,6 +181,7 @@ export default function CreateTournamentPage() {
           groupRounds,
           qualifiersPerGroup,
           secondDivisionPerGroup,
+          thirdDivisionPerGroup,
         } : undefined
       }
 
@@ -304,6 +318,7 @@ export default function CreateTournamentPage() {
                 groupRounds,
                 qualifiersPerGroup,
                 secondDivisionPerGroup,
+                thirdDivisionPerGroup,
               }}
             />
           </div>
@@ -441,9 +456,10 @@ export default function CreateTournamentPage() {
                 <div className="space-y-4 p-4 bg-blue-500/10 border border-blue-400/30 rounded-lg">
                   <h3 className="text-lg font-semibold text-blue-400">Groups + Divisions Configuration</h3>
                   <p className="text-sm opacity-80 mb-4">
-                    Teams are divided into groups and play each other within the group. Who goes on to
-                    the finals is set below: the top of each group plays the Division 1 bracket, and
-                    the places under them can play a Division 2 bracket of their own.
+                    Teams are divided into groups and play each other within the group. Who goes on
+                    to the finals is set below. One bracket and the clubs through it are simply
+                    qualified; add a second or a third and they become the gold, silver and bronze
+                    playoffs, each taking the places under the one above.
                   </p>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -498,16 +514,23 @@ export default function CreateTournamentPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">Through to Division 1</label>
+                      <label className="block text-sm font-medium mb-2">
+                        Through to the {(groupTiers[0]?.name ?? 'Playoffs').toLowerCase()}
+                      </label>
                       <select
                         value={qualifiersPerGroup}
                         onChange={(e) => {
                           const through = Number(e.target.value)
+                          // Each bracket takes the places under the one above,
+                          // so none of them can reach past the end of a group.
+                          const second = Math.min(
+                            secondDivisionPerGroup,
+                            Math.max(0, teamsPerGroup - through),
+                          )
                           setQualifiersPerGroup(through)
-                          // The second division takes the places under the
-                          // first, so it cannot reach past the end of a group.
-                          setSecondDivisionPerGroup((current) =>
-                            Math.min(current, teamsPerGroup - through),
+                          setSecondDivisionPerGroup(second)
+                          setThirdDivisionPerGroup((third) =>
+                            Math.min(third, Math.max(0, teamsPerGroup - through - second)),
                           )
                         }}
                         className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
@@ -520,13 +543,19 @@ export default function CreateTournamentPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">Division 2 playoffs</label>
+                      <label className="block text-sm font-medium mb-2">Silver playoffs</label>
                       <select
                         value={secondDivisionPerGroup}
-                        onChange={(e) => setSecondDivisionPerGroup(Number(e.target.value))}
+                        onChange={(e) => {
+                          const second = Number(e.target.value)
+                          setSecondDivisionPerGroup(second)
+                          setThirdDivisionPerGroup((third) =>
+                            Math.min(third, Math.max(0, teamsPerGroup - qualifiersPerGroup - second)),
+                          )
+                        }}
                         className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                       >
-                        <option value={0}>No Division 2</option>
+                        <option value={0}>No second bracket</option>
                         {Array.from(
                           { length: Math.max(0, teamsPerGroup - qualifiersPerGroup) },
                           (_, index) => index + 1,
@@ -537,6 +566,31 @@ export default function CreateTournamentPage() {
                         ))}
                       </select>
                     </div>
+                    {secondDivisionPerGroup > 0 && (
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Bronze playoffs</label>
+                        <select
+                          value={thirdDivisionPerGroup}
+                          onChange={(e) => setThirdDivisionPerGroup(Number(e.target.value))}
+                          className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                        >
+                          <option value={0}>No third bracket</option>
+                          {Array.from(
+                            {
+                              length: Math.max(
+                                0,
+                                teamsPerGroup - qualifiersPerGroup - secondDivisionPerGroup,
+                              ),
+                            },
+                            (_, index) => index + 1,
+                          ).map((next) => (
+                            <option key={next} value={next}>
+                              Next {next} of each group
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                   {selectedTeamIds.length > 0 && (
                     <div className="mt-4 p-3 bg-white/5 rounded-lg">

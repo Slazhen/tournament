@@ -4,7 +4,8 @@ import { useMemo, useState, useEffect } from 'react'
 import { generatePlayoffBrackets, createPlayoffMatches as createPlayoffMatchesFromBrackets } from '../utils/schedule'
 import { generateMatchUID } from '../utils/uid'
 import { generateGroupsWithDivisionsSchedule } from '../utils/tournament'
-import { groupCuts } from '../utils/standings'
+import { playoffTiers, tierAtPlace } from '../utils/standings'
+import type { TierMark } from '../utils/standings'
 import { findTournamentBySlug } from '../utils/urls'
 import { organizerService } from '../lib/data'
 import type { CustomPlayoffRoundConfig, Match, Organizer } from '../types'
@@ -52,6 +53,46 @@ const expectationOf = (round: { roundNumber?: number; name?: string }) => ({
   roundNumber: round.roundNumber,
   name: round.name,
 })
+
+/**
+ * How a playoff bracket is drawn on the organiser's screens, keyed by the mark
+ * `playoffTiers` gives it. A season with one bracket ranks nothing, so its
+ * qualifiers are green and say so; two or three are the medals in order.
+ */
+const TIER_LABEL: Record<TierMark, string> = {
+  gold: 'Gold',
+  silver: 'Silver',
+  bronze: 'Bronze',
+  advance: 'Qualified',
+}
+
+const TIER_ROW_CLASS: Record<TierMark, string> = {
+  gold: 'bg-yellow-500/10',
+  silver: 'bg-slate-300/10',
+  bronze: 'bg-orange-600/10',
+  advance: 'bg-green-500/10',
+}
+
+const TIER_BADGE_CLASS: Record<TierMark, string> = {
+  gold: 'bg-yellow-500/20 text-yellow-200',
+  silver: 'bg-slate-300/20 text-slate-200',
+  bronze: 'bg-orange-600/20 text-orange-200',
+  advance: 'bg-green-500/20 text-green-300',
+}
+
+const TIER_HEADING_CLASS: Record<TierMark, string> = {
+  gold: 'text-yellow-300',
+  silver: 'text-slate-200',
+  bronze: 'text-orange-300',
+  advance: 'text-green-400',
+}
+
+const TIER_CARD_CLASS: Record<TierMark, string> = {
+  gold: 'border-yellow-500/20',
+  silver: 'border-slate-300/20',
+  bronze: 'border-orange-600/20',
+  advance: 'border-green-500/20',
+}
 
 // Tracks tournaments whose reconstructed groups we've already persisted this session,
 // so we never rewrite the (large) tournament item more than once during rendering.
@@ -639,33 +680,26 @@ export default function TournamentPage() {
       return
     }
     
-    // Get Division 1 teams (1st and 2nd from each group)
-    const division1Teams: string[] = []
-    const division2Teams: string[] = []
-    
-    // How far down each group the playoffs reach is the organiser's setting;
-    // `groupCuts` is the one place that answers it, here and in the generator
-    // and the public table alike.
-    const cuts = groupCuts(tournament.format?.groupsWithDivisionsConfig)
+    // How many brackets there are and how far down each group they reach is the
+    // organiser's setting; `playoffTiers` is the one place that answers it,
+    // here and in the generator and both tables alike.
+    const tiers = playoffTiers(tournament.format?.groupsWithDivisionsConfig)
+    const qualifiersByTier: Record<number, string[]> = {}
     
     Object.keys(groupTables).forEach(groupKey => {
       const groupIndex = Number(groupKey)
       const table = (groupTables as Record<number, any[]>)[groupIndex] || []
       
       table.forEach((row: any, place: number) => {
-        if (place < cuts.firstDivision) division1Teams.push(row.id)
-        else if (place < cuts.firstDivision + cuts.secondDivision) division2Teams.push(row.id)
+        const tier = tierAtPlace(tiers, place)
+        if (tier) (qualifiersByTier[tier.division] ??= []).push(row.id)
       })
     })
     
-    if (division1Teams.length < 2) {
-      alert('Cannot regenerate playoffs: at least two teams have to go through to Division 1.')
+    if ((qualifiersByTier[1] ?? []).length < 2) {
+      alert(`Cannot regenerate playoffs: at least two teams have to go through to the ${tiers[0].name.toLowerCase()}.`)
       return
     }
-    
-    // Generate Division 1 playoff brackets
-    const div1Brackets = generatePlayoffBrackets(division1Teams)
-    const div1PlayoffMatches = createPlayoffMatchesFromBrackets(div1Brackets)
     
     // Calculate max group round to offset playoff rounds
     const groupMatches = tournament.matches.filter(m => !m.isPlayoff)
@@ -673,41 +707,33 @@ export default function TournamentPage() {
       ? Math.max(...groupMatches.map(m => m.round || 0), 0)
       : -1
     const playoffRoundOffset = maxGroupRound + 1
+    const drawnAt = Date.now()
     
-    // Adjust Division 1 matches
-    const updatedDiv1Matches = div1PlayoffMatches.map(match => ({
-      ...match,
-      id: `div1-${match.id}-${Date.now()}`,
-      round: playoffRoundOffset + (match.playoffRound || 0),
-      isPlayoff: true,
-      playoffRound: match.playoffRound,
-      division: 1
-    }))
-    
-    // Generate Division 2 playoff brackets if we have enough teams
-    let updatedDiv2Matches: any[] = []
-    if (division2Teams.length >= 2) {
-      const div2Brackets = generatePlayoffBrackets(division2Teams)
-      const div2PlayoffMatches = createPlayoffMatchesFromBrackets(div2Brackets)
-      
-      updatedDiv2Matches = div2PlayoffMatches.map(match => ({
+    // One bracket per tier, seeded from that tier's places in the group tables.
+    const rebuilt = tiers.flatMap(tier => {
+      const qualifiers = qualifiersByTier[tier.division] ?? []
+      // Two clubs is the smallest thing that is a bracket at all.
+      if (qualifiers.length < 2) return []
+      return createPlayoffMatchesFromBrackets(generatePlayoffBrackets(qualifiers)).map(match => ({
         ...match,
-        id: `div2-${match.id}-${Date.now()}`,
+        id: `div${tier.division}-${match.id}-${drawnAt}`,
         round: playoffRoundOffset + (match.playoffRound || 0),
         isPlayoff: true,
         playoffRound: match.playoffRound,
-        division: 2
+        division: tier.division,
       }))
-    }
+    })
     
     // Remove old playoff matches and add new ones
-    const nonPlayoffMatches = tournament.matches.filter(m => !m.isPlayoff)
-    const updatedMatches = [...nonPlayoffMatches, ...updatedDiv1Matches, ...updatedDiv2Matches]
+    const updatedMatches = [...groupMatches, ...rebuilt]
     
     updateTournament(tournament.id, { matches: updatedMatches })
     alert(
-      `Playoff matches have been regenerated: ${updatedDiv1Matches.length} in Division 1` +
-        (updatedDiv2Matches.length > 0 ? ` and ${updatedDiv2Matches.length} in Division 2.` : '.'),
+      'Playoff matches have been regenerated: ' +
+        tiers
+          .map(tier => `${rebuilt.filter(m => m.division === tier.division).length} in the ${tier.name.toLowerCase()}`)
+          .join(', ') +
+        '.',
     )
   }
 
@@ -940,6 +966,9 @@ export default function TournamentPage() {
   }
 
   const { table, eliminatedTeams, groupTables } = useMemo(() => calculateTable(), [tournament])
+
+  // The brackets this season runs, named and ranked in one place.
+  const groupTiers = playoffTiers(tournament?.format?.groupsWithDivisionsConfig)
 
   // Nothing is missing until everything it depends on has arrived. Showing
   // "not found" while the tournament list is still in flight is what made a
@@ -1267,7 +1296,14 @@ export default function TournamentPage() {
             </button>
           </div>
           <p className="text-sm opacity-70 mb-4 text-center">
-            Top 2 teams from each group advance to Division 1 playoffs. 3rd and 4th place go to Division 2 playoffs.
+            {groupTiers
+              .map((tier) =>
+                tier.from === 1
+                  ? `Top ${tier.places} of each group go to the ${tier.name.toLowerCase()}`
+                  : `the next ${tier.places} to the ${tier.name.toLowerCase()}`,
+              )
+              .join(', ')}
+            .
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {(tournament.format.groupsWithDivisionsConfig.groups || []).map((_groupTeams, groupIndex) => {
@@ -1293,15 +1329,14 @@ export default function TournamentPage() {
                       </thead>
                       <tbody>
                         {groupTable.map((row: any, index: number) => {
-                          // Green as far as the first division's cut reaches,
-                          // blue for the places under it that play the second.
-                          const cuts = groupCuts(tournament.format?.groupsWithDivisionsConfig)
-                          const inFirst = index < cuts.firstDivision
-                          const inSecond = index < cuts.firstDivision + cuts.secondDivision
+                          // A club is marked as the bracket it is going to, and
+                          // a season with only one has nothing to rank, so its
+                          // qualifiers are simply that.
+                          const tier = tierAtPlace(groupTiers, index)
                           return (
                             <tr 
                               key={row.id} 
-                              className={`border-t border-white/5 ${inFirst ? 'bg-green-500/10' : inSecond ? 'bg-blue-500/10' : ''}`}
+                              className={`border-t border-white/5 ${tier ? TIER_ROW_CLASS[tier.mark] : ''}`}
                             >
                               <td className="py-2 pr-2">{index + 1}</td>
                               <td className="py-2 pr-2 flex items-center gap-2">
@@ -1327,16 +1362,11 @@ export default function TournamentPage() {
                                 >
                                   {teams.find(t => t.id === row.id)?.name ?? row.id}
                                 </Link>
-                                {inFirst && (
-                                  <span className="text-xs bg-green-500/20 text-green-300 px-1.5 py-0.5 rounded-full">
-                                    Div 1
+                                {tier && (
+                                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${TIER_BADGE_CLASS[tier.mark]}`}>
+                                    {tier.mark === 'advance' ? 'Qualified' : TIER_LABEL[tier.mark]}
                                   </span>
                                 )}
-                                {!inFirst && inSecond ? (
-                                  <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-full">
-                                    Div 2
-                                  </span>
-                                ) : null}
                               </td>
                               <td className="py-2 pr-2 text-center">{row.p}</td>
                               <td className="py-2 pr-2 text-center">{row.w}</td>
@@ -1515,7 +1545,8 @@ export default function TournamentPage() {
                     // Redrawing the groups must not quietly put the bracket
                     // back to the two-and-two it had before it was a setting.
                     qualifiersPerGroup: config.qualifiersPerGroup,
-                    secondDivisionPerGroup: config.secondDivisionPerGroup
+                    secondDivisionPerGroup: config.secondDivisionPerGroup,
+                    thirdDivisionPerGroup: config.thirdDivisionPerGroup
                   })
                   
                   // Update tournament with new groups and matches
@@ -2357,53 +2388,46 @@ export default function TournamentPage() {
             {(() => {
               // For groups_with_divisions, organize playoffs by division
               if (tournament.format?.mode === 'groups_with_divisions') {
-                const div1Matches: any[] = []
-                const div2Matches: any[] = []
-                
+                // Every bracket the season has fixtures for, strongest first. A
+                // division nobody configured any more but whose matches are in
+                // the record still gets a section: the fixtures exist, and a
+                // section missing from the page is a match nobody can reach.
+                const divisions = [
+                  ...new Set(playoffMatches.map(m => Number(m.division) || 1)),
+                ].sort((a, b) => a - b)
+
+                const byDivisionAndRound: Record<number, Record<number, any[]>> = {}
                 playoffMatches.forEach(m => {
-                  if (m.division === 1) {
-                    div1Matches.push(m)
-                  } else if (m.division === 2) {
-                    div2Matches.push(m)
-                  }
-                })
-                
-                // Group by round for each division
-                const div1ByRound: Record<number, any[]> = {}
-                const div2ByRound: Record<number, any[]> = {}
-                
-                div1Matches.forEach(m => {
+                  const division = Number(m.division) || 1
                   const round = m.playoffRound !== undefined ? m.playoffRound : (m.round || 0)
-                  if (!div1ByRound[round]) div1ByRound[round] = []
-                  div1ByRound[round].push(m)
+                  const rounds = (byDivisionAndRound[division] ??= {})
+                  ;(rounds[round] ??= []).push(m)
                 })
-                
-                div2Matches.forEach(m => {
-                  const round = m.playoffRound !== undefined ? m.playoffRound : (m.round || 0)
-                  if (!div2ByRound[round]) div2ByRound[round] = []
-                  div2ByRound[round].push(m)
-                })
-                
-                const div1Rounds = Object.keys(div1ByRound).map(Number).sort((a, b) => a - b)
-                const div2Rounds = Object.keys(div2ByRound).map(Number).sort((a, b) => a - b)
-                const totalDiv1Rounds = div1Rounds.length
-                const totalDiv2Rounds = div2Rounds.length
-                
+
                 return (
                   <>
-                    {/* Division 1 Playoffs */}
-                    {div1Rounds.length > 0 && (
-                      <div className="mb-8">
-                        <h3 className="text-xl font-bold mb-4 text-green-400">Division 1 Playoffs</h3>
-                        {div1Rounds.map(roundIndex => {
-                          const roundMatches = div1ByRound[roundIndex] || []
-                          const roundName = getPlayoffRoundName(roundIndex, totalDiv1Rounds)
-                          
-                          return (
-                            <div key={`div1-${roundIndex}`} className="mb-6">
-                              <div className="glass rounded-xl p-4 border border-green-500/20">
-                                <div className="font-bold text-lg mb-4 text-center text-green-400">Division 1 - {roundName}</div>
-                                <div className="grid gap-3">
+                    {divisions.map(division => {
+                      const byRound = byDivisionAndRound[division] ?? {}
+                      const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b)
+                      if (rounds.length === 0) return null
+                      const tier = groupTiers[division - 1]
+                      const label = tier?.name ?? `Playoffs ${division}`
+                      const mark = tier?.mark ?? 'advance'
+
+                      return (
+                        <div key={`division-${division}`} className="mb-8">
+                          <h3 className={`text-xl font-bold mb-4 ${TIER_HEADING_CLASS[mark]}`}>{label}</h3>
+                          {rounds.map(roundIndex => {
+                            const roundMatches = byRound[roundIndex] || []
+                            const roundName = getPlayoffRoundName(roundIndex, rounds.length)
+
+                            return (
+                              <div key={`division-${division}-${roundIndex}`} className="mb-6">
+                                <div className={`glass rounded-xl p-4 border ${TIER_CARD_CLASS[mark]}`}>
+                                  <div className={`font-bold text-lg mb-4 text-center ${TIER_HEADING_CLASS[mark]}`}>
+                                    {label} - {roundName}
+                                  </div>
+                                  <div className="grid gap-3">
                                   {roundMatches.map((m) => (
                                     <div key={m.id} className="grid gap-3 items-end p-3 glass rounded-lg md:grid-cols-[minmax(7rem,1fr)_auto_minmax(7rem,1fr)_auto_auto_auto]">
                                       <div className="flex flex-col gap-1">
@@ -2476,106 +2500,14 @@ export default function TournamentPage() {
                                       </div>
                                     </div>
                                   ))}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                    
-                    {/* Division 2 Playoffs */}
-                    {div2Rounds.length > 0 && (
-                      <div className="mb-8">
-                        <h3 className="text-xl font-bold mb-4 text-blue-400">Division 2 Playoffs</h3>
-                        {div2Rounds.map(roundIndex => {
-                          const roundMatches = div2ByRound[roundIndex] || []
-                          const roundName = getPlayoffRoundName(roundIndex, totalDiv2Rounds)
-                          
-                          return (
-                            <div key={`div2-${roundIndex}`} className="mb-6">
-                              <div className="glass rounded-xl p-4 border border-blue-500/20">
-                                <div className="font-bold text-lg mb-4 text-center text-blue-400">Division 2 - {roundName}</div>
-                                <div className="grid gap-3">
-                                  {roundMatches.map((m) => (
-                                    <div key={m.id} className="grid gap-3 items-end p-3 glass rounded-lg md:grid-cols-[minmax(7rem,1fr)_auto_minmax(7rem,1fr)_auto_auto_auto]">
-                                      <div className="flex flex-col gap-1">
-                                        <label className="text-xs opacity-70">Home Team</label>
-                                        <select
-                                          value={m.homeTeamId || ''}
-                                          onChange={(e) => setPlayoffTeams(m.id, e.target.value, m.awayTeamId || '')}
-                                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
-                                        >
-                                          <option value="">Select Team</option>
-                                          {tournamentTeams.map(team => (
-                                            <option key={team.id} value={team.id}>{team.name}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div className="text-center">
-                                        <div className="text-lg font-bold opacity-50">vs</div>
-                                      </div>
-                                      <div className="flex flex-col gap-1">
-                                        <label className="text-xs opacity-70">Away Team</label>
-                                        <select
-                                          value={m.awayTeamId || ''}
-                                          onChange={(e) => setPlayoffTeams(m.id, m.homeTeamId || '', e.target.value)}
-                                          className="px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
-                                        >
-                                          <option value="">Select Team</option>
-                                          {getAvailableOpponents(m.homeTeamId, m).map(team => (
-                                            <option key={team.id} value={team.id}>{team.name}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div className="flex flex-col gap-1">
-                                        <label className="text-xs opacity-70">Score</label>
-                                        <div className="flex gap-1 items-center">
-                                          <InlineInput 
-                                            inputMode="numeric" 
-                                            pattern="[0-9]*" 
-                                            className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
-                                            value={m.homeGoals ?? ''} 
-                                            onCommit={(value) => setScore(m.id, value === '' ? NaN : Number(value), m.awayGoals ?? NaN)} 
-                                          />
-                                          <span className="text-sm">:</span>
-                                          <InlineInput 
-                                            inputMode="numeric" 
-                                            pattern="[0-9]*" 
-                                            className="w-12 px-1 py-1 rounded-md bg-transparent border border-white/20 text-center text-sm" 
-                                            value={m.awayGoals ?? ''} 
-                                            onCommit={(value) => setScore(m.id, m.homeGoals ?? NaN, value === '' ? NaN : Number(value))} 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="flex flex-col gap-1">
-                                        <label className="text-xs opacity-70">Date & Time</label>
-                                        <div className="flex gap-2">
-                                          <MatchDateTime
-                          value={m.dateISO}
-                          onChange={(iso) => setDate(m.id, iso ?? '')}
-                          size="sm"
-                        />
-                                        </div>
-                                      </div>
-                                      <div className="flex flex-col gap-1">
-                                                          <Link 
-                                          to={`/tournaments/${tournament.id}/matches/${m.id}`}
-                                          className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
-                                          title="View match statistics"
-                                        >
-                                          <IconChart size={14} /> Match details
-                                        </Link>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
                   </>
                 )
               }

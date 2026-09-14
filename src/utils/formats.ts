@@ -1,5 +1,5 @@
 import type { Tournament } from '../types'
-import { groupCuts } from './standings'
+import { playoffTiers } from './standings'
 
 /** Which drawing goes on the card. Emoji rendered differently on every device. */
 export type FormatIconName =
@@ -192,6 +192,7 @@ export type GroupsPlanInput = {
   groupRounds: number
   qualifiersPerGroup?: number
   secondDivisionPerGroup?: number
+  thirdDivisionPerGroup?: number
 }
 
 export function planSchedule(
@@ -261,19 +262,19 @@ export function planSchedule(
     const perGroup = groups.teamsPerGroup
     const groupMatches =
       groups.numberOfGroups * ((perGroup * (perGroup - 1)) / 2) * Math.max(1, groups.groupRounds)
-    const cuts = groupCuts(groups)
-    const firstDivision = groups.numberOfGroups * Math.min(cuts.firstDivision, perGroup)
-    const secondDivision =
-      groups.numberOfGroups * Math.min(cuts.secondDivision, Math.max(0, perGroup - cuts.firstDivision))
+
     // A bracket of n clubs is n-1 matches however uneven n is: an odd round
     // carries one club through without a fixture rather than inventing one.
-    const playoffMatches = Math.max(0, firstDivision - 1) + Math.max(0, secondDivision - 1)
-    // "an 8-team", "a 6-team": the only counts here that read with "an".
-    const article = (count: number) => ([8, 11, 18].includes(count) ? 'an' : 'a')
-    const divisions =
-      secondDivision >= 2
-        ? `${article(firstDivision)} ${firstDivision}-team Division 1 bracket and ${article(secondDivision)} ${secondDivision}-team Division 2`
-        : `${article(firstDivision)} ${firstDivision}-team Division 1 bracket`
+    const brackets = playoffTiers(groups).map((tier) => {
+      const available = Math.max(0, Math.min(tier.places, perGroup - (tier.from - 1)))
+      const clubs = groups.numberOfGroups * available
+      return { name: tier.name, clubs, matches: Math.max(0, clubs - 1) }
+    })
+    const playoffMatches = brackets.reduce((total, bracket) => total + bracket.matches, 0)
+    const described = brackets
+      .filter((bracket) => bracket.clubs >= 2)
+      .map((bracket) => `${bracket.clubs} in the ${bracket.name.toLowerCase()}`)
+      .join(', ')
 
     return {
       matches: groupMatches + playoffMatches,
@@ -281,7 +282,7 @@ export function planSchedule(
       // The pairings cannot be drawn up front — who finishes where is not known
       // until the groups have been played — so the count is honest and the
       // slots are filled in afterwards.
-      summary: `${groupMatches} group matches, then ${playoffMatches} playoff matches: ${divisions}, filled in once the groups are done`,
+      summary: `${groupMatches} group matches, then ${playoffMatches} playoff matches: ${described}, filled in once the groups are done`,
     }
   }
 
