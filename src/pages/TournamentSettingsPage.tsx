@@ -13,6 +13,7 @@ import { clubService, tournamentService } from '../lib/data'
 import type { ClubManager, Entry } from '../lib/data'
 import type { Team, Tournament } from '../types'
 import { activeSquad, hasSquadEntry, registeredPlayers } from '../utils/squads'
+import { groupCuts } from '../utils/standings'
 import { competitionColor } from '../utils/crest'
 import Trophy from '../components/Trophy'
 import { IconLink, IconUser, IconUsers } from '../components/icons'
@@ -82,6 +83,11 @@ export default function TournamentSettingsPage() {
     numberOfGroups: number
     teamsPerGroup: number
     groupRounds: number
+    qualifiersPerGroup: number
+    secondDivisionPerGroup: number
+    // Carried rather than edited: this is who is in which group, and a save
+    // that dropped it would put every group table back to nothing.
+    groups?: string[][]
   } | null>(null)
   const [isSavingFormat, setIsSavingFormat] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
@@ -142,10 +148,15 @@ export default function TournamentSettingsPage() {
     tournament.format?.playoffQualifiers ??
     tournament.format?.customPlayoffConfig?.playoffTeams ??
     4
+  const storedGroups = tournament.format?.groupsWithDivisionsConfig
+  const storedCuts = groupCuts(storedGroups)
   const groupsConfig = draftGroups ?? {
-    numberOfGroups: tournament.format?.groupsWithDivisionsConfig?.numberOfGroups ?? 4,
-    teamsPerGroup: tournament.format?.groupsWithDivisionsConfig?.teamsPerGroup ?? 4,
-    groupRounds: tournament.format?.groupsWithDivisionsConfig?.groupRounds ?? 1,
+    numberOfGroups: storedGroups?.numberOfGroups ?? 4,
+    teamsPerGroup: storedGroups?.teamsPerGroup ?? 4,
+    groupRounds: storedGroups?.groupRounds ?? 1,
+    qualifiersPerGroup: storedCuts.firstDivision,
+    secondDivisionPerGroup: storedCuts.secondDivision,
+    groups: storedGroups?.groups,
   }
 
   // Adding finals to a league keeps the league exactly as it is, so the number
@@ -239,8 +250,10 @@ export default function TournamentSettingsPage() {
     if (formatPlan.kind === 'unchanged' || formatPlan.kind === 'blocked') return
 
     if (formatPlan.kind === 'destructive') {
+      // The plan's own notes, rather than a sentence that assumes the whole
+      // fixture list is going: changing only the playoff cut keeps the groups.
       const typed = prompt(
-        `This deletes ${formatPlan.lostResults} result(s) and rebuilds the fixture list.\n` +
+        `${formatPlan.notes.join('\n')}\n\n` +
           `Type the tournament name to confirm:\n\n${tournament.name}`,
       )
       if (typed?.trim() !== tournament.name) return
@@ -375,6 +388,7 @@ export default function TournamentSettingsPage() {
           onChange={setDraftFormatId}
           teamCount={selectedTeamIds.length}
           qualifiers={qualifiers}
+          groups={groupsConfig}
         />
 
         {(selectedFormat.mode === 'league_playoff' ||
@@ -396,11 +410,25 @@ export default function TournamentSettingsPage() {
           <div className="grid gap-3 sm:grid-cols-3">
             {(
               [
-                ['numberOfGroups', 'Groups', 2, 8],
-                ['teamsPerGroup', 'Teams per group', 2, 8],
-                ['groupRounds', 'Legs in the group', 1, 2],
+                { key: 'numberOfGroups', label: 'Groups', min: 2, max: 8 },
+                { key: 'teamsPerGroup', label: 'Teams per group', min: 2, max: 8 },
+                { key: 'groupRounds', label: 'Legs in the group', min: 1, max: 2 },
+                {
+                  key: 'qualifiersPerGroup',
+                  label: 'Through to Division 1',
+                  min: 1,
+                  // A cut cannot reach past the last place in a group.
+                  max: groupsConfig.teamsPerGroup,
+                },
+                {
+                  key: 'secondDivisionPerGroup',
+                  label: 'Then to Division 2',
+                  // Zero is how an organiser says there is no second division.
+                  min: 0,
+                  max: Math.max(0, groupsConfig.teamsPerGroup - groupsConfig.qualifiersPerGroup),
+                },
               ] as const
-            ).map(([key, label, min, max]) => (
+            ).map(({ key, label, min, max }) => (
               <label key={key} className="text-sm">
                 <span className="opacity-70">{label}</span>
                 <input
@@ -408,12 +436,18 @@ export default function TournamentSettingsPage() {
                   min={min}
                   max={max}
                   value={groupsConfig[key]}
-                  onChange={(event) =>
-                    setDraftGroups({
-                      ...groupsConfig,
-                      [key]: Math.min(max, Math.max(min, Number(event.target.value) || min)),
-                    })
-                  }
+                  onChange={(event) => {
+                    const value = Math.min(max, Math.max(min, Number(event.target.value) || min))
+                    const next = { ...groupsConfig, [key]: value }
+                    // Shrinking a group, or taking more of it into the first
+                    // division, has to shrink what is left for the second.
+                    next.secondDivisionPerGroup = Math.min(
+                      next.secondDivisionPerGroup,
+                      Math.max(0, next.teamsPerGroup - next.qualifiersPerGroup),
+                    )
+                    next.qualifiersPerGroup = Math.min(next.qualifiersPerGroup, next.teamsPerGroup)
+                    setDraftGroups(next)
+                  }}
                   className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
                 />
               </label>
@@ -452,7 +486,11 @@ export default function TournamentSettingsPage() {
             }
             className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {isSavingFormat ? 'Saving...' : 'Change format'}
+            {isSavingFormat
+              ? 'Saving...'
+              : formatPlan.kind === 'rebuild_playoffs'
+                ? 'Save playoff settings'
+                : 'Change format'}
           </button>
           {formatPlan.kind !== 'unchanged' && (
             <button

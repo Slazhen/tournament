@@ -1,4 +1,5 @@
 import type { Tournament } from '../types'
+import { groupCuts } from './standings'
 
 /** Which drawing goes on the card. Emoji rendered differently on every device. */
 export type FormatIconName =
@@ -95,7 +96,7 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     title: 'Groups + playoffs',
     tagline: 'Group stage first, then the finals',
     icon: 'groups',
-    points: ['Teams split into groups', 'Group winners go through to a bracket'],
+    points: ['Teams split into groups', 'The top of each group goes through to a bracket'],
     minTeams: 4,
     needsSetup: true,
     hasSettings: true,
@@ -185,7 +186,20 @@ export type SchedulePlan = {
  * written. Creating a tournament generates the whole fixture list in one go and
  * there is no undo, so it is worth saying "21 matches over 7 rounds" first.
  */
-export function planSchedule(format: FormatOption, teamCount: number, qualifiers = 4): SchedulePlan {
+export type GroupsPlanInput = {
+  numberOfGroups: number
+  teamsPerGroup: number
+  groupRounds: number
+  qualifiersPerGroup?: number
+  secondDivisionPerGroup?: number
+}
+
+export function planSchedule(
+  format: FormatOption,
+  teamCount: number,
+  qualifiers = 4,
+  groups?: GroupsPlanInput,
+): SchedulePlan {
   if (teamCount < format.minTeams) {
     return {
       matches: null,
@@ -240,6 +254,34 @@ export function planSchedule(format: FormatOption, teamCount: number, qualifiers
       matches: null,
       rounds: null,
       summary: `${leagueMatches} league matches, then one knockout game a week until two teams are left`,
+    }
+  }
+
+  if (format.mode === 'groups_with_divisions' && groups) {
+    const perGroup = groups.teamsPerGroup
+    const groupMatches =
+      groups.numberOfGroups * ((perGroup * (perGroup - 1)) / 2) * Math.max(1, groups.groupRounds)
+    const cuts = groupCuts(groups)
+    const firstDivision = groups.numberOfGroups * Math.min(cuts.firstDivision, perGroup)
+    const secondDivision =
+      groups.numberOfGroups * Math.min(cuts.secondDivision, Math.max(0, perGroup - cuts.firstDivision))
+    // A bracket of n clubs is n-1 matches however uneven n is: an odd round
+    // carries one club through without a fixture rather than inventing one.
+    const playoffMatches = Math.max(0, firstDivision - 1) + Math.max(0, secondDivision - 1)
+    // "an 8-team", "a 6-team": the only counts here that read with "an".
+    const article = (count: number) => ([8, 11, 18].includes(count) ? 'an' : 'a')
+    const divisions =
+      secondDivision >= 2
+        ? `${article(firstDivision)} ${firstDivision}-team Division 1 bracket and ${article(secondDivision)} ${secondDivision}-team Division 2`
+        : `${article(firstDivision)} ${firstDivision}-team Division 1 bracket`
+
+    return {
+      matches: groupMatches + playoffMatches,
+      rounds: null,
+      // The pairings cannot be drawn up front — who finishes where is not known
+      // until the groups have been played — so the count is honest and the
+      // slots are filled in afterwards.
+      summary: `${groupMatches} group matches, then ${playoffMatches} playoff matches: ${divisions}, filled in once the groups are done`,
     }
   }
 

@@ -38,6 +38,10 @@ export default function CreateTournamentPage() {
   const [numberOfGroups, setNumberOfGroups] = useState(4)
   const [teamsPerGroup, setTeamsPerGroup] = useState(4)
   const [groupRounds, setGroupRounds] = useState(1)
+  // How far down each group's table the playoffs reach. Two and two is what
+  // this format did before the organiser could choose.
+  const [qualifiersPerGroup, setQualifiersPerGroup] = useState(2)
+  const [secondDivisionPerGroup, setSecondDivisionPerGroup] = useState(2)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string>("")
   const [isCreating, setIsCreating] = useState(false)
@@ -103,6 +107,8 @@ export default function CreateTournamentPage() {
       setNumberOfGroups(groups.numberOfGroups)
       setTeamsPerGroup(groups.teamsPerGroup)
       setGroupRounds(groups.groupRounds)
+      setQualifiersPerGroup(groups.qualifiersPerGroup ?? 2)
+      setSecondDivisionPerGroup(groups.secondDivisionPerGroup ?? 2)
     }
     if (previousSeason.logo) setLogoPreview(previousSeason.logo)
     // A new season belongs to whoever ran the last one.
@@ -128,6 +134,16 @@ export default function CreateTournamentPage() {
     )
   }
 
+  /**
+   * Shrinking a group has to shrink what comes out of it: a cut that reaches
+   * past the last place is a bracket with slots nobody can qualify for.
+   */
+  const applyTeamsPerGroup = (size: number) => {
+    setTeamsPerGroup(size)
+    setQualifiersPerGroup((through) => Math.min(through, size))
+    setSecondDivisionPerGroup((next) => Math.min(next, Math.max(0, size - Math.min(qualifiersPerGroup, size))))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!tournamentName.trim() || selectedTeamIds.length < 2 || isCreating || !ownerId) return
@@ -149,7 +165,9 @@ export default function CreateTournamentPage() {
         groupsWithDivisionsConfig: mode === 'groups_with_divisions' ? {
           numberOfGroups,
           teamsPerGroup,
-          groupRounds
+          groupRounds,
+          qualifiersPerGroup,
+          secondDivisionPerGroup,
         } : undefined
       }
 
@@ -280,6 +298,13 @@ export default function CreateTournamentPage() {
               onChange={setFormatId}
               teamCount={selectedTeamIds.length}
               qualifiers={qualifiers}
+              groups={{
+                numberOfGroups,
+                teamsPerGroup,
+                groupRounds,
+                qualifiersPerGroup,
+                secondDivisionPerGroup,
+              }}
             />
           </div>
 
@@ -416,8 +441,9 @@ export default function CreateTournamentPage() {
                 <div className="space-y-4 p-4 bg-blue-500/10 border border-blue-400/30 rounded-lg">
                   <h3 className="text-lg font-semibold text-blue-400">Groups + Divisions Configuration</h3>
                   <p className="text-sm opacity-80 mb-4">
-                    Teams will be divided into groups. Top 2 teams from each group go to Division 1 playoffs. 
-                    3rd and 4th place teams go to Division 2 playoffs.
+                    Teams are divided into groups and play each other within the group. Who goes on to
+                    the finals is set below: the top of each group plays the Division 1 bracket, and
+                    the places under them can play a Division 2 bracket of their own.
                   </p>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -431,7 +457,7 @@ export default function CreateTournamentPage() {
                           if (selectedTeamIds.length > 0) {
                             const calculatedTeamsPerGroup = Math.floor(selectedTeamIds.length / numGroups)
                             if (calculatedTeamsPerGroup >= 4 && calculatedTeamsPerGroup <= 8) {
-                              setTeamsPerGroup(calculatedTeamsPerGroup)
+                              applyTeamsPerGroup(calculatedTeamsPerGroup)
                             }
                           }
                         }}
@@ -449,7 +475,7 @@ export default function CreateTournamentPage() {
                       <label className="block text-sm font-medium mb-2">Teams per Group</label>
                       <select
                         value={teamsPerGroup}
-                        onChange={(e) => setTeamsPerGroup(Number(e.target.value))}
+                        onChange={(e) => applyTeamsPerGroup(Number(e.target.value))}
                         className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
                       >
                         <option value={3}>3 Teams</option>
@@ -471,6 +497,46 @@ export default function CreateTournamentPage() {
                         <option value={2}>2 Rounds</option>
                       </select>
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Through to Division 1</label>
+                      <select
+                        value={qualifiersPerGroup}
+                        onChange={(e) => {
+                          const through = Number(e.target.value)
+                          setQualifiersPerGroup(through)
+                          // The second division takes the places under the
+                          // first, so it cannot reach past the end of a group.
+                          setSecondDivisionPerGroup((current) =>
+                            Math.min(current, teamsPerGroup - through),
+                          )
+                        }}
+                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                      >
+                        {Array.from({ length: teamsPerGroup }, (_, index) => index + 1).map((through) => (
+                          <option key={through} value={through}>
+                            Top {through} of each group
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Division 2 playoffs</label>
+                      <select
+                        value={secondDivisionPerGroup}
+                        onChange={(e) => setSecondDivisionPerGroup(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-md bg-transparent border border-white/20 focus:border-white/40 focus:outline-none"
+                      >
+                        <option value={0}>No Division 2</option>
+                        {Array.from(
+                          { length: Math.max(0, teamsPerGroup - qualifiersPerGroup) },
+                          (_, index) => index + 1,
+                        ).map((next) => (
+                          <option key={next} value={next}>
+                            Next {next} of each group
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   {selectedTeamIds.length > 0 && (
                     <div className="mt-4 p-3 bg-white/5 rounded-lg">
@@ -484,7 +550,7 @@ export default function CreateTournamentPage() {
                         )}
                         {selectedTeamIds.length > numberOfGroups * teamsPerGroup && (
                           <span className="text-gray-400">
-                            ℹ️ {selectedTeamIds.length - numberOfGroups * teamsPerGroup} team(s) will not participate.
+                            {selectedTeamIds.length - numberOfGroups * teamsPerGroup} team(s) will not participate.
                           </span>
                         )}
                       </p>

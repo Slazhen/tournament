@@ -411,6 +411,20 @@ export type Tournament = {
       teamsPerGroup: number // Teams per group
       groupRounds: number // 1 or 2 rounds in group stage
       groups?: string[][] // Array of arrays: [[team1, team2, ...], [team3, team4, ...], ...] - stores team assignments per group
+      /**
+       * How far down each group's table the playoffs reach: the top
+       * `qualifiersPerGroup` of every group play the first division's bracket
+       * and the next `secondDivisionPerGroup` play a second one of their own.
+       * Zero there means there is no second division at all.
+       *
+       * Both absent means two and two, which is the pair of numbers the
+       * generator, the regenerate button and the public table each had written
+       * into them separately, and therefore what every season created before
+       * these fields existed was drawn as. `groupCuts` in `utils/standings.ts`
+       * is the one place that answers it.
+       */
+      qualifiersPerGroup?: number
+      secondDivisionPerGroup?: number
     }
   }
   /**

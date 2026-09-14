@@ -164,6 +164,36 @@ leader resting on an odd count and the bottom pair playing to go out. When
 touching playoff config, carry `format.customPlayoffConfig.preset` through every
 rebuild of that object, or editing a round silently reverts the format.
 
+**A grouped season's playoffs are a cut, and the cut is one number each.**
+`groups_with_divisions` took the top two of every group into Division 1 and the
+next two into Division 2, written separately into the generator, the Regenerate
+playoffs button, the organiser's group table and the public one — four copies of
+one rule, and a season that wanted a different cut had nowhere to say so.
+`qualifiersPerGroup` and `secondDivisionPerGroup` on
+`groupsWithDivisionsConfig` are that rule now, and `groupCuts` in
+`utils/standings.ts` is the one place that reads them. Both absent means two and
+two, so every season drawn before the setting existed reads exactly as it did;
+zero in the second means there is no Division 2 at all.
+
+What the cut decides is how many *slots* the bracket has, and not who is in
+them. `generatePlayoffBrackets` uses only the length of the list it is handed
+and fills every pairing with `seed-1`, `winner-2` and the like, which nothing in
+the repository resolves — so a generated bracket is a set of empty slots the
+organiser fills in from the table by hand. That is as true of `league_playoff`'s
+"Draw the bracket" as it is here, and it is worth knowing before reading either
+as a real seeding.
+
+The settings screen could not save any of the group settings at all until this.
+`sameFormat` compared mode, legs, qualifiers and preset and nothing else, so
+every change to `groupsWithDivisionsConfig` read as "unchanged" and the button
+stayed disabled; it compares the group stage and the cut now. A change to the
+cut alone is its own plan, `rebuild_playoffs`: the group fixtures and their
+results are kept and only the bracket is redrawn, because rebuilding the whole
+season — the only plan this used to have for it — is not a price a change to the
+finals should cost. The draft the screen holds carries `groups` through
+untouched for the same reason: it is who is in which group, and a save that
+dropped it would empty every group table.
+
 **Roles.** `super_admin`, `organizer`, `team_manager`. Login is an email address
 and nothing else — usernames survive as labels on old accounts and open no door.
 There should always be two super admins: the role has nobody above it to reset

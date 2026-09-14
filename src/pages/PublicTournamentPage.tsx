@@ -14,11 +14,12 @@ import { allMatches, playerRecords } from '../utils/matches'
 import { publicTeamUrl } from '../utils/teams'
 import {
   eliminatedTeams as eliminatedTeamsOf,
+  groupCuts,
   groupTables as groupTablesOf,
   leagueTable,
   playoffCut,
 } from '../utils/standings'
-import type { PlayoffCut } from '../utils/standings'
+import type { GroupCuts, PlayoffCut } from '../utils/standings'
 import { IconTrophy } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
@@ -48,8 +49,20 @@ function standingMark(index: number, teamId: string, qualified: PlayoffCut): Pos
   return (['gold', 'silver', 'bronze'] as const)[index]
 }
 
-/** In a group, the top two reach the first division's playoffs and the next two the second's. */
-const groupMark = (index: number): PostMark => (index < 2 ? 'advance' : index < 4 ? 'second' : 'none')
+/**
+ * In a group, the cut decides the marks: the first division's places in green,
+ * the second division's under them in blue. It used to be the top two and the
+ * next two whatever the season was set up as, which is a table saying a club
+ * qualified when it did not.
+ */
+const groupMarkFor =
+  (cuts: GroupCuts) =>
+  (index: number): PostMark =>
+    index < cuts.firstDivision
+      ? 'advance'
+      : index < cuts.firstDivision + cuts.secondDivision
+        ? 'second'
+        : 'none'
 
 const BADGE_CLASS: Record<PostMark, string> = {
   gold: 'bg-yellow-500 text-black',
@@ -392,6 +405,7 @@ export default function PublicTournamentPage() {
 
   // Calculate table directly without useMemo to avoid infinite loops
   const { table, eliminatedTeams, groupTables, qualified } = calculateTable()
+  const groupMark = groupMarkFor(groupCuts(tournament?.format?.groupsWithDivisionsConfig))
 
   const venue = describeVenue(tournament.location)
 

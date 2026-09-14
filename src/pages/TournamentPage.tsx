@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { generatePlayoffBrackets, createPlayoffMatches as createPlayoffMatchesFromBrackets } from '../utils/schedule'
 import { generateMatchUID } from '../utils/uid'
 import { generateGroupsWithDivisionsSchedule } from '../utils/tournament'
+import { groupCuts } from '../utils/standings'
 import { findTournamentBySlug } from '../utils/urls'
 import { organizerService } from '../lib/data'
 import type { CustomPlayoffRoundConfig, Match, Organizer } from '../types'
@@ -642,21 +643,23 @@ export default function TournamentPage() {
     const division1Teams: string[] = []
     const division2Teams: string[] = []
     
+    // How far down each group the playoffs reach is the organiser's setting;
+    // `groupCuts` is the one place that answers it, here and in the generator
+    // and the public table alike.
+    const cuts = groupCuts(tournament.format?.groupsWithDivisionsConfig)
+    
     Object.keys(groupTables).forEach(groupKey => {
       const groupIndex = Number(groupKey)
       const table = (groupTables as Record<number, any[]>)[groupIndex] || []
       
-      // Division 1: 1st and 2nd place
-      if (table[0]) division1Teams.push(table[0].id)
-      if (table[1]) division1Teams.push(table[1].id)
-      
-      // Division 2: 3rd and 4th place
-      if (table[2]) division2Teams.push(table[2].id)
-      if (table[3]) division2Teams.push(table[3].id)
+      table.forEach((row: any, place: number) => {
+        if (place < cuts.firstDivision) division1Teams.push(row.id)
+        else if (place < cuts.firstDivision + cuts.secondDivision) division2Teams.push(row.id)
+      })
     })
     
-    if (division1Teams.length < 4) {
-      alert('Cannot regenerate playoffs: Need at least 4 teams for Division 1 playoffs.')
+    if (division1Teams.length < 2) {
+      alert('Cannot regenerate playoffs: at least two teams have to go through to Division 1.')
       return
     }
     
@@ -683,7 +686,7 @@ export default function TournamentPage() {
     
     // Generate Division 2 playoff brackets if we have enough teams
     let updatedDiv2Matches: any[] = []
-    if (division2Teams.length >= 4) {
+    if (division2Teams.length >= 2) {
       const div2Brackets = generatePlayoffBrackets(division2Teams)
       const div2PlayoffMatches = createPlayoffMatchesFromBrackets(div2Brackets)
       
@@ -702,7 +705,10 @@ export default function TournamentPage() {
     const updatedMatches = [...nonPlayoffMatches, ...updatedDiv1Matches, ...updatedDiv2Matches]
     
     updateTournament(tournament.id, { matches: updatedMatches })
-    alert('Playoff matches have been regenerated! All 3 rounds (1/4 Final, 1/2 Final, Final) are now available.')
+    alert(
+      `Playoff matches have been regenerated: ${updatedDiv1Matches.length} in Division 1` +
+        (updatedDiv2Matches.length > 0 ? ` and ${updatedDiv2Matches.length} in Division 2.` : '.'),
+    )
   }
 
   const calculateTable = () => {
@@ -1287,12 +1293,15 @@ export default function TournamentPage() {
                       </thead>
                       <tbody>
                         {groupTable.map((row: any, index: number) => {
-                          const isTop2 = index < 2
-                          const isTop4 = index < 4
+                          // Green as far as the first division's cut reaches,
+                          // blue for the places under it that play the second.
+                          const cuts = groupCuts(tournament.format?.groupsWithDivisionsConfig)
+                          const inFirst = index < cuts.firstDivision
+                          const inSecond = index < cuts.firstDivision + cuts.secondDivision
                           return (
                             <tr 
                               key={row.id} 
-                              className={`border-t border-white/5 ${isTop2 ? 'bg-green-500/10' : isTop4 ? 'bg-blue-500/10' : ''}`}
+                              className={`border-t border-white/5 ${inFirst ? 'bg-green-500/10' : inSecond ? 'bg-blue-500/10' : ''}`}
                             >
                               <td className="py-2 pr-2">{index + 1}</td>
                               <td className="py-2 pr-2 flex items-center gap-2">
@@ -1318,12 +1327,12 @@ export default function TournamentPage() {
                                 >
                                   {teams.find(t => t.id === row.id)?.name ?? row.id}
                                 </Link>
-                                {isTop2 && (
+                                {inFirst && (
                                   <span className="text-xs bg-green-500/20 text-green-300 px-1.5 py-0.5 rounded-full">
                                     Div 1
                                   </span>
                                 )}
-                                {index === 2 || index === 3 ? (
+                                {!inFirst && inSecond ? (
                                   <span className="text-xs bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-full">
                                     Div 2
                                   </span>
@@ -1502,7 +1511,11 @@ export default function TournamentPage() {
                     numberOfGroups: config.numberOfGroups,
                     teamsPerGroup: config.teamsPerGroup,
                     groupRounds: config.groupRounds,
-                    existingGroups: editingGroups
+                    existingGroups: editingGroups,
+                    // Redrawing the groups must not quietly put the bracket
+                    // back to the two-and-two it had before it was a setting.
+                    qualifiersPerGroup: config.qualifiersPerGroup,
+                    secondDivisionPerGroup: config.secondDivisionPerGroup
                   })
                   
                   // Update tournament with new groups and matches

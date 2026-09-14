@@ -608,7 +608,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
               numberOfGroups: config.numberOfGroups,
               teamsPerGroup: config.teamsPerGroup,
               groupRounds: config.groupRounds,
-              existingGroups: config.groups // Use existing groups if available
+              existingGroups: config.groups, // Use existing groups if available
+              qualifiersPerGroup: config.qualifiersPerGroup,
+              secondDivisionPerGroup: config.secondDivisionPerGroup
             })
             matches = result.matches
             

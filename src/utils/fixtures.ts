@@ -5,10 +5,12 @@ import {
   createPlayoffMatches,
   generateSwissEliminationSchedule,
   generateGroupsWithDivisionsSchedule,
+  generateDivisionBrackets,
   generateKnockoutSchedule,
   calculateTeamStandings,
   sortTeamsByStandings,
 } from './schedule'
+import { groupCuts, groupsOf } from './standings'
 
 type Format = NonNullable<Tournament['format']>
 export type { Format as TournamentFormat }
@@ -53,6 +55,8 @@ export function generateFixtures(teamIds: string[], format: Format): Match[] {
         teamsPerGroup: config.teamsPerGroup,
         groupRounds: config.groupRounds,
         existingGroups: config.groups,
+        qualifiersPerGroup: config.qualifiersPerGroup,
+        secondDivisionPerGroup: config.secondDivisionPerGroup,
       }).matches
     }
 
@@ -228,6 +232,8 @@ export type FormatChangeKind =
   | 'destructive'
   /** Refused, with a reason the organiser can act on. */
   | 'blocked'
+  /** The groups stay exactly as they are and only the bracket is redrawn. */
+  | 'rebuild_playoffs'
 
 export type FormatChangePlan = {
   kind: FormatChangeKind
@@ -253,10 +259,30 @@ function buildFixtures(teamIds: string[], format: Format): { matches: Match[]; g
       teamsPerGroup: config.teamsPerGroup,
       groupRounds: config.groupRounds,
       existingGroups: config.groups,
+      qualifiersPerGroup: config.qualifiersPerGroup,
+      secondDivisionPerGroup: config.secondDivisionPerGroup,
     })
     return { matches: result.matches, groups: result.groups }
   }
   return { matches: generateFixtures(teamIds, format) }
+}
+
+/** The part of a grouped format that decides the group fixtures themselves. */
+const sameGroupStage = (a: Format, b: Format) => {
+  const one = a.groupsWithDivisionsConfig
+  const two = b.groupsWithDivisionsConfig
+  return (
+    one?.numberOfGroups === two?.numberOfGroups &&
+    one?.teamsPerGroup === two?.teamsPerGroup &&
+    one?.groupRounds === two?.groupRounds
+  )
+}
+
+/** And the part that decides only how many playoff slots there are. */
+const sameCuts = (a: Format, b: Format) => {
+  const one = groupCuts(a.groupsWithDivisionsConfig)
+  const two = groupCuts(b.groupsWithDivisionsConfig)
+  return one.firstDivision === two.firstDivision && one.secondDivision === two.secondDivision
 }
 
 const sameFormat = (a: Format, b: Format) =>
@@ -265,7 +291,12 @@ const sameFormat = (a: Format, b: Format) =>
   (a.playoffQualifiers ?? 0) === (b.playoffQualifiers ?? 0) &&
   // Two formats can share a mode and differ only in the system their
   // hand-built rounds follow.
-  (a.customPlayoffConfig?.preset ?? '') === (b.customPlayoffConfig?.preset ?? '')
+  (a.customPlayoffConfig?.preset ?? '') === (b.customPlayoffConfig?.preset ?? '') &&
+  // The group settings are part of the format too. Without this every change
+  // to them read as "unchanged" and the settings screen refused to save it,
+  // which is how the number of groups came to be editable on screen and
+  // nowhere else.
+  (a.mode !== 'groups_with_divisions' || (sameGroupStage(a, b) && sameCuts(a, b)))
 
 /** The table as it stands, best first. */
 function rankTeams(teamIds: string[], matches: Match[]): string[] {
@@ -317,6 +348,44 @@ export function planFormatChange(tournament: Tournament, next: Format): FormatCh
       notes: [
         `No results have been entered, so the fixture list is rebuilt: ${existing.length} → ${matches.length} matches.`,
         ...datesNote,
+      ],
+    }
+  }
+
+  // Only the playoff cut changed. The group stage is untouched by it, so a
+  // season already under way can change how many teams go through without
+  // losing a result — which is what rebuilding the whole fixture list, the
+  // only plan this used to have for it, would have cost.
+  if (
+    current.mode === 'groups_with_divisions' &&
+    next.mode === 'groups_with_divisions' &&
+    sameGroupStage(current, next)
+  ) {
+    const groupStage = existing.filter((match) => !match.isPlayoff)
+    const lostPlayoffs = existing.filter((match) => match.isPlayoff && hasResult(match))
+    const offset = groupStage.reduce((max, match) => Math.max(max, match.round ?? 0), -1) + 1
+    const cuts = groupCuts(next.groupsWithDivisionsConfig)
+    const bracket = generateDivisionBrackets(groupsOf(tournament), cuts, offset)
+    const divisions =
+      cuts.secondDivision > 0
+        ? `the top ${cuts.firstDivision} of each group in Division 1 and the next ${cuts.secondDivision} in Division 2`
+        : `the top ${cuts.firstDivision} of each group in Division 1, and no Division 2`
+
+    return {
+      // A drawn bracket with results in it is the one thing here that cannot
+      // survive being redrawn, so it is the organiser's to confirm.
+      kind: lostPlayoffs.length > 0 ? 'destructive' : 'rebuild_playoffs',
+      matches: [...groupStage, ...bracket],
+      keptResults: groupStage.filter(hasResult).length,
+      lostResults: lostPlayoffs.length,
+      notes: [
+        'Every group match and every group result is kept.',
+        `The bracket is redrawn empty for ${divisions}: ${bracket.length} playoff ${bracket.length === 1 ? 'match' : 'matches'}.`,
+        ...(lostPlayoffs.length > 0
+          ? [
+              `${lostPlayoffs.length} playoff ${lostPlayoffs.length === 1 ? 'result' : 'results'} already entered will be deleted.`,
+            ]
+          : []),
       ],
     }
   }

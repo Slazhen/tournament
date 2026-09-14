@@ -125,6 +125,32 @@ export function groupsOf(tournament: Tournament): string[][] {
 /** How a group is named on screen: the first is A. */
 export const groupName = (index: number): string => `Group ${String.fromCharCode(65 + index)}`
 
+export type GroupCuts = {
+  /** How many of each group's table reach the first division's bracket. */
+  firstDivision: number
+  /** How many of the rest play a second division of their own. Zero means none. */
+  secondDivision: number
+}
+
+/**
+ * How far down each group's table the playoffs reach.
+ *
+ * Absent means two and two: the numbers that used to be written into the
+ * generator, the regenerate button and the public table separately, so every
+ * season created before the organiser could choose them is drawn exactly as it
+ * was. Three copies of one rule are three answers to "who goes through"
+ * waiting to disagree, which is why every one of them now asks here.
+ */
+export function groupCuts(config?: {
+  qualifiersPerGroup?: number
+  secondDivisionPerGroup?: number
+}): GroupCuts {
+  return {
+    firstDivision: Math.max(1, Math.round(config?.qualifiersPerGroup ?? 2)),
+    secondDivision: Math.max(0, Math.round(config?.secondDivisionPerGroup ?? 2)),
+  }
+}
+
 /** One table per group, keyed by the 1-based group number. Empty for every other format. */
 export function groupTables(tournament: Tournament): Record<number, StandingsRow[]> {
   if (tournament.format?.mode !== 'groups_with_divisions') return {}

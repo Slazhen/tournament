@@ -1,5 +1,5 @@
 import { FORMAT_OPTIONS, planSchedule } from '../utils/formats'
-import type { FormatOption, FormatIconName } from '../utils/formats'
+import type { FormatOption, FormatIconName, GroupsPlanInput } from '../utils/formats'
 import type { ComponentType } from 'react'
 import {
   IconTable,
@@ -29,6 +29,8 @@ type FormatPickerProps = {
   onChange: (formatId: string) => void
   teamCount: number
   qualifiers?: number
+  /** The group settings as they stand, so the grouped card can count its own fixtures. */
+  groups?: GroupsPlanInput
 }
 
 /**
@@ -39,7 +41,13 @@ type FormatPickerProps = {
  * <select> hidden behind an "advanced options" button — which is where it used
  * to live.
  */
-export default function FormatPicker({ value, onChange, teamCount, qualifiers }: FormatPickerProps) {
+export default function FormatPicker({
+  value,
+  onChange,
+  teamCount,
+  qualifiers,
+  groups,
+}: FormatPickerProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {FORMAT_OPTIONS.map((option) => (
@@ -49,6 +57,7 @@ export default function FormatPicker({ value, onChange, teamCount, qualifiers }:
           selected={option.id === value}
           teamCount={teamCount}
           qualifiers={qualifiers}
+          groups={groups}
           onSelect={() => onChange(option.id)}
         />
       ))}
@@ -61,16 +70,18 @@ function FormatCard({
   selected,
   teamCount,
   qualifiers,
+  groups,
   onSelect,
 }: {
   option: FormatOption
   selected: boolean
   teamCount: number
   qualifiers?: number
+  groups?: GroupsPlanInput
   onSelect: () => void
 }) {
   const enoughTeams = teamCount >= option.minTeams
-  const plan = planSchedule(option, teamCount, qualifiers)
+  const plan = planSchedule(option, teamCount, qualifiers, groups)
   const Icon = FORMAT_ICONS[option.icon]
 
   return (

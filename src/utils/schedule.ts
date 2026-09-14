@@ -1,4 +1,5 @@
 import type { Match, PlayoffBracket, CustomPlayoffRound, TeamStanding } from '../types'
+import { groupCuts } from './standings'
 
 export function generateRoundRobinSchedule(teamIds: string[], roundsMultiplier: number = 1): Match[] {
   if (teamIds.length < 2) return []
@@ -299,6 +300,46 @@ export function generateSwissEliminationSchedule(teamIds: string[], leagueRounds
   return { leagueMatches, eliminationMatches }
 }
 
+/**
+ * The playoff slots a grouped season starts with.
+ *
+ * Nobody knows who finishes where until the groups have been played, so these
+ * are empty pairings of the right shape and the organiser fills each one in
+ * from the table. How many of them there are is the whole of what the cut
+ * decides, which is why it is the only thing this reads the groups for.
+ */
+export function generateDivisionBrackets(
+  groups: string[][],
+  cuts: { firstDivision: number; secondDivision: number },
+  playoffRoundOffset: number,
+): Match[] {
+  const divisionTeams: Record<1 | 2, string[]> = { 1: [], 2: [] }
+
+  groups.forEach((groupTeams, groupIndex) => {
+    // A group shorter than the cut contributes only the places it actually has,
+    // which is what a group of three did before the cut was a setting.
+    for (let place = 1; place <= groupTeams.length; place++) {
+      if (place <= cuts.firstDivision) divisionTeams[1].push(`group-${groupIndex + 1}-${place}`)
+      else if (place <= cuts.firstDivision + cuts.secondDivision)
+        divisionTeams[2].push(`group-${groupIndex + 1}-${place}`)
+    }
+  })
+
+  const draw = (division: 1 | 2): Match[] =>
+    createPlayoffMatches(generatePlayoffBrackets(divisionTeams[division])).map((match) => ({
+      ...match,
+      id: `div${division}-${match.id}`,
+      // Offset so the bracket comes after the group stage; playoffRound keeps
+      // its own numbering from zero, which is what the screens draw it by.
+      round: playoffRoundOffset + (match.playoffRound || 0),
+      isPlayoff: true,
+      playoffRound: match.playoffRound,
+      division,
+    }))
+
+  return [...draw(1), ...draw(2)]
+}
+
 export function generateGroupsWithDivisionsSchedule(
   teamIds: string[],
   config: {
@@ -306,6 +347,8 @@ export function generateGroupsWithDivisionsSchedule(
     teamsPerGroup: number
     groupRounds: number // 1 or 2
     existingGroups?: string[][] // Optional: use existing groups if provided
+    qualifiersPerGroup?: number
+    secondDivisionPerGroup?: number
   }
 ): { matches: Match[], groups: string[][] } {
   const { numberOfGroups, teamsPerGroup, groupRounds, existingGroups } = config
@@ -358,65 +401,13 @@ export function generateGroupsWithDivisionsSchedule(
     : -1
   const playoffRoundOffset = maxGroupRound + 1
   
-  // Generate playoff teams based on group positions
-  // Division 1: 1st and 2nd from each group
-  // Division 2: 3rd and 4th from each group
-  const division1Teams: string[] = []
-  const division2Teams: string[] = []
-  
-  // For now, we'll create placeholder teams. In practice, these will be determined by group standings
-  // The structure will be: group1-1st, group1-2nd, group2-1st, group2-2nd, etc.
-  groups.forEach((groupTeams, groupIndex) => {
-    // Division 1 qualifiers (1st and 2nd place)
-    division1Teams.push(`group-${groupIndex + 1}-1st`, `group-${groupIndex + 1}-2nd`)
-    
-    // Division 2 qualifiers (3rd and 4th place) - only if group has 4+ teams
-    if (groupTeams.length >= 4) {
-      division2Teams.push(`group-${groupIndex + 1}-3rd`, `group-${groupIndex + 1}-4th`)
-    } else if (groupTeams.length === 3) {
-      division2Teams.push(`group-${groupIndex + 1}-3rd`)
-    }
-  })
-  
-  // Generate Division 1 playoff matches (Quarter Finals -> Semi Finals -> Final)
-  const division1Matches: Match[] = []
-  const division1Brackets = generatePlayoffBrackets(division1Teams)
-  const division1PlayoffMatches = createPlayoffMatches(division1Brackets)
-  
-  // Use playoffRound for organization, but set round to come after group matches
-  division1PlayoffMatches.forEach((match) => {
-    division1Matches.push({
-      ...match,
-      id: `div1-${match.id}`,
-      round: playoffRoundOffset + (match.playoffRound || 0), // Offset to come after group matches
-      isPlayoff: true,
-      playoffRound: match.playoffRound, // Keep original playoffRound (0, 1, 2) for display
-      division: 1 // Mark as Division 1
-    })
-  })
-  
-  // Generate Division 2 playoff matches (if there are enough teams)
-  const division2Matches: Match[] = []
-  if (division2Teams.length >= 4) {
-    const division2Brackets = generatePlayoffBrackets(division2Teams)
-    const division2PlayoffMatches = createPlayoffMatches(division2Brackets)
-    
-    // Use playoffRound for organization, but set round to come after group matches
-    division2PlayoffMatches.forEach((match) => {
-      division2Matches.push({
-        ...match,
-        id: `div2-${match.id}`,
-        round: playoffRoundOffset + (match.playoffRound || 0), // Offset to come after group matches
-        isPlayoff: true,
-        playoffRound: match.playoffRound, // Keep original playoffRound (0, 1, 2) for display
-        division: 2 // Mark as Division 2
-      })
-    })
-  }
-  
+  // Who goes through is the organiser's setting now rather than a constant
+  // here, in the regenerate button and in the public table.
+  const divisionMatches = generateDivisionBrackets(groups, groupCuts(config), playoffRoundOffset)
+
   // Combine all matches and return with groups
   return {
-    matches: [...groupMatches, ...division1Matches, ...division2Matches],
+    matches: [...groupMatches, ...divisionMatches],
     groups: groups
   }
 }
