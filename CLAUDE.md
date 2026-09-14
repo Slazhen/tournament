@@ -1250,6 +1250,19 @@ photographs it was protecting keep their size.
   sides are written separately, so a reader that dereferences `lineups.away`
   because `lineups` exists will throw on a match only one manager has named.
   `setLineup` creates both sides empty for that reason; the type is the backstop.
+- **A hook cannot be written below the early return.** `TeamsPage` and
+  `TournamentsPage` return "No Organizer Selected" before their body runs, and
+  `OrganizersPage` returns "Access Denied", so everything computed after that
+  point is plain code and not `useMemo` or `useEffect`. A hook added there
+  renders a different number of hooks the moment an organizer is selected, and
+  React throws rather than re-rendering.
+- **A screen outside `ADMIN_ROUTES` loads the clubs and competitions itself.**
+  The regexp covers `/admin`, `/teams`, `/tournaments`, `/players` and
+  `/calendar` and nothing else, so `/organizers` — which now lists what each
+  organizer runs — calls `loadTeams` and `loadTournaments` from its own effect,
+  the same way `TeamsPage` and `TournamentsPage` do. It also has to know when
+  they have arrived: counts rendered from an empty store read as "0
+  competitions, 0 clubs", which is a wrong answer rather than a missing one.
 - **A list loaded once at mount is not loaded for the session that starts at
   the sign-in screen.** The shell asked `isSignedIn()` in a mount effect and
   loaded the organizers from it. Somebody arriving on `/login` holds no token

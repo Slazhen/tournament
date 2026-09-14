@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useAppStore } from '../store'
 import { Link } from 'react-router-dom'
@@ -18,6 +18,8 @@ import {
   IconTrash,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
+import { adminSeasonUrl, seasonLabel, seriesName } from '../utils/seasons'
+import type { Team, Tournament } from '../types'
 
 interface Organizer {
   id: string
@@ -30,7 +32,8 @@ interface Organizer {
 
 export default function OrganizersPage() {
   const { isSuperAdmin } = useAuth()
-  const { createOrganizer, deleteOrganizer } = useAppStore()
+  const { createOrganizer, deleteOrganizer, teams, tournaments, loadTeams, loadTournaments } =
+    useAppStore()
   const [organizers, setOrganizers] = useState<Organizer[]>([])
   /** Who can sign in as each organizer, and who has been asked and not answered. */
   const [logins, setLogins] = useState<OrganizerLogins>({ accounts: {}, invites: {} })
@@ -71,10 +74,76 @@ export default function OrganizersPage() {
   const [inviteIssued, setInviteIssued] = useState<Record<string, OrganizerInviteIssued>>({})
   const [inviteError, setInviteError] = useState<Record<string, string>>({})
   const [inviteBusy, setInviteBusy] = useState<string | null>(null)
+  /** The organizer whose competitions and clubs are open, if any. */
+  const [showingWorkOf, setShowingWorkOf] = useState<string | null>(null)
+  /**
+   * Whether the clubs and the competitions have arrived.
+   *
+   * Without it every card reads "0 competitions, 0 clubs" for as long as the
+   * two requests take, which is a wrong answer rather than a missing one.
+   */
+  const [listsLoaded, setListsLoaded] = useState(false)
 
   useEffect(() => {
     loadOrganizers()
   }, [])
+
+  // Nothing has fetched these on the super admin's behalf: their scope is not
+  // an organizer, so the load that follows choosing one never happens, and
+  // this route is not one of the ADMIN_ROUTES the store loads them for. The
+  // same arrangement TeamsPage and TournamentsPage already use.
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    let cancelled = false
+    void Promise.all([loadTeams(), loadTournaments()]).then(() => {
+      if (!cancelled) setListsLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isSuperAdmin, loadTeams, loadTournaments])
+
+  /**
+   * What each organizer runs, grouped once per load rather than per card.
+   *
+   * Both lists are whole-system ones — the super admin administers every
+   * organizer, so the store holds every club and every competition — and the
+   * owner's id is the only thing that puts one under a heading here. A club
+   * playing as a guest in somebody else's league is listed under the organizer
+   * whose record it is, which is the question this page asks.
+   */
+  const runBy = useMemo(() => {
+    const competitions = new Map<string, Tournament[]>()
+    const clubs = new Map<string, Team[]>()
+
+    for (const tournament of tournaments) {
+      const list = competitions.get(tournament.organizerId) ?? []
+      list.push(tournament)
+      competitions.set(tournament.organizerId, list)
+    }
+
+    for (const team of teams) {
+      const list = clubs.get(team.organizerId) ?? []
+      list.push(team)
+      clubs.set(team.organizerId, list)
+    }
+
+    for (const list of competitions.values()) {
+      list.sort(
+        (a, b) =>
+          seriesName(a).localeCompare(seriesName(b)) ||
+          seasonLabel(b).localeCompare(seasonLabel(a)),
+      )
+    }
+    for (const list of clubs.values()) {
+      list.sort((a, b) => a.name.localeCompare(b.name))
+    }
+
+    return { competitions, clubs }
+  }, [teams, tournaments])
+
+  const competitionsOf = (organizerId: string) => runBy.competitions.get(organizerId) ?? []
+  const clubsOf = (organizerId: string) => runBy.clubs.get(organizerId) ?? []
 
   const loadOrganizers = async () => {
     try {
@@ -619,6 +688,33 @@ export default function OrganizersPage() {
                         {organizer.description && (
                           <p className="text-sm text-gray-500 mt-1">{organizer.description}</p>
                         )}
+                        {/* What this organizer actually runs. The counts are
+                            the summary and the panel behind them is the list:
+                            "which clubs are theirs" was a question this page
+                            could not answer at all. */}
+                        {listsLoaded ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowingWorkOf((current) =>
+                                current === organizer.id ? null : organizer.id,
+                              )
+                            }
+                            className="mt-2 text-xs text-blue-300 hover:text-blue-200 transition-colors"
+                          >
+                            {competitionsOf(organizer.id).length}{' '}
+                            {competitionsOf(organizer.id).length === 1
+                              ? 'competition'
+                              : 'competitions'}{' '}
+                            · {clubsOf(organizer.id).length}{' '}
+                            {clubsOf(organizer.id).length === 1 ? 'club' : 'clubs'} —{' '}
+                            {showingWorkOf === organizer.id ? 'hide' : 'show'}
+                          </button>
+                        ) : (
+                          <p className="mt-2 text-xs text-gray-500">
+                            Counting competitions and clubs…
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -705,6 +801,62 @@ export default function OrganizersPage() {
                     </div>
                   </div>
                   
+                  {/* The competitions and the clubs themselves. Each opens
+                      where it is administered: the season page for a
+                      competition, the club page for a club. */}
+                  {showingWorkOf === organizer.id && (
+                    <div className="mt-4 pt-4 border-t border-white/10 grid gap-6 md:grid-cols-2">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white mb-2">Competitions</h4>
+                        {competitionsOf(organizer.id).length === 0 ? (
+                          <p className="text-sm text-gray-500">None yet.</p>
+                        ) : (
+                          <ul className="space-y-1">
+                            {competitionsOf(organizer.id).map((tournament) => (
+                              <li key={tournament.id} className="text-sm">
+                                <Link
+                                  to={adminSeasonUrl(tournament, organizer)}
+                                  className="text-blue-300 hover:text-blue-200 transition-colors"
+                                >
+                                  {seriesName(tournament)}
+                                </Link>{' '}
+                                <span className="text-gray-500">{seasonLabel(tournament)}</span>
+                                {tournament.visibility === 'private' && (
+                                  <span className="ml-2 text-xs text-gray-500">private</span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-semibold text-white mb-2">Clubs</h4>
+                        {clubsOf(organizer.id).length === 0 ? (
+                          <p className="text-sm text-gray-500">None yet.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {clubsOf(organizer.id).map((team) => (
+                              <Link
+                                key={team.id}
+                                to={`/teams/${team.id}`}
+                                className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-sm text-gray-200"
+                              >
+                                {team.name}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                        <Link
+                          to={`/teams?organizer=${encodeURIComponent(organizer.id)}`}
+                          className="inline-block mt-3 text-xs text-blue-300 hover:text-blue-200 transition-colors"
+                        >
+                          Manage clubs
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+
                   {/* What deleting this organizer costs, before it is done. */}
                   {pendingDelete === organizer.id && (
                     <div className="mt-4 pt-4 border-t border-white/10">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useAppStore } from "../store"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import LogoUploader from "../components/LogoUploader"
 import { canEditClub, checkTeamName, parseBulkNames } from "../utils/teams"
 import { useAuth } from "../contexts/AuthContext"
@@ -8,6 +8,7 @@ import { clubService, type DirectoryClub } from "../lib/data"
 import { headerColor } from "../utils/crest"
 import { activeSquad } from "../utils/squads"
 import { cdnUrl } from '../utils/images'
+import type { Organizer, Team } from '../types'
 
 /**
  * The clubs.
@@ -18,6 +19,21 @@ import { cdnUrl } from '../utils/images'
  * The owner is a line on the card and the thing you filter by, not the shape of
  * the page.
  */
+function countOwners(
+  teams: Team[],
+  getOrganizerById: (organizerId?: string) => Organizer | null,
+): Array<{ id: string; name: string; count: number }> {
+  const counts = new Map<string, number>()
+  for (const team of teams) counts.set(team.organizerId, (counts.get(team.organizerId) ?? 0) + 1)
+  return [...counts.entries()]
+    .map(([id, count]) => ({
+      id,
+      name: getOrganizerById(id)?.name ?? 'Without an organizer',
+      count,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 export default function TeamsPage() {
   const [teamName, setTeamName] = useState("")
   const [teamColors, setTeamColors] = useState<string[]>(["#3B82F6"])
@@ -38,6 +54,10 @@ export default function TeamsPage() {
   // With thirty-odd teams in an unordered grid, finding one meant scrolling.
   const [teamSearch, setTeamSearch] = useState("")
   const [removeFailed, setRemoveFailed] = useState<{ id: string; message: string } | null>(null)
+  // Which organiser's clubs are being looked at, in the URL rather than in
+  // state: the organizers page links straight here with one already chosen,
+  // and a filtered list is worth being able to send to somebody.
+  const [searchParams, setSearchParams] = useSearchParams()
   
   const {
     getCurrentOrganizer,
@@ -162,12 +182,29 @@ export default function TeamsPage() {
   
   // Removed unused functions and refs to fix TypeScript errors
 
+  // Who owns the clubs on this page, in the order the picker lists them. Built
+  // from the clubs themselves rather than from the organizers list, so an
+  // organizer with no clubs is not an option that empties the page, and a club
+  // whose organizer was deleted still has a heading to be found under.
+  const owners = countOwners(teams, getOrganizerById)
+
+  // An id in the URL that owns nothing here — a deleted organizer, a link that
+  // has gone stale — would otherwise show an empty page with no way to tell
+  // why, so it reads as no filter at all.
+  const requestedOwner = searchParams.get('organizer') ?? ''
+  const ownerFilter = owners.some((owner) => owner.id === requestedOwner) ? requestedOwner : ''
+
+  const filterByOwner = (organizerId: string) => {
+    setSearchParams(organizerId ? { organizer: organizerId } : {}, { replace: true })
+  }
+
   // Alphabetical order and a search box: the list used to come back in whatever
   // order the database returned it, with new teams landing in the middle.
   // The organiser's name is searchable too: with every club on one page it is
   // the quickest way to narrow it to one league's.
   const search = teamSearch.trim().toLowerCase()
   const visibleTeams = [...teams]
+    .filter((team) => !ownerFilter || team.organizerId === ownerFilter)
     .filter((team) => {
       if (!search) return true
       const owner = getOrganizerById(team.organizerId)?.name ?? ''
@@ -182,7 +219,11 @@ export default function TeamsPage() {
       <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Manage Teams</h1>
         <p className="opacity-80">
-          {currentOrganizer ? 'Create and manage your teams' : 'Every club, whoever runs it'}
+          {currentOrganizer
+            ? 'Create and manage your teams'
+            : ownerFilter
+              ? "One organizer's clubs"
+              : 'Every club, whoever runs it'}
         </p>
       </div>
 
@@ -371,16 +412,38 @@ export default function TeamsPage() {
       <div className="w-full max-w-6xl">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <h2 className="text-2xl font-semibold">
-            {currentOrganizer ? 'Your Teams' : 'All Clubs'} ({visibleTeams.length}
+            {currentOrganizer
+              ? 'Your Teams'
+              : (owners.find((owner) => owner.id === ownerFilter)?.name ?? 'All Clubs')}{' '}
+            ({visibleTeams.length}
             {visibleTeams.length !== teams.length ? ` of ${teams.length}` : ''})
           </h2>
-          <input
-            type="search"
-            value={teamSearch}
-            onChange={(e) => setTeamSearch(e.target.value)}
-            placeholder="Search teams..."
-            className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none w-64 max-w-full"
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Only where there is a choice to make. An organiser's own list is
+                already one league's, and the owner of a guest club is not a
+                name they are given. */}
+            {!currentOrganizer && owners.length > 1 && (
+              <select
+                value={ownerFilter}
+                onChange={(e) => filterByOwner(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none"
+              >
+                <option value="">All organizers</option>
+                {owners.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.name} ({owner.count})
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              type="search"
+              value={teamSearch}
+              onChange={(e) => setTeamSearch(e.target.value)}
+              placeholder="Search teams..."
+              className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-white/40 focus:outline-none w-64 max-w-full"
+            />
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {visibleTeams.map((team) => {
