@@ -88,6 +88,47 @@ export const organizerService = {
     return api.post<Organizer>('/admin/organizers', { name, email })
   },
 
+  /**
+   * Who can sign in as each organizer, and who has been asked and not answered.
+   *
+   * A separate request rather than something carried on `getAll`: that one is
+   * read by every admin screen to fill the organizer picker, and this costs two
+   * table scans that only the super admin's own page needs.
+   */
+  async logins(): Promise<OrganizerLogins> {
+    return api.get<OrganizerLogins>('/admin/organizers/logins')
+  },
+
+  /** Invites somebody to run this organizer. The address defaults to the organizer's own. */
+  async invite(id: string, email?: string): Promise<OrganizerInviteIssued> {
+    return api.post<OrganizerInviteIssued>(
+      `/admin/organizers/${encodeURIComponent(id)}/invites`,
+      email ? { email } : {},
+    )
+  },
+
+  /** Takes back an invitation nobody has answered. */
+  async cancelInvite(id: string): Promise<{ cancelled: number }> {
+    return api.delete<{ cancelled: number }>(
+      `/admin/organizers/${encodeURIComponent(id)}/invites`,
+    )
+  },
+
+  /**
+   * What an organizer invitation is for, read by the claim page before anybody
+   * signs up for it. Null rather than a throw: an expired link is the ordinary
+   * case here, not an error screen.
+   */
+  async previewInvite(token: string): Promise<OrganizerInvitePreview | null> {
+    try {
+      return await api.get<OrganizerInvitePreview>(
+        `/auth/organizer-invites/${encodeURIComponent(token)}`,
+      )
+    } catch {
+      return null
+    }
+  },
+
   async update(id: string, updates: Partial<Organizer>): Promise<boolean> {
     await api.patch(`/admin/organizers/${encodeURIComponent(id)}`, updates)
     return true
@@ -110,6 +151,34 @@ export const organizerService = {
     const query = teamsTo ? `?teamsTo=${encodeURIComponent(teamsTo)}` : ''
     return api.delete<OrganizerDeleted>(`/admin/organizers/${encodeURIComponent(id)}${query}`)
   },
+}
+
+/** A login that runs an organizer, keyed by organizer id in `OrganizerLogins`. */
+export type OrganizerLogin = {
+  email: string
+  displayName?: string
+  role: 'super_admin' | 'organizer' | 'team_manager'
+  isActive: boolean
+  lastLogin?: string
+}
+
+export type OrganizerLogins = {
+  accounts: Record<string, OrganizerLogin[]>
+  invites: Record<string, { email: string; expiresAt: string }[]>
+}
+
+export type OrganizerInviteIssued = {
+  link: string
+  expiresAt: string
+  emailed: boolean
+  email: string
+}
+
+export type OrganizerInvitePreview = {
+  organizerName: string
+  /** The address the account will be opened on, and the only one it may be. */
+  email: string
+  expiresAt: string
 }
 
 export type OrganizerImpact = {

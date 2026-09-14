@@ -9,10 +9,12 @@ import {
   issueResetLink,
 } from '../lib/auth'
 import { organizerService } from '../lib/data'
-import type { OrganizerImpact } from '../lib/data'
+import type { OrganizerImpact, OrganizerInviteIssued, OrganizerLogins } from '../lib/data'
 import {
+  IconClose,
   IconKey,
   IconLink,
+  IconMail,
   IconTrash,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
@@ -30,8 +32,19 @@ export default function OrganizersPage() {
   const { isSuperAdmin } = useAuth()
   const { createOrganizer, deleteOrganizer } = useAppStore()
   const [organizers, setOrganizers] = useState<Organizer[]>([])
+  /** Who can sign in as each organizer, and who has been asked and not answered. */
+  const [logins, setLogins] = useState<OrganizerLogins>({ accounts: {}, invites: {} })
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  /**
+   * Whether the new organizer gets a password typed for it or an invitation.
+   *
+   * Both end in the same record; what differs is who chooses the password. An
+   * invitation is the better answer whenever the person is reachable by email —
+   * a password typed here is one two people know, and the one who chose it is
+   * not the one who has to remember it — so it is the default.
+   */
+  const [createMode, setCreateMode] = useState<'invite' | 'password'>('invite')
   const [newOrganizer, setNewOrganizer] = useState({
     name: '',
     email: '',
@@ -54,6 +67,10 @@ export default function OrganizersPage() {
   const [teamsTo, setTeamsTo] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  /** The invitation just issued for an organizer, by organizer id. */
+  const [inviteIssued, setInviteIssued] = useState<Record<string, OrganizerInviteIssued>>({})
+  const [inviteError, setInviteError] = useState<Record<string, string>>({})
+  const [inviteBusy, setInviteBusy] = useState<string | null>(null)
 
   useEffect(() => {
     loadOrganizers()
@@ -62,7 +79,6 @@ export default function OrganizersPage() {
   const loadOrganizers = async () => {
     try {
       setLoading(true)
-      // Use service method which has pagination and caching
       const organizers = await organizerService.getAll()
       setOrganizers(organizers as Organizer[])
     } catch (error) {
@@ -70,55 +86,124 @@ export default function OrganizersPage() {
     } finally {
       setLoading(false)
     }
+
+    // Separately, and never fatal: the list is worth showing without it, and
+    // this half is two table scans behind a route the organizer picker on every
+    // other screen does not call.
+    try {
+      setLogins(await organizerService.logins())
+    } catch (error) {
+      console.error('Error loading organizer logins:', error)
+    }
+  }
+
+  /** Every login attached to an organizer, and every invitation still outstanding. */
+  const accountsOf = (organizerId: string) => logins.accounts[organizerId] ?? []
+  const pendingInviteFor = (organizerId: string) => (logins.invites[organizerId] ?? [])[0]
+
+  /**
+   * Invites somebody to run an organizer, or sends the invitation again.
+   *
+   * The server takes the previous link away first, so pressing this twice
+   * leaves one live door rather than two.
+   */
+  const handleInvite = async (organizerId: string, email?: string) => {
+    setInviteBusy(organizerId)
+    setInviteError((current) => ({ ...current, [organizerId]: '' }))
+    try {
+      const issued = await organizerService.invite(organizerId, email)
+      setInviteIssued((current) => ({ ...current, [organizerId]: issued }))
+      try {
+        await navigator.clipboard.writeText(issued.link)
+      } catch {
+        // The link is on screen either way.
+      }
+      await loadOrganizers()
+    } catch (error) {
+      setInviteError((current) => ({
+        ...current,
+        [organizerId]:
+          error instanceof Error && error.message
+            ? error.message
+            : 'That invitation could not be sent.',
+      }))
+    } finally {
+      setInviteBusy(null)
+    }
+  }
+
+  const handleCancelInvite = async (organizerId: string) => {
+    setInviteBusy(organizerId)
+    try {
+      await organizerService.cancelInvite(organizerId)
+      setInviteIssued((current) => {
+        const next = { ...current }
+        delete next[organizerId]
+        return next
+      })
+      await loadOrganizers()
+    } catch (error) {
+      setInviteError((current) => ({
+        ...current,
+        [organizerId]:
+          error instanceof Error && error.message
+            ? error.message
+            : 'That invitation could not be cancelled.',
+      }))
+    } finally {
+      setInviteBusy(null)
+    }
   }
 
   const handleCreateOrganizer = async (e: React.FormEvent) => {
     e.preventDefault()
     setCreateError('')
-    
+
+    const name = newOrganizer.name.trim()
+    const email = newOrganizer.email.trim().toLowerCase()
+
+    if (organizers.some((org) => org.name.toLowerCase() === name.toLowerCase())) {
+      setCreateError('An organizer with this name already exists. Please choose a different name.')
+      return
+    }
+
+    if (createMode === 'password' && (!newOrganizer.password || newOrganizer.password.length < 7)) {
+      setCreateError('Password must be at least 7 characters long, with a digit in it.')
+      return
+    }
+
     try {
-      // Check if organizer name already exists
-      const existingOrganizer = organizers.find(org => 
-        org.name.toLowerCase() === newOrganizer.name.toLowerCase()
-      )
-      
-      if (existingOrganizer) {
-        setCreateError('An organizer with this name already exists. Please choose a different name.')
+      // The record first, either way. It is what the login is attached to and
+      // what the invitation points at, and the store rethrows now rather than
+      // reporting a creation that failed as having worked.
+      const organizer = await createOrganizer(name, email)
+      if (!organizer) {
+        setCreateError('That organizer could not be created.')
         return
       }
-      
-      // Validate password
-      if (!newOrganizer.password || newOrganizer.password.length < 7) {
-        setCreateError('Password must be at least 7 characters long, with a digit in it.')
-        return
-      }
-      
-      // Create organizer in the main system
-      await createOrganizer(newOrganizer.name, newOrganizer.email)
-      
-      // Get the created organizer by fetching fresh data
-      // This is more efficient than scanning with filter
-      const allOrganizers = await organizerService.getAll()
-      const organizer = allOrganizers.find(org => 
-        org.name === newOrganizer.name && org.email === newOrganizer.email
-      ) as Organizer
-      console.log('Found organizer:', organizer)
-      if (organizer) {
-        // Create auth account for organizer with custom password
-        console.log('Creating auth account for:', newOrganizer.email, 'with ID:', organizer.id)
-        await createOrganizerAccount(newOrganizer.email, organizer.id, newOrganizer.password)
-        console.log('Auth account created successfully')
+
+      if (createMode === 'password') {
+        await createOrganizerAccount(email, organizer.id, newOrganizer.password)
       } else {
-        console.error('No organizer found after creation')
+        // Kept, not discarded. Email is not out of the SES sandbox for every
+        // address, and a "sent" that silently was not is how somebody waits a
+        // week for a link: the row below shows it either way.
+        const issued = await organizerService.invite(organizer.id, email)
+        setInviteIssued((current) => ({ ...current, [organizer.id]: issued }))
       }
-      
-      // Reset form and reload
+
       setNewOrganizer({ name: '', email: '', description: '', password: '' })
       setShowCreateForm(false)
       loadOrganizers()
     } catch (error) {
-      console.error('Error creating organizer:', error)
-      setCreateError('Failed to create organizer. Please try again.')
+      // The organizer may well exist by now and the login not: the list below
+      // shows it with no login and an Invite button, which is the way out.
+      setCreateError(
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to create organizer. Please try again.',
+      )
+      loadOrganizers()
     }
   }
 
@@ -394,20 +479,79 @@ export default function OrganizersPage() {
                   rows={3}
                 />
               </div>
+              {/* How the login comes into being. The record is the same either
+                  way; what differs is who chooses the password. */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Initial Password
-                </label>
-                <input
-                  type="password"
-                  value={newOrganizer.password}
-                  onChange={(e) => setNewOrganizer({ ...newOrganizer, password: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-white placeholder-gray-400"
-                  placeholder="Enter initial password (min 7 characters)"
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">This will be the organizer's login password</p>
+                <span className="block text-sm font-medium text-gray-300 mb-2">Login</span>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <label
+                    className={`flex gap-3 items-start p-4 rounded-xl border cursor-pointer transition-all ${
+                      createMode === 'invite'
+                        ? 'bg-blue-500/10 border-blue-400/40'
+                        : 'bg-white/5 border-white/15 hover:bg-white/10'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="createMode"
+                      className="mt-1"
+                      checked={createMode === 'invite'}
+                      onChange={() => setCreateMode('invite')}
+                    />
+                    <span>
+                      <span className="block text-white text-sm font-medium">
+                        Send an invitation
+                      </span>
+                      <span className="block text-xs text-gray-400 mt-1">
+                        They open a one-time link and choose their own password. Nothing to read
+                        out, and nobody else knows it.
+                      </span>
+                    </span>
+                  </label>
+
+                  <label
+                    className={`flex gap-3 items-start p-4 rounded-xl border cursor-pointer transition-all ${
+                      createMode === 'password'
+                        ? 'bg-blue-500/10 border-blue-400/40'
+                        : 'bg-white/5 border-white/15 hover:bg-white/10'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="createMode"
+                      className="mt-1"
+                      checked={createMode === 'password'}
+                      onChange={() => setCreateMode('password')}
+                    />
+                    <span>
+                      <span className="block text-white text-sm font-medium">
+                        Set a password now
+                      </span>
+                      <span className="block text-xs text-gray-400 mt-1">
+                        For somebody you will hand it to in person, or an address that cannot
+                        receive our mail yet.
+                      </span>
+                    </span>
+                  </label>
+                </div>
               </div>
+
+              {createMode === 'password' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Initial Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newOrganizer.password}
+                    onChange={(e) => setNewOrganizer({ ...newOrganizer, password: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/20 focus:border-blue-400/50 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-white placeholder-gray-400"
+                    placeholder="Enter initial password (min 7 characters)"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">This will be the organizer's login password</p>
+                </div>
+              )}
               {createError && (
                 <div className="bg-red-500/10 border border-red-400/30 rounded-xl p-4">
                   <p className="text-red-400 text-sm">{createError}</p>
@@ -419,7 +563,7 @@ export default function OrganizersPage() {
                   type="submit"
                   className="px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold rounded-xl transition-all duration-300"
                 >
-                  Create Organizer
+                  {createMode === 'invite' ? 'Create and invite' : 'Create Organizer'}
                 </button>
                 <button
                   type="button"
@@ -482,25 +626,74 @@ export default function OrganizersPage() {
                         <p className="text-sm text-gray-400">
                           Created: {new Date(organizer.createdAtISO).toLocaleDateString()}
                         </p>
-                        <p className="text-xs text-blue-400 mt-1">
-                          Signs in with {organizer.email}
-                        </p>
+                        {/* What the login actually is, rather than what the
+                            organizer's contact address happens to be. The two
+                            can differ, and this row used to claim the second
+                            was the first for an organizer with no login at
+                            all. */}
+                        {accountsOf(organizer.id).length > 0 ? (
+                          <p className="text-xs text-blue-400 mt-1">
+                            Signs in with{' '}
+                            {accountsOf(organizer.id)
+                              .map((account) => account.email)
+                              .join(', ')}
+                          </p>
+                        ) : pendingInviteFor(organizer.id) ? (
+                          <p className="text-xs text-amber-300 mt-1">
+                            Invited {pendingInviteFor(organizer.id)!.email} — expires{' '}
+                            {new Date(
+                              pendingInviteFor(organizer.id)!.expiresAt,
+                            ).toLocaleDateString()}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-500 mt-1">No login yet</p>
+                        )}
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleResetLink(organizer.email)}
-                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg transition-all text-blue-300 text-sm"
-                          title="Create a one-time link so they can choose their own password"
-                        >
-                          <IconLink size={14} /> Reset link
-                        </button>
-                        <button
-                          onClick={() => setShowPasswordReset(organizer.email)}
-                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 rounded-lg transition-all text-yellow-400 text-sm"
-                          title="Set a password directly"
-                        >
-                          <IconKey size={14} /> Set password
-                        </button>
+                      <div className="flex gap-2 flex-wrap justify-end">
+                        {/* Only where there is an account to reset. Both of
+                            these answered "Account not found" for an organizer
+                            nobody has taken on, which is exactly the row where
+                            an invitation is what is wanted. */}
+                        {accountsOf(organizer.id).length > 0 ? (
+                          <>
+                            <button
+                              onClick={() => handleResetLink(organizer.email)}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg transition-all text-blue-300 text-sm"
+                              title="Create a one-time link so they can choose their own password"
+                            >
+                              <IconLink size={14} /> Reset link
+                            </button>
+                            <button
+                              onClick={() => setShowPasswordReset(organizer.email)}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-400/30 rounded-lg transition-all text-yellow-400 text-sm"
+                              title="Set a password directly"
+                            >
+                              <IconKey size={14} /> Set password
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleInvite(organizer.id)}
+                              disabled={inviteBusy === organizer.id}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-green-500/20 hover:bg-green-500/30 disabled:opacity-40 border border-green-400/30 rounded-lg transition-all text-green-300 text-sm"
+                              title="Email a one-time link so they can choose their own password"
+                            >
+                              <IconMail size={14} />
+                              {pendingInviteFor(organizer.id) ? 'Invite again' : 'Invite'}
+                            </button>
+                            {pendingInviteFor(organizer.id) && (
+                              <button
+                                onClick={() => handleCancelInvite(organizer.id)}
+                                disabled={inviteBusy === organizer.id}
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-500/20 hover:bg-gray-500/30 disabled:opacity-40 border border-gray-400/30 rounded-lg transition-all text-gray-300 text-sm"
+                                title="Take the invitation back — the link stops working"
+                              >
+                                <IconClose size={14} /> Cancel invite
+                              </button>
+                            )}
+                          </>
+                        )}
                         <button
                           onClick={() => handleDeleteOrganizer(organizer.id)}
                           className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg transition-all text-red-400 text-sm"
@@ -592,6 +785,26 @@ export default function OrganizersPage() {
                       >
                         Cancel
                       </button>
+                    </div>
+                  )}
+
+                  {inviteError[organizer.id] && (
+                    <p className="mt-4 text-sm text-red-400">{inviteError[organizer.id]}</p>
+                  )}
+
+                  {/* The invitation, once it exists. Shown for the same reason
+                      the reset link is: email is not out of the SES sandbox for
+                      every address, and the link has to be passable by hand. */}
+                  {inviteIssued[organizer.id] && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                      <p className="text-sm text-gray-300 mb-2">
+                        {inviteIssued[organizer.id]!.emailed
+                          ? `Sent to ${inviteIssued[organizer.id]!.email}, and copied to your clipboard. It works once and lasts a fortnight.`
+                          : `Email is not sending, so pass this on yourself. Copied to your clipboard; it works once and lasts a fortnight.`}
+                      </p>
+                      <code className="block text-xs bg-black/40 border border-white/10 rounded-lg p-3 break-all text-green-200">
+                        {inviteIssued[organizer.id]!.link}
+                      </code>
                     </div>
                   )}
 

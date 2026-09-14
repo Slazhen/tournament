@@ -4,11 +4,11 @@ import { MAIL_FROM, SITE_URL } from './env.js'
 /**
  * Outgoing email.
  *
- * There is exactly one message the product sends, and it is the one that must
- * not go missing: the link that gets somebody back into their account. If SES
- * is not configured yet, this says so rather than throwing — a super admin can
- * hand the same link over by other means, and a reset request must never fail
- * because of the mail server.
+ * Every message here is a link that gets somebody into an account, and none of
+ * them may take the request down with it. If SES is not configured yet, this
+ * says so rather than throwing — a super admin can hand the same link over by
+ * other means, and neither a reset nor an invitation may fail because of the
+ * mail server.
  */
 
 const ses = MAIL_FROM ? new SESv2Client({}) : null
@@ -149,6 +149,67 @@ export async function sendTeamInvite(
     return { sent: true }
   } catch (error) {
     console.error('Team invitation email failed', error)
+    return { sent: false, reason: (error as Error).message }
+  }
+}
+
+/**
+ * The invitation to run an organiser.
+ *
+ * The account this opens can create competitions and run other people's clubs
+ * inside them, so unlike a club invitation it is never issued without an
+ * address: the link is bound to the person it was sent to.
+ */
+export async function sendOrganizerInvite(
+  to: string,
+  organizerName: string,
+  link: string,
+): Promise<MailResult> {
+  if (!ses || !MAIL_FROM) return { sent: false, reason: 'email is not configured' }
+
+  const text = [
+    `You have been invited to run ${organizerName} on MFTournament.`,
+    '',
+    'Open this link to choose a password and sign in:',
+    link,
+    '',
+    'You will be able to create competitions, enter clubs into them and publish',
+    'fixtures, tables and results. The link works once and lasts a fortnight.',
+    '',
+    SITE_URL,
+  ].join('\n')
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.55;color:#0B1120">
+      <p>You have been invited to run <strong>${escapeHtml(organizerName)}</strong> on MFTournament.</p>
+      <p>
+        <a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#4F46E5;color:#fff;text-decoration:none;font-weight:600">
+          Choose a password
+        </a>
+      </p>
+      <p style="color:#475569;font-size:14px">
+        You will be able to create competitions, enter clubs into them and publish fixtures,
+        tables and results. The link works once and lasts a fortnight.
+      </p>
+      <p style="color:#94A3B8;font-size:12px">${SITE_URL}</p>
+    </div>`
+
+  try {
+    await ses.send(
+      new SendEmailCommand({
+        FromEmailAddress: MAIL_FROM,
+        Destination: { ToAddresses: [to] },
+        Content: {
+          Simple: {
+            Subject: { Data: oneLine(`You have been invited to run ${organizerName}`) },
+            Body: { Text: { Data: text }, Html: { Data: html } },
+          },
+        },
+      }),
+    )
+    return { sent: true }
+  } catch (error) {
+    console.error('Organizer invitation email failed', error)
     return { sent: false, reason: (error as Error).message }
   }
 }

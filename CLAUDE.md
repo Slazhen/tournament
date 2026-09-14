@@ -422,6 +422,57 @@ neither accept nor dismiss, or an application from a club whose name nothing can
 resolve. For the same reason the club's answer route reads the tournament
 *after* its decline branch: refusing a dead invitation has to work.
 
+**An organiser is invited the same way a club is, and the two tokens share a
+table.** An organiser's login used to exist only if the super admin typed a
+password into the create form and read it out: two people knowing it, and the
+one who chose it not the one who has to remember it. `POST
+/admin/organizers/:id/invites` is the other half — the record is created first
+and the person who will run it is invited to the *login*, exactly as a club
+exists before its coach is invited. Nothing is created at the claim, so an
+invitation nobody answers leaves an organiser the super admin can still edit,
+invite again or delete, rather than a token holding the only copy of what was
+typed.
+
+Both kinds of invitation live in the invites table, so every item carries a
+`kind` and every read names the kind it expects (`server/src/lib/invites.ts`).
+That field is the whole guard: a token spendable at the other's claim route
+would be an invitation to keep a squad list up to date opening an account that
+runs a league. `kind` is absent on every invitation written before it existed
+and all of those are club invitations, which is what a missing one reads as.
+`readInvite` also asks the expiry the way round that fails closed — `NaN <
+Date.now()` is false, so a malformed date read as valid forever.
+
+Three things differ from a club's. The address is not optional: a club link is
+passed on by hand over WhatsApp, this one opens an account that can run
+competitions, and binding it to the address it was sent to is what stops a link
+going astray becoming an account on somebody else's email. Issuing a second
+invitation takes the first away, and so does creating that organiser's login by
+hand through `POST /admin/accounts` — otherwise inviting somebody and then
+changing your mind leaves a live door for a fortnight, and whoever holds it
+opens a second organizer account that the create route's own duplicate check
+never saw. And there is no signed-in branch at the claim: an account has one
+role and one `organizerId`, so turning an existing one into an organiser would
+silently drop whatever it already was. An address already spoken for is refused
+at the invitation, where the super admin can still do something about it.
+
+The preview, `GET /auth/organizer-invites/:token`, is under `/auth/` and not
+`/public/` although it needs no session. Everything under `/public/` is answered
+with `cache-control: max-age=60`: the invitee's email address would sit in every
+shared cache on the way, and the route would keep answering for a minute after
+the invitation was cancelled or spent.
+
+**"Is this address taken" is a different question from "who signs in here".**
+`findUserByEmail` filters on `isActive`, which is how access is revoked — the
+row keeps its address. `emailIsTaken` in `routes/auth.ts` does not, and it is
+what the organiser invitation and its claim both ask, because the address there
+is taken from the organiser record rather than typed: the commonest way to reach
+that check is pressing Invite on an organiser whose login was switched off, and
+a check that cannot see it hands the account straight back. It also carries no
+`FilterExpression`, so its `Limit: 1` is honest — with one, DynamoDB reads a
+page and filters afterwards, and a second row on `email-index` can make the
+query answer nothing at all. Nothing yet stops two rows sharing an address; that
+debt is older than this and is not paid here.
+
 **An invitation can carry a competition.** A link issued from a tournament's
 settings screen holds its `tournamentId`, and claiming it both hands over the
 club and enters it — the organiser inviting a coach mid-setup has already
@@ -602,7 +653,8 @@ blank screen. Two things follow. Any one-segment address now lands there, so
 the page has to answer 404 itself for a slug that names nobody. And a static
 route ranks above `/:orgSlug`, so an organiser whose name slugifies to
 `teams`, `login`, `start`, `dashboard`, `tournaments`, `calendar`,
-`organizers`, `changes`, `join`, `public`, `admin` or `my-club` would have an
+`organizers`, `changes`, `join`, `join-organizer`, `public`, `admin` or `my-club`
+would have an
 unreachable page — nothing refuses such a name yet.
 
 **There is no self-serve sign-up, and the landing page says so.** An

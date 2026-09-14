@@ -13,6 +13,7 @@ import { corsHeaders, parseJsonBody, HttpError } from '../src/lib/http.js'
 import { organiserMayDecide, toClubTournament, toDirectoryClub } from '../src/routes/clubs.js'
 import { toVisitingTeam } from '../src/routes/admin.js'
 import { isInClubPool } from '../src/lib/pool.js'
+import { isInviteKind } from '../src/lib/invites.js'
 import type { Team } from '../src/lib/types.js'
 
 const organizerUser: AuthUser = {
@@ -594,5 +595,29 @@ describe('a club taken off the pool', () => {
     const out = toVisitingTeam(club) as unknown as Record<string, unknown>
     expect(out.managerUserIds).toBeUndefined()
     expect(JSON.stringify(out)).not.toContain('1999-01-01')
+  })
+})
+
+describe('what an invitation opens', () => {
+  it('reads an invitation with no kind as a club one', () => {
+    // Every invitation written before the field existed is a club invitation,
+    // and those links are live for a fortnight after a deploy.
+    expect(isInviteKind({ }, 'team')).toBe(true)
+    expect(isInviteKind({ }, 'organizer')).toBe(false)
+  })
+
+  it('never lets an organizer invitation answer as a club one', () => {
+    // The whole point of the field: spending an organizer token at the club
+    // claim route, or the reverse, would be one invitation opening the other's
+    // door — and the organizer's door is an account that runs competitions.
+    expect(isInviteKind({ kind: 'organizer' }, 'team')).toBe(false)
+    expect(isInviteKind({ kind: 'organizer' }, 'organizer')).toBe(true)
+    expect(isInviteKind({ kind: 'team' }, 'organizer')).toBe(false)
+    expect(isInviteKind({ kind: 'team' }, 'team')).toBe(true)
+  })
+
+  it('answers no for a token that is not there at all', () => {
+    expect(isInviteKind(null, 'team')).toBe(false)
+    expect(isInviteKind(undefined, 'organizer')).toBe(false)
   })
 })

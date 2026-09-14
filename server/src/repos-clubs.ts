@@ -7,8 +7,15 @@ import {
   scanAll,
   UpdateCommand,
 } from './lib/ddb.js'
-import { INVITE_TTL_MS, TABLES } from './lib/env.js'
-import { generateId, generateToken } from './lib/passwords.js'
+import { TABLES } from './lib/env.js'
+import {
+  inviteEnvelope,
+  putInvite,
+  readInvite,
+  spendInvite,
+  type InviteBase,
+} from './lib/invites.js'
+import { generateId } from './lib/passwords.js'
 import { getUserById } from './lib/sessions.js'
 import type { AuthUser, Team } from './lib/types.js'
 
@@ -25,16 +32,11 @@ import type { AuthUser, Team } from './lib/types.js'
  * Invitations
  * ------------------------------------------------------------------ */
 
-export type TeamInvite = {
-  token: string
+export type TeamInvite = InviteBase & {
+  kind?: 'team'
   teamId: string
   teamName: string
   organizerId: string
-  createdBy: string
-  email?: string
-  createdAt: string
-  expiresAt: string
-  expiresAtEpoch: number
   /**
    * The competition the club joins the moment the invitation is taken up.
    *
@@ -53,66 +55,35 @@ export async function createInvite(
   createdBy: string,
   options: { email?: string; tournament?: { id: string; name: string } } = {},
 ): Promise<TeamInvite> {
-  const expires = new Date(Date.now() + INVITE_TTL_MS)
-
   const invite: TeamInvite = {
-    token: generateToken(),
+    ...inviteEnvelope('team', createdBy, options.email),
+    kind: 'team',
     teamId: team.id,
     teamName: team.name,
     organizerId: team.organizerId,
-    createdBy,
-    email: options.email,
     tournamentId: options.tournament?.id,
     tournamentName: options.tournament?.name,
-    createdAt: new Date().toISOString(),
-    expiresAt: expires.toISOString(),
-    expiresAtEpoch: Math.floor(expires.getTime() / 1000),
   }
 
-  await ddb.send(new PutCommand({ TableName: TABLES.INVITES, Item: invite }))
+  await putInvite(invite)
   return invite
-}
-
-/** Reads an invitation without spending it, to show who is being invited where. */
-export async function peekInvite(token: string): Promise<TeamInvite | null> {
-  if (!token) return null
-  const result = await ddb.send(new GetCommand({ TableName: TABLES.INVITES, Key: { token } }))
-  const invite = result.Item as TeamInvite | undefined
-  if (!invite) return null
-  return new Date(invite.expiresAt).getTime() < Date.now() ? null : invite
 }
 
 /**
- * Spends it. An invitation opens one door, once.
+ * Reads an invitation without spending it, to show who is being invited where.
  *
- * The delete is conditional and its success is the only thing that counts as
- * having spent the invitation. Reading first and deleting unconditionally meant
- * "once" was only true if nobody was in a hurry: twenty simultaneous claims all
- * read the same live invitation and all went through, each creating an account
- * — and account creation is otherwise the super admin's alone — and each adding
- * a manager to somebody else's club.
+ * A token that names an organizer invitation is not one of these and answers
+ * null, so the club claim route cannot spend it — see `lib/invites.ts`.
  */
+export async function peekInvite(token: string): Promise<TeamInvite | null> {
+  return readInvite<TeamInvite>(token, 'team')
+}
+
+/** Spends it. An invitation opens one door, once. */
 export async function consumeInvite(token: string): Promise<TeamInvite | null> {
   const invite = await peekInvite(token)
   if (!invite) return null
-
-  try {
-    await ddb.send(
-      new DeleteCommand({
-        TableName: TABLES.INVITES,
-        Key: { token },
-        // `token` is a DynamoDB reserved word and cannot appear in a
-        // ConditionExpression by name.
-        ConditionExpression: 'attribute_exists(#token)',
-        ExpressionAttributeNames: { '#token': 'token' },
-      }),
-    )
-  } catch (error) {
-    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return null
-    throw error
-  }
-
-  return invite
+  return (await spendInvite(token)) ? invite : null
 }
 
 /* ------------------------------------------------------------------ *
@@ -403,9 +374,14 @@ export async function entriesForTournament(tournamentId: string): Promise<Entry[
  * moved to somebody else, who never invited anybody. Deleting the organizer's
  * sessions and leaving these would be closing one door and leaving the other
  * open.
+ *
+ * It takes the invitation to run the organizer itself with it, which is the
+ * same argument one step further up: that link opens an account for a league
+ * that no longer exists. Both kinds carry `organizerId`, so both are matched
+ * here and neither needs a pass of its own.
  */
 export async function deleteInvitesOfOrganizer(organizerId: string): Promise<number> {
-  const all = await scanAll<TeamInvite>(TABLES.INVITES)
+  const all = await scanAll<{ token: string; organizerId?: string }>(TABLES.INVITES)
   const doomed = all.filter((invite) => invite.organizerId === organizerId)
   for (const invite of doomed) {
     await ddb.send(new DeleteCommand({ TableName: TABLES.INVITES, Key: { token: invite.token } }))

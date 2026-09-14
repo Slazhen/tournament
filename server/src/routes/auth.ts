@@ -35,6 +35,30 @@ async function findUserByEmail(email: string): Promise<AuthUser | null> {
 }
 
 /**
+ * Whether this address belongs to any account at all, working or not.
+ *
+ * Deliberately not `findUserByEmail`: that one filters on `isActive`, which is
+ * how access is revoked — the row keeps its address. A caller asking "may I
+ * open an account here" that cannot see a deactivated one would re-open a login
+ * somebody was deliberately locked out of, and leave two rows on one address
+ * behind it. There is no FilterExpression here, so `Limit: 1` is honest: with
+ * one, DynamoDB reads a page and filters afterwards, and a second row on the
+ * index can make the query answer nothing at all.
+ */
+export async function emailIsTaken(email: string): Promise<boolean> {
+  const result = await ddb.send(
+    new QueryCommand({
+      TableName: TABLES.AUTH_USERS,
+      IndexName: 'email-index',
+      KeyConditionExpression: 'email = :email',
+      ExpressionAttributeValues: { ':email': email },
+      Limit: 1,
+    }),
+  )
+  return (result.Items?.length ?? 0) > 0
+}
+
+/**
  * The login is the email address, and only the email address.
  *
  * Accounts could also sign in with a username, which meant two ways into the

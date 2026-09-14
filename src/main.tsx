@@ -61,6 +61,7 @@ const ForgotPasswordPage = lazyPage(() => import('./pages/ForgotPasswordPage.tsx
 const ResetPasswordPage = lazyPage(() => import('./pages/ResetPasswordPage.tsx'))
 const AuditLogPage = lazyPage(() => import('./pages/AuditLogPage.tsx'))
 const ClaimTeamPage = lazyPage(() => import('./pages/ClaimTeamPage.tsx'))
+const ClaimOrganizerPage = lazyPage(() => import('./pages/ClaimOrganizerPage.tsx'))
 const MyClubPage = lazyPage(() => import('./pages/MyClubPage.tsx'))
 const ClubPlayerPage = lazyPage(() => import('./pages/ClubPlayerPage.tsx'))
 const OrganizersPage = lazyPage(() => import('./pages/OrganizersPage.tsx'))
@@ -140,6 +141,12 @@ const router = createBrowserRouter([
       { path: 'reset-password', element: <ResetPasswordPage /> },
       // An invitation to run a club: opened from a link somebody was sent.
       { path: 'join', element: <ClaimTeamPage /> },
+      // And the same for an organiser. A separate address rather than one that
+      // works out which kind of token it holds: the two claim different things
+      // and ask for different answers, and a token of one kind is refused by
+      // the other's routes. Both are one-segment static routes, so they take
+      // `join` and `join-organizer` away from /:orgSlug — see CLAUDE.md.
+      { path: 'join-organizer', element: <ClaimOrganizerPage /> },
 
       /* ---------- The club manager's own screens ---------- */
       { path: 'my-club', element: <MyClubPage /> },

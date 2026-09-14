@@ -14,7 +14,7 @@ import {
   generateSalt,
   hashPassword,
 } from '../lib/passwords.js'
-import { deleteAllUserSessions } from '../lib/sessions.js'
+import { createSession, deleteAllUserSessions } from '../lib/sessions.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import { organizers, teams, tournaments } from '../repos.js'
 import {
@@ -44,7 +44,7 @@ import {
 } from '../lib/goals.js'
 import { locateMatch } from '../lib/matches.js'
 import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
-import { findUserByCredential } from './auth.js'
+import { emailIsTaken, findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
 import { record, recent } from '../lib/audit.js'
@@ -52,7 +52,14 @@ import { isInClubPool } from '../lib/pool.js'
 import { adminRead, liveRead } from '../lib/cache.js'
 import { issueResetToken } from '../lib/resets.js'
 import { SITE_URL } from '../lib/env.js'
-import { sendPasswordReset } from '../lib/mail.js'
+import { sendOrganizerInvite, sendPasswordReset } from '../lib/mail.js'
+import {
+  consumeOrganizerInvite,
+  createOrganizerInvite,
+  deleteOrganizerInvites,
+  peekOrganizerInvite,
+  pendingOrganizerInvites,
+} from '../repos-organizer-invites.js'
 
 function requireString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -276,6 +283,15 @@ function pick(body: Record<string, unknown>, fields: readonly string[]): Record<
 async function accountsOfOrganizer(organizerId: string): Promise<AuthUser[]> {
   const all = await scanAll<AuthUser>(TABLES.AUTH_USERS)
   return all.filter((account) => account.organizerId === organizerId)
+}
+
+/** A login that runs an organizer, as the super admin may see it. */
+type OrganizerLogin = {
+  email: string
+  displayName?: string
+  role: AuthUser['role']
+  isActive: boolean
+  lastLogin?: string
 }
 
 /** A club's manager as the organizer who owns the club may see them. */
@@ -653,6 +669,236 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const name = requireString(ctx.body.name, 'name')
     const email = requireString(ctx.body.email, 'email').toLowerCase()
     return organizers.create({ name, email })
+  })
+
+  /**
+   * Who can sign in as each organizer, and who has been asked and not answered.
+   *
+   * The organizer list itself says nothing about logins, so the super admin had
+   * no way to tell an organizer somebody runs from one created months ago and
+   * never handed over. Both halves are one scan each of small tables rather
+   * than a read per organizer, and the accounts scan is projected: the rest of
+   * that row is a password hash.
+   *
+   * Registered above `/admin/organizers/:id/...` and with a segment count of
+   * its own, so `logins` can never be read as an id.
+   */
+  router.get('/admin/organizers/logins', async (ctx) => {
+    assertSuperAdmin(await ctx.user())
+
+    const [accounts, invites] = await Promise.all([
+      scanAll<AuthUser>(TABLES.AUTH_USERS, [
+        'id',
+        'email',
+        'displayName',
+        'role',
+        'organizerId',
+        'isActive',
+        'lastLogin',
+      ]),
+      pendingOrganizerInvites(),
+    ])
+
+    const byOrganizer: Record<string, OrganizerLogin[]> = {}
+    for (const account of accounts) {
+      if (!account.organizerId) continue
+      ;(byOrganizer[account.organizerId] ??= []).push({
+        email: account.email ?? '',
+        displayName: account.displayName,
+        role: account.role,
+        isActive: account.isActive !== false,
+        lastLogin: account.lastLogin,
+      })
+    }
+
+    const invited: Record<string, { email: string; expiresAt: string }[]> = {}
+    for (const invite of invites) {
+      ;(invited[invite.organizerId] ??= []).push({
+        email: invite.email,
+        expiresAt: invite.expiresAt,
+      })
+    }
+
+    return { accounts: byOrganizer, invites: invited }
+  })
+
+  /**
+   * Invites somebody to run this organizer.
+   *
+   * The alternative, and the only way there was until now, is the super admin
+   * typing a password into the create form and reading it out: two people know
+   * it, and the one who chose it is not the one who has to remember it. This is
+   * the same arrangement clubs already have — the record exists, and the person
+   * who will run it is invited to it — so nothing is created here and an
+   * invitation nobody answers costs an organizer the super admin can still
+   * edit, invite again or delete.
+   *
+   * Super admin only, like every other way an account comes into being. The
+   * address defaults to the organizer's own, which is the one the super admin
+   * has just typed into the form.
+   */
+  router.post('/admin/organizers/:id/invites', async (ctx, params) => {
+    const actor = await ctx.user()
+    assertSuperAdmin(actor)
+
+    const organizer = await organizers.get(params.id!)
+    if (!organizer) throw notFound('Organizer not found')
+
+    const requested =
+      typeof ctx.body.email === 'string' ? ctx.body.email.trim().toLowerCase() : ''
+    const email = requested || (organizer.email ?? '').trim().toLowerCase()
+    if (!email.includes('@')) throw badRequest('A valid email address is required')
+
+    // An account has one role and one organizerId, so taking up this invitation
+    // could only ever create an account. Turning an existing one into an
+    // organizer would silently drop whatever it already was — a coach's clubs,
+    // or another league. Refused here rather than at the claim, so the super
+    // admin learns it now and not through somebody else's dead link.
+    //
+    // A deactivated account counts. The address here is not typed but taken
+    // from the organizer record, so the commonest way to reach this line is
+    // pressing Invite on an organizer whose login was switched off — and an
+    // invitation that cannot see it would hand the account straight back.
+    if (await emailIsTaken(email)) {
+      throw badRequest(
+        'There is already an account with this email. Invite another address, or create the login by hand.',
+      )
+    }
+
+    // Issuing a second invitation is how a lost link is dealt with, and the
+    // first one works for a fortnight unless it is taken away.
+    await deleteOrganizerInvites(organizer.id)
+
+    const invite = await createOrganizerInvite(organizer, actor.id, email)
+    const link = `${SITE_URL}/join-organizer?token=${invite.token}`
+    const mail = await sendOrganizerInvite(email, organizer.name, link)
+
+    await record(actor, {
+      action: 'organizer.invite',
+      entity: 'organizer',
+      entityId: organizer.id,
+      summary: mail.sent
+        ? `Emailed an invitation to run ${organizer.name}`
+        : `Created an invitation link to run ${organizer.name}`,
+      organizerId: organizer.id,
+    })
+
+    return { link, expiresAt: invite.expiresAt, emailed: mail.sent, email }
+  })
+
+  /** Takes back an invitation nobody has answered. The link stops working at once. */
+  router.delete('/admin/organizers/:id/invites', async (ctx, params) => {
+    const actor = await ctx.user()
+    assertSuperAdmin(actor)
+
+    const organizer = await organizers.get(params.id!)
+    if (!organizer) throw notFound('Organizer not found')
+
+    const cancelled = await deleteOrganizerInvites(organizer.id)
+    if (cancelled > 0) {
+      await record(actor, {
+        action: 'organizer.invite_cancel',
+        entity: 'organizer',
+        entityId: organizer.id,
+        summary: `Cancelled the invitation to run ${organizer.name}`,
+        organizerId: organizer.id,
+      })
+    }
+
+    return { cancelled }
+  })
+
+  /**
+   * What an organizer invitation is for, before anybody signs up for it.
+   *
+   * The address is part of the answer, unlike a club invitation's, because this
+   * link opens an account on that address and no other: the person holding it
+   * has to see which one before they choose a password. It tells a thief
+   * nothing they could not do with the link itself.
+   *
+   * Under `/auth/`, beside the claim it precedes, and deliberately not under
+   * `/public/`: everything there is answered with `cache-control: max-age=60`,
+   * which would put somebody's email address in every shared cache on the way
+   * and keep answering for a minute after the invitation was cancelled or
+   * spent. It needs no session — the token is the authority — so the prefix is
+   * about caching and nothing else.
+   */
+  router.get('/auth/organizer-invites/:token', async (_ctx, params) => {
+    const invite = await peekOrganizerInvite(params.token!)
+    if (!invite) throw notFound('This invitation has expired or has already been used')
+
+    return {
+      organizerName: invite.organizerName,
+      email: invite.email,
+      expiresAt: invite.expiresAt,
+    }
+  })
+
+  /**
+   * Taking one up: the account is created here, on the address it was sent to.
+   *
+   * Read, check everything, and only then spend it — a weak password or an
+   * address taken in the meantime must not burn the invitation, which is a
+   * lesson `/auth/claim` learned first. Whoever is signed in is not consulted
+   * and not modified: this creates the organizer's own login and signs them
+   * into it, because an account cannot be an organizer and something else at
+   * the same time.
+   */
+  router.post('/auth/claim-organizer', async (ctx) => {
+    const token = typeof ctx.body.token === 'string' ? ctx.body.token : ''
+    const invite = await peekOrganizerInvite(token)
+    if (!invite) throw badRequest('This invitation has expired or has already been used')
+
+    const organizer = await organizers.get(invite.organizerId)
+    if (!organizer) throw notFound('That organizer no longer exists')
+
+    try {
+      assertPasswordStrength(ctx.body.password)
+    } catch (error) {
+      throw badRequest((error as Error).message)
+    }
+
+    // Deactivated accounts count here too: this is "may an account be opened on
+    // this address", not "is there a working one".
+    if (await emailIsTaken(invite.email)) {
+      throw badRequest('There is already an account with this email')
+    }
+
+    if (!(await consumeOrganizerInvite(token))) {
+      throw badRequest('This invitation has expired or has already been used')
+    }
+
+    const salt = generateSalt()
+    const user: AuthUser = {
+      id: generateId(),
+      email: invite.email,
+      displayName:
+        typeof ctx.body.displayName === 'string' && ctx.body.displayName.trim()
+          ? ctx.body.displayName.trim()
+          : undefined,
+      role: 'organizer',
+      organizerId: organizer.id,
+      passwordHash: await hashPassword(ctx.body.password as string, salt),
+      salt,
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    }
+
+    await ddb.send(new PutCommand({ TableName: TABLES.AUTH_USERS, Item: user }))
+    await record(user, {
+      action: 'organizer.claim',
+      entity: 'organizer',
+      entityId: organizer.id,
+      summary: `Signed up and took over running ${organizer.name}`,
+      organizerId: organizer.id,
+    })
+
+    const session = await createSession(user.id, ctx.userAgent, ctx.sourceIp)
+    return {
+      user: toPublicUser(user),
+      token: session.token,
+      expiresAt: session.expiresAt,
+    }
   })
 
   router.patch('/admin/organizers/:id', async (ctx, params) => {
@@ -1735,6 +1981,14 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     }
 
     await ddb.send(new PutCommand({ TableName: TABLES.AUTH_USERS, Item: user }))
+
+    // Creating the login by hand answers the question an outstanding invitation
+    // was asking, so the link goes with it. Otherwise inviting somebody and
+    // then changing your mind leaves a live door for a fortnight, and whoever
+    // holds it opens a *second* organizer account that this route's own
+    // duplicate check never saw coming.
+    if (organizerId) await deleteOrganizerInvites(organizerId)
+
     await record(await ctx.user(), {
       action: 'account.create',
       entity: 'account',

@@ -61,7 +61,14 @@ type AppStore = {
   }
   
   // Actions
-  createOrganizer: (name: string, email: string) => Promise<void>
+  /**
+   * Returns the record so the caller can act on it — inviting somebody to run
+   * it, most of all. The failure is rethrown rather than logged and swallowed,
+   * for the reason `deleteOrganizer` gives: the page above this one went on to
+   * hunt for the organizer in a fresh listing, found nothing, and reported a
+   * creation that had failed as having worked.
+   */
+  createOrganizer: (name: string, email: string) => Promise<Organizer | null>
   setCurrentOrganizer: (organizerId: string) => void
   /** Points the admin screens at whatever the signed-in account administers. */
   applyScope: (user: { role?: string; organizerId?: string } | null) => void
@@ -226,17 +233,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Organizer actions
   createOrganizer: async (name: string, email: string) => {
     set(state => ({ loading: { ...state.loading, organizers: true } }))
-    
+
     try {
       const organizer = await organizerService.create(name, email)
       if (organizer) {
         set(state => ({
           organizers: [...state.organizers, organizer],
-          loading: { ...state.loading, organizers: false }
         }))
       }
-    } catch (error) {
-      console.error('Error creating organizer:', error)
+      return organizer
+    } finally {
       set(state => ({ loading: { ...state.loading, organizers: false } }))
     }
   },

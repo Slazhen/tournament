@@ -203,6 +203,24 @@ export async function claimTeam(input: {
 }
 
 /**
+ * Takes up an invitation to run an organizer, creating the account.
+ *
+ * There is no signed-in branch, unlike a club's: an account has one role and
+ * one organizer, so this opens the login the invitation was addressed to and
+ * signs the browser into it. The address comes from the invitation and is not
+ * the caller's to name.
+ */
+export async function claimOrganizer(input: {
+  token: string
+  password: string
+  displayName?: string
+}): Promise<{ user: AuthUser; session: AuthSession }> {
+  const result = await api.post<LoginResponse>('/auth/claim-organizer', input)
+  setToken(result.token)
+  return { user: result.user, session: { token: result.token, expiresAt: result.expiresAt } }
+}
+
+/**
  * Where an account belongs the moment it signs in.
  *
  * Everybody used to land on the organiser's panel, including a club manager,
