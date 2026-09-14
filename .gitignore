@@ -9,6 +9,8 @@ CLI_user_accessKeys.csv
 *_accessKeys.csv
 .aws-sam/
 /_to_delete/
+# Previews and posters generated during a session, not part of the app.
+/Claude outputs/
 .vite/
 .vercel/
 .idea/
