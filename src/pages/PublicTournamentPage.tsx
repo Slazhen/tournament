@@ -27,11 +27,10 @@ import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
 import { cdnUrl } from '../utils/images'
 import { kickOffClock } from '../utils/datetime'
+import { describeVenue } from '../utils/venue'
 import PostButton from '../components/PostButton'
 import { renderFixturesPost, renderTablePost, standingsNote } from '../utils/instagramPost'
 import type { FixturesPost, PostClub, PostMark, PostRow, TablePost } from '../utils/instagramPost'
-
-const isUrl = (value?: string) => Boolean(value && /^https?:\/\//i.test(value.trim()))
 
 /**
  * What a row in the league table is marked as.
@@ -102,25 +101,6 @@ const STATS_TABS = [
   { id: 'assists', label: 'Top Assists' },
   { id: 'combined', label: 'Goals + Assists' },
 ] as const
-
-/**
- * What to show for the venue.
- *
- * The name field is free text and organisers paste map links straight into it,
- * so the header used to read the raw https://maps.app.goo.gl/... link as text.
- * A pasted link becomes the destination of the line, never its text.
- */
-function describeVenue(location?: { name?: string; link?: string }) {
-  if (!location) return null
-
-  const name = location.name?.trim()
-  const link = location.link?.trim()
-  const href = link || (isUrl(name) ? name : undefined)
-  const label = name && !isUrl(name) ? name : href ? 'View on map' : undefined
-
-  if (!label) return null
-  return { label, href }
-}
 
 type MatchStatus = 'finished' | 'in_progress' | 'upcoming'
 

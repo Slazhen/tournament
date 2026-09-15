@@ -1322,6 +1322,32 @@ round: a row whose player cannot be found still counts, under "Former player".
   rather than JSX for the same reason — `LogoMark` renders it in the page and
   the canvas needs it as an image.
 
+- **A ground is a name and a map, and one field held both.** `match.venue` and
+  `tournament.location.name` are free text, and organisers pasted the Google
+  Maps link straight into them — so the season header and the public match page
+  printed `https://maps.app.goo.gl/...` as the text of the line. `venueLink` on
+  a match and `location.link` on a season are the address; `describeVenue` in
+  `src/utils/venue.ts` is the one place that turns either shape into a label and
+  an `href`, so a fixture written before the field existed still opens its map
+  and nothing was migrated. Only an `http(s)` address ever reaches the `href`,
+  because these strings are stored unvalidated and go out to every visitor —
+  `location.link` used to be printed raw. **Still open, and the same shape:
+  `videoUrl` on a match and every `socialMedia` link are printed into an `href`
+  with no check at all.**
+
+  A ground is written onto each fixture and never inherited. The panel behind
+  "Same venue" on a round's card writes one `PATCH` per fixture — the round's,
+  or the whole season's through `allMatches`, so the hand-built playoff rounds
+  are covered too — and the bulk helpers beside it are the model: a list is
+  never sent whole. The consequence is the deliberate half: a played match keeps
+  the ground it was played at, any fixture is corrected on its own match screen
+  afterwards, and a fixture added later has no venue until the button is pressed
+  again. The scope is the ids on screen and not `match.round`, because a
+  `groups_with_divisions` season from before its round numbers were fixed is
+  regrouped for display — which is the same trap `roundIsAddressable` exists
+  for. A refusal is counted and shown rather than logged: duplicate match ids
+  exist, `locateMatch` refuses them, and half a season moving silently is worse
+  than none of it.
 - **The table is sorted deterministically.** `sortTeamsByStandings` used to end
   in a coin toss, so a season nobody had played — where every club ties on every
   criterion — dealt out different positions on every render.

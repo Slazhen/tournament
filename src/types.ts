@@ -227,6 +227,16 @@ export type Match = {
   groupIndex?: number // Group number (1-based) for groups_with_divisions format
   // Match details
   venue?: string
+  /**
+   * The map the ground above is on, pasted from Google Maps or anywhere else.
+   *
+   * Separate from the name rather than folded into it, because `venue` already
+   * holds both shapes in live records: organisers pasted the link into the only
+   * field there was. `describeVenue` in `utils/venue.ts` reads either, so a
+   * fixture written before this field existed still opens its map — and nothing
+   * had to be migrated.
+   */
+  venueLink?: string
   referee?: string
   /**
    * Kick-off, kept apart from the day.

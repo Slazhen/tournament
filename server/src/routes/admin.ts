@@ -271,6 +271,9 @@ const MATCH_FIELDS = [
   'division',
   'groupIndex',
   'venue',
+  // The map the ground is on. A field of its own rather than a link pasted into
+  // the name, which is what organisers had to do before it existed.
+  'venueLink',
   'referee',
   // The kick-off of a hand-built playoff fixture, which keeps its day and its
   // time in separate fields.

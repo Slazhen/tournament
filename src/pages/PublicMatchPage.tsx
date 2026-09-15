@@ -41,6 +41,7 @@ import { renderMatchPost } from '../utils/instagramPost'
 import type { MatchPost, PostClub, PostEvent } from '../utils/instagramPost'
 import { slugify } from '../utils/urls'
 import { youtubeEmbedUrl } from '../utils/video'
+import { describeVenue } from '../utils/venue'
 import { cdnUrl } from '../utils/images'
 
 /**
@@ -244,6 +245,11 @@ export default function PublicMatchPage() {
 
   const teamOf = (side: 'home' | 'away') => (side === 'home' ? homeTeam : awayTeam)
 
+  // The ground, worked out once for the line of facts and the poster alike. A
+  // fixture from before `venueLink` existed carries the map link in the name
+  // itself, and neither of them should print it as text.
+  const venue = describeVenue({ name: match.venue, link: match.venueLink })
+
   /* ---------- The match as a picture ---------- */
 
   const postClub = (team: Team): PostClub => ({
@@ -261,7 +267,10 @@ export default function PublicMatchPage() {
     // that keeps its kick-off in `time` the header would have said 00:00 while
     // the plate under it said 18:30.
     note:
-      [matchDay(match.dateISO), kickOffClock(match), match.venue]
+      // Only a ground with a name of its own: "View on map" is what the page
+      // draws where there is nothing but a link, and a picture cannot be
+      // clicked.
+      [matchDay(match.dateISO), kickOffClock(match), venue?.named ? venue.label : undefined]
         .filter(Boolean)
         .join(' · ') || undefined,
     logo: tournament.logo,
@@ -313,9 +322,21 @@ export default function PublicMatchPage() {
             panel of their own: three short facts do not need a heading each. */}
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-sm text-gray-300">
           {match.dateISO && <span>{formatMatchDateTime(match.dateISO)}</span>}
-          {match.venue && (
+          {venue && (
             <span className="inline-flex items-center gap-1.5">
-              <IconStadium size={14} className="opacity-70" /> {match.venue}
+              <IconStadium size={14} className="opacity-70" />
+              {venue.href ? (
+                <a
+                  href={venue.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white underline underline-offset-2 decoration-white/30 transition-colors"
+                >
+                  {venue.label}
+                </a>
+              ) : (
+                <span>{venue.label}</span>
+              )}
             </span>
           )}
           {match.referee && (

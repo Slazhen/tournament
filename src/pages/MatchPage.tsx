@@ -297,6 +297,19 @@ export default function MatchPage() {
                 className="ml-2 px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
           />
         </div>
+            {/* The map, beside the name rather than inside it. A link pasted
+                into the field above still opens — `describeVenue` reads either —
+                but only a name typed here reads as a name on the public page. */}
+            <div>
+              <span className="opacity-70">Map link:</span>
+              <InlineInput
+                type="text"
+                value={match.venueLink || ''}
+                onCommit={(value) => updateMatch({ venueLink: value || undefined })}
+                placeholder="https://maps.app.goo.gl/..."
+                className="ml-2 px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
+              />
+            </div>
             <div>
               <span className="opacity-70">Referee:</span>
           <InlineInput

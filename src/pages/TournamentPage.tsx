@@ -43,6 +43,8 @@ import CustomDatePicker from '../components/CustomDatePicker'
 import CustomTimePicker from '../components/CustomTimePicker'
 import MatchDateTime from '../components/MatchDateTime'
 import { applyDateToRound, applyTimePatternToRounds } from '../utils/matchdates'
+import { allMatches } from '../utils/matches'
+import { describeVenue } from '../utils/venue'
 import { localDatePart, localTimePart } from '../utils/datetime'
 import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivorsByPlayoffRound } from '../utils/progressive'
 import InlineInput from '../components/InlineInput'
@@ -195,6 +197,17 @@ export default function TournamentPage() {
   const [timePatternStartDate, setTimePatternStartDate] = useState('')
   const [timePatternIntervalDays, setTimePatternIntervalDays] = useState(7)
   const [timePatternMoveRounds, setTimePatternMoveRounds] = useState(false)
+
+  // One ground written onto a round, or onto the whole season. The round the
+  // panel was opened from, so only that round's card draws it.
+  const [venuePanelRound, setVenuePanelRound] = useState<number | null>(null)
+  const [venueDraftName, setVenueDraftName] = useState('')
+  const [venueDraftLink, setVenueDraftLink] = useState('')
+  const [venueSaving, setVenueSaving] = useState(false)
+  const [venueError, setVenueError] = useState('')
+
+  /** The season's own ground, read the way the public header reads it. */
+  const seasonVenue = describeVenue(tournament?.location)
 
   // State for new round configuration
   const [showNewRoundForm, setShowNewRoundForm] = useState(false)
@@ -547,6 +560,99 @@ export default function TournamentPage() {
       rounds.some((r) => !r.matchIds.some((id) => tournament.matches.find((m) => m.id === id)?.dateISO)),
     )
     setTimePatternOpen(true)
+  }
+
+  /**
+   * Fills the venue panel before it is shown: what this round is already
+   * playing at, and failing that the ground named in the season's settings.
+   */
+  function openVenuePanel(round: { round: number; matchIds: string[] }) {
+    if (!tournament) return
+    const source = venueTargets('round', round).find((m) => m.venue || m.venueLink)
+    setVenueDraftName(source?.venue ?? tournament.location?.name ?? '')
+    setVenueDraftLink(source?.venueLink ?? tournament.location?.link ?? '')
+    setVenueError('')
+    setVenuePanelRound(round.round)
+  }
+
+  /**
+   * The fixtures one scope of the venue panel covers.
+   *
+   * A round is its ids and not its number. `hiddenRounds` can name a round by
+   * the number on the fixtures because the toggle is only drawn where the two
+   * agree (`roundIsAddressable`); this control is drawn everywhere, and on a
+   * `groups_with_divisions` season from before the round numbers were fixed the
+   * block on screen is a regrouping whose position is not the stored number. By
+   * the ids there is nothing to get wrong: what is written is what the
+   * organiser is looking at.
+   */
+  function venueTargets(
+    scope: 'round' | 'season',
+    round: { round: number; matchIds: string[] },
+  ): Match[] {
+    if (!tournament) return []
+    // Every match of the season means the hand-built playoff rounds too: they
+    // are fixtures with a ground like any other, and they live inside `format`
+    // rather than in `matches`.
+    if (scope === 'season') return allMatches(tournament)
+    const inRound = new Set(round.matchIds)
+    return tournament.matches.filter((m) => inRound.has(m.id))
+  }
+
+  /**
+   * Writes one ground onto a set of fixtures, one request each.
+   *
+   * The same arrangement as `saveMovedFixtures`, and for the same reason: a
+   * bulk change is many fixtures and never the list, which is what must not be
+   * sent. Nothing is inherited — what a fixture shows is what is written on it
+   * — so a match played somewhere else is corrected on its own screen and
+   * nothing comes back afterwards to undo that. Pressing this again is what
+   * overwrites it, which is why the panel says so.
+   *
+   * A refusal is counted rather than logged and forgotten. Fixtures that share
+   * an id are refused by `locateMatch` on the server, and they exist — the ids
+   * of progressive rounds are built from the round number and the position in
+   * it — so a run where half the season moved and half did not is a real
+   * outcome, and the panel stays open saying how many did not.
+   */
+  async function applyVenue(scope: 'round' | 'season', round: { round: number; matchIds: string[] }) {
+    if (!tournament) return
+    const name = venueDraftName.trim()
+    const link = venueDraftLink.trim()
+    const targets = venueTargets(scope, round)
+
+    const overwritten = targets.filter(
+      (m) => (m.venue || m.venueLink) && ((m.venue ?? '') !== name || (m.venueLink ?? '') !== link),
+    ).length
+    const question = name || link
+      ? `${overwritten} ${overwritten === 1 ? 'match already has a venue' : 'matches already have a venue'} of their own. Replace ${overwritten === 1 ? 'it' : 'them'}?`
+      : `This clears the venue from ${overwritten} ${overwritten === 1 ? 'match' : 'matches'}. Continue?`
+    if (overwritten > 0 && !confirm(question)) return
+
+    setVenueSaving(true)
+    setVenueError('')
+    let refused = 0
+    for (const match of targets) {
+      if ((match.venue ?? '') === name && (match.venueLink ?? '') === link) continue
+      try {
+        await updateMatchFields(tournament.id, match.id, {
+          venue: name || undefined,
+          venueLink: link || undefined,
+        })
+      } catch (error) {
+        refused += 1
+        console.error('Error saving a venue:', error)
+      }
+    }
+    setVenueSaving(false)
+
+    if (refused > 0) {
+      setVenueError(
+        `${refused} ${refused === 1 ? 'fixture' : 'fixtures'} could not be saved. The rest were.`,
+      )
+      return
+    }
+    setVenuePanelRound(null)
   }
 
   const handleCompleteRound = () => {
@@ -1007,23 +1113,25 @@ export default function TournamentPage() {
             </p>
 
             {/* Venue and links, shown only when they exist. */}
-            {(tournament.location?.name || tournament.location?.link ||
-              tournament.socialMedia?.facebook || tournament.socialMedia?.instagram) && (
+            {(seasonVenue || tournament.socialMedia?.facebook || tournament.socialMedia?.instagram) && (
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                {tournament.location?.name && (
+                {/* The same rule the public header reads it by: a link pasted
+                    into the name is the destination of the line and not its
+                    text, and only an http(s) address ever reaches the `href`. */}
+                {seasonVenue && (
                   <span className="flex items-center gap-1.5 opacity-80">
                     <LocationIcon size={14} />
-                    {tournament.location.link ? (
+                    {seasonVenue.href ? (
                       <a
-                        href={tournament.location.link}
+                        href={seasonVenue.href}
                         target="_blank"
                         rel="noreferrer"
                         className="hover:underline"
                       >
-                        {tournament.location.name}
+                        {seasonVenue.label}
                       </a>
                     ) : (
-                      tournament.location.name
+                      seasonVenue.label
                     )}
                   </span>
                 )}
@@ -1109,7 +1217,7 @@ export default function TournamentPage() {
               </Link>
             </div>
 
-            {!tournament.location?.name && !tournament.socialMedia?.facebook && (
+            {!seasonVenue && !tournament.socialMedia?.facebook && (
               <p className="mt-3 text-xs opacity-50">
                 <Link to={`/tournaments/${tournament.id}/settings`} className="hover:opacity-100 underline">
                   Add a venue and social links
@@ -1767,7 +1875,83 @@ export default function TournamentPage() {
                     <IconRepeat size={14} /> Same times for every round
                   </button>
                 )}
+              {/* One ground for the round, or for the whole season. Written onto
+                  the fixtures, so any one of them can be corrected afterwards on
+                  its own Match details screen. */}
+              <button
+                type="button"
+                onClick={() =>
+                  venuePanelRound === r.round ? setVenuePanelRound(null) : openVenuePanel(r)
+                }
+                className="inline-flex items-center justify-center gap-1.5 px-2 py-1 rounded-md glass text-xs hover:bg-white/10 transition-all"
+                title="Give every match in this round the same venue"
+              >
+                <LocationIcon size={14} /> Same venue
+              </button>
             </div>
+
+            {venuePanelRound === r.round && (
+              <div className="mb-4 p-3 rounded-lg border border-white/15 bg-white/5 grid gap-3">
+                <p className="text-xs opacity-80">
+                  The ground is written onto each fixture, so a match played somewhere else is
+                  corrected on its own Match details screen and stays that way. Applying this again
+                  replaces what is there.
+                </p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs opacity-70">Venue name</label>
+                    <input
+                      type="text"
+                      value={venueDraftName}
+                      onChange={(e) => setVenueDraftName(e.target.value)}
+                      placeholder="Homebush Sports Centre"
+                      className="w-64 max-w-full px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs opacity-70">Map link</label>
+                    <input
+                      type="text"
+                      value={venueDraftLink}
+                      onChange={(e) => setVenueDraftLink(e.target.value)}
+                      placeholder="https://maps.app.goo.gl/..."
+                      className="w-80 max-w-full px-2 py-1 rounded-md bg-transparent border border-white/20 text-sm"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs opacity-70">
+                  The name is what the public match page shows, and the link is where it leads.
+                  Leaving both empty clears the venue from the fixtures below.
+                </p>
+                {venueError && <p className="text-xs text-red-300">{venueError}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => applyVenue('round', r)}
+                    disabled={venueSaving}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-500/20 hover:bg-blue-500/30 disabled:opacity-40 transition-all text-blue-400 text-xs"
+                  >
+                    <IconCheck size={14} /> Apply to this round
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyVenue('season', r)}
+                    disabled={venueSaving}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md glass text-xs hover:bg-white/10 disabled:opacity-40 transition-all"
+                  >
+                    <IconCheck size={14} /> Apply to every match of the season
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVenuePanelRound(null)}
+                    disabled={venueSaving}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md glass text-xs hover:bg-white/10 disabled:opacity-40 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             {r.round === rounds[0]?.round && timePatternOpen && (
               <div className="mb-4 p-3 rounded-lg border border-white/15 bg-white/5 grid gap-3">
