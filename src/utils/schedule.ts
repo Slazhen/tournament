@@ -1,5 +1,6 @@
 import type { Match, PlayoffBracket, CustomPlayoffRound, TeamStanding } from '../types'
 import { playoffTiers } from './standings'
+import { outcomeOf } from './ties'
 
 export function generateRoundRobinSchedule(teamIds: string[], roundsMultiplier: number = 1): Match[] {
   if (teamIds.length < 2) return []
@@ -807,9 +808,74 @@ export function sortTeamsByStandings(standings: TeamStanding[]): TeamStanding[] 
  * filled in as results arrive (see advanceKnockoutWinners), which also leaves the
  * organiser free to set a pairing by hand if a tie is decided off the pitch.
  */
-export function generateKnockoutSchedule(teamIds: string[]): Match[] {
+export type KnockoutOptions = {
+  /** One match per tie, or two with the sides reversed and the aggregate deciding. */
+  legs?: number
+  /** Whether the two beaten semi-finalists play for third place. */
+  thirdPlace?: boolean
+}
+
+/** The fixtures of one tie: one match, or two with the sides reversed. */
+function tieFixtures(
+  base: { id: string; round: number; index: number },
+  home: string,
+  away: string,
+  legs: number,
+): Match[] {
+  const common = {
+    round: base.round,
+    isPlayoff: true,
+    isElimination: true,
+    playoffRound: base.round,
+    playoffMatch: base.index,
+  }
+
+  if (legs < 2) {
+    return [{ id: base.id, homeTeamId: home, awayTeamId: away, ...common }]
+  }
+
+  // Both legs carry the tie, and the second reverses the sides. Nothing reads
+  // the two fixtures separately to decide who goes through — `utils/ties.ts`
+  // adds them up — so which of them is "the match" is only a question of where
+  // the second one is played.
+  return [
+    {
+      id: `${base.id}-l1`,
+      homeTeamId: home,
+      awayTeamId: away,
+      ...common,
+      tie: { id: base.id, leg: 1 as const },
+    },
+    {
+      id: `${base.id}-l2`,
+      homeTeamId: away,
+      awayTeamId: home,
+      ...common,
+      tie: { id: base.id, leg: 2 as const },
+    },
+  ]
+}
+
+/**
+ * A straight knockout cup played by every team in the tournament.
+ *
+ * Teams are seeded in the order they were selected: 1 plays the lowest seed, 2
+ * plays the second lowest, and so on. When the count is not a power of two the
+ * top seeds sit out the first round rather than playing a fake fixture — a bye
+ * is an absence of a match, not a match against yourself.
+ *
+ * Only the first round can name both teams. Later rounds are created empty and
+ * filled in as results arrive (see advanceKnockoutWinners), which also leaves the
+ * organiser free to set a pairing by hand if a tie is decided off the pitch.
+ */
+export function generateKnockoutSchedule(
+  teamIds: string[],
+  options: KnockoutOptions = {},
+): Match[] {
   const teams = teamIds.filter(Boolean)
   if (teams.length < 2) return []
+
+  const legs = options.legs === 2 ? 2 : 1
 
   // The bracket is the next power of two; the difference is the number of byes.
   let bracketSize = 1
@@ -835,26 +901,38 @@ export function generateKnockoutSchedule(teamIds: string[]): Match[] {
   for (let round = 1; round < roundCount; round++) {
     const count = bracketSize / Math.pow(2, round + 1)
     for (let i = 0; i < count; i++) {
-      matches.push({
-        id: `ko-${round}-${i}`,
-        homeTeamId: '',
-        awayTeamId: '',
-        round,
-        isPlayoff: true,
-        isElimination: true,
-        playoffRound: round,
-        playoffMatch: i,
-      })
+      matches.push(...tieFixtures({ id: `ko-${round}-${i}`, round, index: i }, '', '', legs))
     }
   }
 
+  /**
+   * The third-place match sits in the final round beside the final, at an index
+   * the advancement formula never targets: the two semi-finals both feed index
+   * zero. Its own pairing is placed by hand from the beaten semi-finalists.
+   *
+   * It is one match whatever the rest of the bracket is. A tie played twice to
+   * spread the home advantage is one thing; a third-place match played twice is
+   * two more fixtures nobody turns up to.
+   */
+  if (options.thirdPlace && roundCount >= 2) {
+    matches.push({
+      id: `ko-third-place`,
+      homeTeamId: '',
+      awayTeamId: '',
+      round: roundCount - 1,
+      isPlayoff: true,
+      isElimination: false,
+      playoffRound: roundCount - 1,
+      playoffMatch: 1,
+      isThirdPlace: true,
+    })
+  }
+
   const placeInNextRound = (fromMatchIndex: number, teamId: string) => {
-    const target = matches.find(
+    const targets = matches.filter(
       (match) => match.playoffRound === 1 && match.playoffMatch === Math.floor(fromMatchIndex / 2),
     )
-    if (!target) return
-    if (fromMatchIndex % 2 === 0) target.homeTeamId = teamId
-    else target.awayTeamId = teamId
+    placeInTie(targets, fromMatchIndex % 2 === 0 ? 'home' : 'away', teamId)
   }
 
   // The first round, read straight off the seeded bracket.
@@ -863,16 +941,9 @@ export function generateKnockoutSchedule(teamIds: string[]): Match[] {
     const away = leaves[i * 2 + 1]
 
     if (home && away) {
-      matches.unshift({
-        id: `ko-0-${i}-${home}-${away}`,
-        homeTeamId: home,
-        awayTeamId: away,
-        round: 0,
-        isPlayoff: true,
-        isElimination: true,
-        playoffRound: 0,
-        playoffMatch: i,
-      })
+      matches.unshift(
+        ...tieFixtures({ id: `ko-0-${i}-${home}-${away}`, round: 0, index: i }, home, away, legs),
+      )
       continue
     }
 
@@ -881,15 +952,46 @@ export function generateKnockoutSchedule(teamIds: string[]): Match[] {
     if (advancing) placeInNextRound(i, advancing)
   }
 
-  return matches.sort((a, b) => (a.playoffRound ?? 0) - (b.playoffRound ?? 0) || (a.playoffMatch ?? 0) - (b.playoffMatch ?? 0))
+  return matches.sort(
+    (a, b) =>
+      (a.playoffRound ?? 0) - (b.playoffRound ?? 0) ||
+      (a.playoffMatch ?? 0) - (b.playoffMatch ?? 0) ||
+      (a.tie?.leg ?? 1) - (b.tie?.leg ?? 1),
+  )
 }
 
 /**
- * Moves the winner of a finished knockout match into the next round.
+ * Puts a club into one side of a tie, across both of its legs.
+ *
+ * The side is the tie's, not the fixture's: a club on the home side plays the
+ * first leg at home and the second away, so writing only `homeTeamId` would
+ * enter it in the first leg and leave the second holding somebody else.
+ *
+ * `previous` is whoever was there before, so a corrected result can move the
+ * new winner into the slot the old one occupied without touching a pairing the
+ * organiser set by hand.
+ */
+function placeInTie(legs: Match[], side: 'home' | 'away', teamId: string, previous?: string) {
+  for (const leg of legs) {
+    // The second leg reverses the sides.
+    const reversed = (leg.tie?.leg ?? 1) === 2
+    const field = (side === 'home') === !reversed ? 'homeTeamId' : 'awayTeamId'
+    if (!leg[field] || (previous && leg[field] === previous)) leg[field] = teamId
+  }
+}
+
+/**
+ * Moves the winner of a finished knockout tie into the next round, and the
+ * beaten semi-finalists into the third-place match.
  *
  * Called after a score is saved. It only ever fills an empty slot, so a pairing
  * the organiser set by hand is never overwritten, and a corrected score moves the
  * new winner into the slot the old one occupied.
+ *
+ * Who won is `utils/ties.ts` and not a comparison written out here: a tie can be
+ * two legs added together, and either shape can be settled on penalties. This
+ * used to test the two scores of one fixture, so a tie that finished level
+ * advanced nobody however the shootout went.
  */
 export function advanceKnockoutWinners(matches: Match[]): Match[] {
   const knockout = matches.filter((match) => match.isPlayoff)
@@ -897,26 +999,43 @@ export function advanceKnockoutWinners(matches: Match[]): Match[] {
 
   const next = matches.map((match) => ({ ...match }))
 
+  // The last round of the bracket, so the semi-finals can be recognised. The
+  // third-place match sits in the last round too and is not part of the count.
+  const finalRound = next.reduce(
+    (deepest, match) =>
+      match.isPlayoff && !match.isThirdPlace ? Math.max(deepest, match.playoffRound ?? 0) : deepest,
+    0,
+  )
+  const thirdPlace = next.filter((match) => match.isThirdPlace)
+
+  const settled = new Set<string>()
+
   for (const match of next) {
-    if (!match.isPlayoff) continue
-    if (match.homeGoals === undefined || match.awayGoals === undefined) continue
-    if (match.homeGoals === match.awayGoals) continue // a draw decides nothing here
-    if (!match.homeTeamId || !match.awayTeamId) continue
+    if (!match.isPlayoff || match.isThirdPlace) continue
 
-    const winner = match.homeGoals > match.awayGoals ? match.homeTeamId : match.awayTeamId
-    const loser = match.homeGoals > match.awayGoals ? match.awayTeamId : match.homeTeamId
+    // One answer per tie, not one per leg.
+    const tieId = match.tie?.id ?? match.id
+    if (settled.has(tieId)) continue
 
-    const targetRound = (match.playoffRound ?? 0) + 1
-    const targetIndex = Math.floor((match.playoffMatch ?? 0) / 2)
-    const target = next.find(
-      (candidate) => candidate.playoffRound === targetRound && candidate.playoffMatch === targetIndex,
+    const outcome = outcomeOf(match, next)
+    if (!outcome) continue
+    settled.add(tieId)
+
+    const round = match.playoffRound ?? 0
+    const index = match.playoffMatch ?? 0
+
+    const targets = next.filter(
+      (candidate) =>
+        !candidate.isThirdPlace &&
+        candidate.playoffRound === round + 1 &&
+        candidate.playoffMatch === Math.floor(index / 2),
     )
-    if (!target) continue
+    placeInTie(targets, index % 2 === 0 ? 'home' : 'away', outcome.winnerId, outcome.loserId)
 
-    const slot = (match.playoffMatch ?? 0) % 2 === 0 ? 'homeTeamId' : 'awayTeamId'
-    // Replace an empty slot, or one still holding the team that just lost.
-    if (!target[slot] || target[slot] === loser) {
-      target[slot] = winner
+    // The beaten semi-finalists meet in the third-place match, in the order
+    // their semi-finals sit in the bracket.
+    if (thirdPlace.length > 0 && round === finalRound - 1) {
+      placeInTie(thirdPlace, index === 0 ? 'home' : 'away', outcome.loserId, outcome.winnerId)
     }
   }
 

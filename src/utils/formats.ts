@@ -242,6 +242,8 @@ export type SchemeSettings = {
   /** How many clubs the finals take, where the finals take a number of them. */
   qualifiers: number
   groups: GroupsPlanInput
+  /** How the bracket of a straight knockout is drawn. */
+  knockout: { legs: number; thirdPlace: boolean }
   scoring: { win: number; draw: number; loss: number }
   tiebreakers: TiebreakerKey[]
 }
@@ -258,6 +260,7 @@ export const defaultSchemeSettings = (): SchemeSettings => ({
     secondDivisionPerGroup: 2,
     thirdDivisionPerGroup: 0,
   },
+  knockout: { legs: 1, thirdPlace: false },
   scoring: { win: DEFAULT_SCORING.win, draw: DEFAULT_SCORING.draw, loss: DEFAULT_SCORING.loss },
   tiebreakers: [...DEFAULT_TIEBREAKERS],
 })
@@ -292,7 +295,9 @@ export function formatFor(
     tiebreakers: [...settings.tiebreakers],
   }
 
-  if (scheme === 'knockout') return { rounds: 1, mode: 'knockout', ...rules }
+  if (scheme === 'knockout') {
+    return { rounds: 1, mode: 'knockout', knockout: { ...settings.knockout }, ...rules }
+  }
 
   if (scheme === 'groups') {
     return {

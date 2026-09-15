@@ -34,6 +34,7 @@ import {
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import MatchScoreboard from '../components/MatchScoreboard'
+import TieResult from '../components/TieResult'
 import PostButton from '../components/PostButton'
 import { renderMatchPost } from '../utils/instagramPost'
 import type { MatchPost, PostClub, PostEvent } from '../utils/instagramPost'
@@ -301,6 +302,11 @@ export default function PublicMatchPage() {
           status={status}
           tournamentId={tournament.id}
         />
+
+        {/* How the tie was settled, where the plate above does not say it: two
+            legs added together, or a shootout. A visitor reading 1-1 on a cup
+            tie and nothing else has been told who played, not who went through. */}
+        <TieResult tournament={tournament} match={match} homeTeam={homeTeam} awayTeam={awayTeam} />
 
         {/* Kick-off, ground and referee. One line under the plate rather than a
             panel of their own: three short facts do not need a heading each. */}

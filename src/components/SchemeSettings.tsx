@@ -29,10 +29,56 @@ export default function SchemeSettings({
 }: SchemeSettingsProps) {
   if (scheme === 'knockout') {
     return (
-      <p className="text-sm opacity-70">
-        The bracket is seeded by the order the clubs are picked, and an odd number gives byes in
-        the first round.
-      </p>
+      <div className="space-y-5">
+        <p className="text-sm opacity-70">
+          The bracket is seeded by the order the clubs are picked, and an odd number gives byes in
+          the first round. Winners move into the next round as the results are entered.
+        </p>
+
+        <label className="block text-sm max-w-sm">
+          <span className="opacity-70">Each tie is</span>
+          <select
+            value={settings.knockout.legs}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                knockout: { ...settings.knockout, legs: Number(event.target.value) },
+              })
+            }
+            className={selectClass}
+          >
+            <option value={1}>One match</option>
+            <option value={2}>Two matches — home and away</option>
+          </select>
+          {settings.knockout.legs === 2 && (
+            <span className="mt-1 block text-xs opacity-60">
+              The two scores are added together. Away goals decide nothing; a tie level after both
+              legs goes to penalties, entered on the second.
+            </span>
+          )}
+        </label>
+
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.knockout.thirdPlace}
+            onChange={(event) =>
+              onChange({
+                ...settings,
+                knockout: { ...settings.knockout, thirdPlace: event.target.checked },
+              })
+            }
+            className="mt-1"
+          />
+          <span>
+            <span className="block">Play a match for third place</span>
+            <span className="block text-xs opacity-60">
+              The two beaten semi-finalists, placed as the semi-finals are decided. One match,
+              whatever the rest of the bracket is.
+            </span>
+          </span>
+        </label>
+      </div>
     )
   }
 

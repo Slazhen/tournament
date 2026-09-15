@@ -1,5 +1,6 @@
 import type { Match, Tournament } from '../types'
 import { allMatches } from './matches'
+import { outcomeOf } from './ties'
 
 /**
  * The table, derived in one place.
@@ -537,16 +538,24 @@ export function eliminatedTeams(tournament: Tournament): Set<string> {
   const knockoutModes = ['league_playoff', 'swiss_elimination']
   const eliminated = new Set<string>()
 
-  for (const match of allMatches(tournament)) {
+  const matches = allMatches(tournament)
+
+  for (const match of matches) {
+    // Third place is played by two clubs that are already out, and losing it
+    // puts nobody out who was not.
+    if (match.isThirdPlace) continue
+
     const decidesElimination =
       match.isElimination === true ||
       (Boolean(match.isPlayoff) && knockoutModes.includes(tournament.format?.mode ?? ''))
     if (!decidesElimination) continue
-    if (!match.homeTeamId || !match.awayTeamId || match.homeTeamId === match.awayTeamId) continue
-    if (typeof match.homeGoals !== 'number' || typeof match.awayGoals !== 'number') continue
 
-    if (match.homeGoals > match.awayGoals) eliminated.add(match.awayTeamId)
-    else if (match.homeGoals < match.awayGoals) eliminated.add(match.homeTeamId)
+    // Who lost is the tie's answer, not this fixture's: a tie can be two legs
+    // added together, and either shape can be settled on penalties. Asking the
+    // fixture alone put out the club that lost the first leg 1-0 and won the
+    // second 3-0, and put out nobody at all when a cup tie finished level.
+    const outcome = outcomeOf(match, matches)
+    if (outcome) eliminated.add(outcome.loserId)
   }
 
   return eliminated

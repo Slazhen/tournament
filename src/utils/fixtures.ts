@@ -29,7 +29,7 @@ export function generateFixtures(teamIds: string[], format: Format): Match[] {
       return generateRoundRobinSchedule(teamIds, legs)
 
     case 'knockout':
-      return generateKnockoutSchedule(teamIds)
+      return generateKnockoutSchedule(teamIds, format.knockout)
 
     case 'league_playoff':
       // The league is played first. The bracket cannot be drawn yet — who
@@ -290,8 +290,15 @@ const sameCuts = (a: Format, b: Format) => {
   )
 }
 
+const sameKnockout = (a: Format, b: Format) =>
+  (a.knockout?.legs ?? 1) === (b.knockout?.legs ?? 1) &&
+  Boolean(a.knockout?.thirdPlace) === Boolean(b.knockout?.thirdPlace)
+
 const sameFormat = (a: Format, b: Format) =>
   a.mode === b.mode &&
+  // How the bracket is drawn is part of the format: without this a cup that
+  // wanted two legs read as unchanged and the settings screen refused to save.
+  (a.mode !== 'knockout' || sameKnockout(a, b)) &&
   (a.rounds || 1) === (b.rounds || 1) &&
   (a.playoffQualifiers ?? 0) === (b.playoffQualifiers ?? 0) &&
   // Two formats can share a mode and differ only in the system their

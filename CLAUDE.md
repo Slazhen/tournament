@@ -1041,6 +1041,60 @@ and has its own order (points, goal difference, goals scored, head-to-head,
 disciplinary points), and it is deliberately not routed through `standings.ts` —
 doing that would change the seeding of seasons already under way.
 
+**A knockout tie is not always one match, and not always settled by the score.**
+`src/utils/ties.ts` is the one place that answers who went through. Three shapes
+of the same question: one match won on the day, two legs added together, and
+either of those settled on penalties. It used to be two comparisons written out
+separately — one in the bracket that advances winners, one in the set of clubs
+the table strikes through — and they already disagreed about a draw: the bracket
+advanced nobody and the table struck out nobody, which is right for a league and
+is a cup tie nobody can finish.
+
+`shootout` on a match is the penalties, `{ home, away }`. **Kicks, not goals:**
+nothing derived from the score reads it, so it moves no table, no goal
+difference and no scorer tally, and `countRows` never sees it. What it decides
+is who goes through. Absent means the tie did not go to penalties, which is
+every tie in the database. `null` takes one off again, the same convention as
+every other clearable field here.
+
+`tie` — `{ id, leg }` on both fixtures — is what makes two matches one tie. The
+second leg reverses the sides and the aggregate is counted from the first leg's
+home side, so nothing reads either fixture on its own to decide the winner. Away
+goals decide nothing: a tie level after both legs goes to penalties, and the
+shootout is read from the last leg that has one rather than from a fixed leg,
+because an organiser filling in an old sheet may have put it on either.
+
+`placeInTie` in `schedule.ts` is why the side matters more than the field: a
+club on the home side of a tie plays the first leg at home and the second away,
+so writing `homeTeamId` alone would enter it in one leg and leave the other
+holding somebody else.
+
+**The third-place match is one match whatever the rest of the bracket is.** A
+tie played twice to spread the home advantage is one thing; a third-place match
+played twice is two more fixtures nobody turns up to. It carries
+`isThirdPlace`, sits in the final round at the index the advancement formula
+never targets — both semi-finals feed index zero — and `isElimination: false`,
+because losing it puts out nobody who was not already out. `eliminatedTeams`
+skips it for that reason.
+
+**A shootout is validated wherever a fixture can be written, which is four
+routes and not one.** `server/src/lib/shootout.ts` holds it, and the first
+version of this change did exactly what CLAUDE.md warns about two paragraphs
+up: the check went on the match `PATCH` and on the playoff-round `POST`, while
+`POST /admin/tournaments` and `PATCH /admin/tournaments/:id` — which pass their
+bodies through and are what the draw generators and the repair tools use — wrote
+whatever they were given. `assertShootoutsInBody` walks both homes of a fixture,
+`matches` and `format.customPlayoffConfig.playoffRounds[].matches`, and it is
+called on both. `readShootout` returns the pair rather than approving it in
+place, because a record that is attested and then stored as it arrived keeps
+whatever else was sitting on it.
+
+`tie` and `isThirdPlace` are deliberately absent from `MATCH_FIELDS`: they are
+structure, written once by the generator, not something a match edit should
+move. The consequence worth knowing is that there is no route to repair a wrong
+`tie` on its own — only rewriting `matches` whole — which is the same old debt
+and not a new one.
+
 **A league that ends in a knockout awards no medals.** Gold, silver and bronze
 on the top three rows are a claim about who finished first, second and third,
 and a season whose finals decide that has not decided it in the table. So

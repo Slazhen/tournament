@@ -9,6 +9,7 @@ import MatchDateTime from '../components/MatchDateTime'
 import InlineInput from '../components/InlineInput'
 import InlineTextarea from '../components/InlineTextarea'
 import MatchEvents from '../components/MatchEvents'
+import ShootoutPanel from '../components/ShootoutPanel'
 import {
   IconArrowLeft,
   IconClipboard,
@@ -261,6 +262,17 @@ export default function MatchPage() {
                 className="w-24 mx-auto block text-center text-4xl font-bold text-red-400 bg-transparent rounded-md border border-white/10 hover:border-white/25 focus:border-white/40 focus:outline-none"
               />
             </div>
+          </div>
+
+          {/* A knockout tie is not always settled by the two numbers above. */}
+          <div className="mb-4">
+            <ShootoutPanel
+              tournament={tournament}
+              match={match}
+              homeTeam={homeTeam}
+              awayTeam={awayTeam}
+              onChange={(shootout) => updateMatch({ shootout })}
+            />
           </div>
 
           {/* Match Info */}

@@ -34,6 +34,7 @@ import {
   sideOfTeam,
 } from '../lib/lineups.js'
 import { assertCompetitionColours, assertTeamColours } from '../lib/colours.js'
+import { assertShootout, assertShootoutsInBody } from '../lib/shootout.js'
 import {
   assertScorerOrCounted,
   composeGoal,
@@ -282,6 +283,10 @@ const MATCH_FIELDS = [
   'preview',
   'report',
   'videoUrl',
+  // The penalty shootout. Kicks and not goals: nothing derived from the score
+  // reads it, so it moves no table and no scorer tally, and what it does decide
+  // is who goes through.
+  'shootout',
 ] as const
 
 function pick(body: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
@@ -1427,6 +1432,8 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // with `themeColor: "url(…)"` keeps it, since a later PATCH only checks
     // the fields it is given.
     assertCompetitionColours(ctx.body)
+    // And the fixtures it arrives with, in both of the places a fixture lives.
+    assertShootoutsInBody(ctx.body)
     // Nothing has agreed to anything yet, so a club this organiser does not own
     // cannot be in a competition on the day it is created.
     await assertEnterableTeams(organizerId, ctx.body.teamIds, [])
@@ -1475,8 +1482,11 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     }
 
     // This body is still passed through rather than picked from a named list —
-    // the debt described above — so the colours have to be named here.
+    // the debt described above — so the colours and the shootouts have to be
+    // named here. The draw generators and the repair tools legitimately send
+    // `matches` whole through this route.
     assertCompetitionColours(ctx.body)
+    assertShootoutsInBody(ctx.body)
     await assertEnterableTeams(
       tournament.organizerId,
       ctx.body.teamIds,
@@ -1545,6 +1555,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
         .map((one) => {
           const fixture = pick(one as Record<string, unknown>, MATCH_FIELDS)
           assertClubsAreInTournament(fixture, tournament)
+          assertShootout(fixture)
           return fixture
         }),
     })
@@ -1683,6 +1694,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const updates = pick(ctx.body, MATCH_FIELDS)
     if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
     assertClubsAreInTournament(updates, tournament)
+    assertShootout(updates)
 
     await tournaments.updateMatch(params.tournamentId!, params.matchId!, updates)
     await record(user, {

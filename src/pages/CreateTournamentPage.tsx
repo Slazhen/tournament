@@ -114,6 +114,9 @@ export default function CreateTournamentPage() {
         previousSeason.format?.playoffQualifiers ??
         previousSeason.format?.customPlayoffConfig?.playoffTeams ??
         current.qualifiers,
+      knockout: previousSeason.format?.knockout
+        ? { ...previousSeason.format.knockout }
+        : current.knockout,
       groups: groups
         ? {
             numberOfGroups: groups.numberOfGroups,

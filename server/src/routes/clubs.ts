@@ -91,6 +91,11 @@ const CARRIED_MATCH_FIELDS = [
   'playoffRound',
   'playoffMatch',
   'isElimination',
+  // A club has to be able to read how its own tie ended: the two legs added
+  // together, and the shootout if it went that far.
+  'shootout',
+  'tie',
+  'isThirdPlace',
   'division',
   'groupIndex',
   'status',

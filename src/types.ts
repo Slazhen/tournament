@@ -201,6 +201,28 @@ export type Match = {
   playoffRound?: number
   playoffMatch?: number
   isElimination?: boolean // Mark individual matches as elimination for public display
+  /**
+   * The penalty shootout, where the tie needed one.
+   *
+   * Kicks, not goals: nothing derived from the score reads this, so a shootout
+   * moves no league table, no scorer tally and no goal difference. What it does
+   * decide is who goes through, and `utils/ties.ts` is the one place that asks.
+   * Absent means the tie did not go to penalties — including every tie that was
+   * settled before this field existed. Null is how a shootout entered by
+   * mistake is taken off again: JSON has no undefined, so a key left out of the
+   * body means "unchanged".
+   */
+  shootout?: { home: number; away: number } | null
+  /**
+   * The two legs of one tie.
+   *
+   * Both legs carry the same `id` and the sides are reversed between them, so
+   * the tie is won on the two scores added together and not on either fixture.
+   * Absent means the tie is the single match it looks like.
+   */
+  tie?: { id: string; leg: 1 | 2 }
+  /** The match between the two beaten semi-finalists. */
+  isThirdPlace?: boolean
   division?: number // Which playoff bracket, 1-based and strongest first, for groups_with_divisions
   groupIndex?: number // Group number (1-based) for groups_with_divisions format
   // Match details
@@ -448,6 +470,15 @@ export type Tournament = {
     }
     /** What separates two clubs level on points, in order. Points are never in the list. */
     tiebreakers?: Array<'headToHead' | 'goalDifference' | 'goalsFor' | 'wins'>
+    /**
+     * How the knockout bracket is drawn. Absent means what every cup drawn
+     * before these existed was: one match per tie and no third-place match.
+     */
+    knockout?: {
+      /** 1, or 2 for a tie played home and away and decided on the aggregate. */
+      legs: number
+      thirdPlace: boolean
+    }
   }
   /**
    * Seasons.
