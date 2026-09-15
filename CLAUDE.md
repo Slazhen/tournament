@@ -1502,6 +1502,27 @@ photographs it was protecting keep their size.
   guard the club and competition loads already had. The general shape: a
   mount-time read of the session answers a question that changes after mount.
 
+- **A loading flag is false before the request as well as after it, and a page
+  whose lists arrive separately has to wait for all of them.** The organiser's
+  season page waited on `loading.tournaments` alone and drew itself the moment
+  the season arrived, while the clubs were a second request still in flight —
+  two independent calls, and on a cold API seconds apart. What it drew was not
+  incomplete but wrong: the table printed a club id in place of every name, the
+  crests fell back to the default blue, and every fixture read "TBD vs TBD" as
+  though the draw had not been made. It was intermittent for exactly that
+  reason, and read as bad data rather than as a race. `teamsLoaded` in the store
+  is the settled flag — set when the fetch finishes, failure included, so a
+  screen gated on it cannot spin for ever, and cleared by `applyScope` with the
+  clubs themselves. `TournamentPage` loads the clubs itself as well, the way
+  every screen the store does not load them for already does, because
+  `applyScope` runs when the session becomes known and not when this page is
+  opened.
+
+  A club id is never printed where a name goes. `clubName` on that page answers
+  "Unknown club", which is what the public pages have always done: after the
+  load, a miss is a record that no longer resolves, and an id tells the reader
+  nothing. `TBD` on a fixture is different and stays — a playoff slot really is
+  undecided.
 - **Deleting an image no longer takes it off the internet at once.** The object
   goes from the bucket, but `ImagesCdn` has it at an edge and nothing
   invalidates that, so it stays fetchable at the CDN host for up to the cache

@@ -112,11 +112,24 @@ const persistedReconstructedGroups = new Set<string>()
 
 export default function TournamentPage() {
   const { id, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTournaments, getOrganizerTeams, updateTournament, updateMatchFields, setScore: saveScore, setRoundHidden, addPlayoffRound, updatePlayoffRound, removePlayoffRound, uploadTournamentLogo, loading, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTournaments, getOrganizerTeams, updateTournament, updateMatchFields, setScore: saveScore, setRoundHidden, addPlayoffRound, updatePlayoffRound, removePlayoffRound, uploadTournamentLogo, loadTeams, teamsLoaded, loading, superAdmin } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
   const tournaments = getOrganizerTournaments()
   const teams = getOrganizerTeams()
+
+  /**
+   * What a club is called on this page.
+   *
+   * A club id is not a name, and printing one was how a season whose clubs had
+   * not arrived yet read as a table of hex strings. The page is not drawn until
+   * they have, so a miss here is a record that no longer resolves — an id in
+   * `teamIds` whose club was deleted, or one from the browser-side era — and
+   * that is said in words, the way the public pages already say it.
+   */
+  const clubName = (teamId: string) =>
+    teams.find((team) => team.id === teamId)?.name ?? 'Unknown club'
+
   const [allOrganizers, setAllOrganizers] = useState<Organizer[]>([])
   const [organizersSettled, setOrganizersSettled] = useState(false)
   
@@ -143,7 +156,21 @@ export default function TournamentPage() {
       cancelled = true
     }
   }, [])
-  
+
+  // The clubs, where nothing else has fetched them.
+  //
+  // `applyScope` loads them for a path under ADMIN_ROUTES, which this one is,
+  // but it only runs when the session becomes known: a scope settled while the
+  // reader was on a public page or on /my-club leaves this screen with an empty
+  // list and no request to fill it. Every name on this page comes from that
+  // list. `loadTeams` refuses a second request while one is in flight, so this
+  // costs nothing in the ordinary case.
+  useEffect(() => {
+    if (teamsLoaded) return
+    if (!currentOrganizer && !superAdmin) return
+    void loadTeams()
+  }, [teamsLoaded, currentOrganizer, superAdmin, loadTeams])
+
   // Support both old ID-based route and new slug-based route
   const tournament = useMemo(() => {
     if (id) {
@@ -848,6 +875,23 @@ export default function TournamentPage() {
     )
   }
   
+  // The season is here and the clubs are not yet. Nothing on this page can be
+  // drawn without them: the table, the fixture list, the teamsheet pickers and
+  // the group editor all name a club out of that list, and a page rendered in
+  // the gap is not incomplete but wrong — ids where the names go, and every
+  // fixture reading "TBD vs TBD". The two are independent requests and on a
+  // cold API they arrive seconds apart.
+  if (!teamsLoaded) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <div className="animate-spin rounded-full h-10 w-10 mx-auto mb-4 border-4 border-white/20 border-t-blue-400" />
+          <p className="opacity-70">Loading clubs...</p>
+        </div>
+      </div>
+    )
+  }
+
   // Show tournament not found if it doesn't exist
   if (!tournament) {
     return (
@@ -1198,7 +1242,7 @@ export default function TournamentPage() {
                                   to={`/teams/${row.id}`}
                                   className="hover:opacity-80 transition-opacity text-xs"
                                 >
-                                  {teams.find(t => t.id === row.id)?.name ?? row.id}
+                                  {clubName(row.id)}
                                 </Link>
                                 {tier && (
                                   <span className={`text-xs px-1.5 py-0.5 rounded-full ${TIER_BADGE_CLASS[tier.mark]}`}>
@@ -1222,7 +1266,7 @@ export default function TournamentPage() {
                   </div>
                   <DeductionNote
                     deductions={deductionsInTable(tournament, groupTable.map((row: any) => row.id))}
-                    nameOf={(id) => teams.find((team) => team.id === id)?.name ?? id}
+                    nameOf={clubName}
                   />
                 </div>
               )
@@ -1288,7 +1332,7 @@ export default function TournamentPage() {
                         ) : (
                           <span className="w-5 h-5 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                         )}
-                        <span className="text-sm text-white">{team?.name || teamId}</span>
+                        <span className="text-sm text-white">{clubName(teamId)}</span>
                         <span className="text-xs text-gray-400">Click to add</span>
                       </div>
                     )
@@ -1339,7 +1383,7 @@ export default function TournamentPage() {
                           ) : (
                             <span className="w-6 h-6 rounded-full inline-block" style={{ backgroundColor: team?.colors?.[0] || '#3B82F6' }} />
                           )}
-                          <span className="flex-1 text-white">{team?.name || teamId}</span>
+                          <span className="flex-1 text-white">{clubName(teamId)}</span>
                           <button
                             onClick={() => {
                               const newGroups = [...editingGroups]
@@ -1474,7 +1518,7 @@ export default function TournamentPage() {
                               to={`/teams/${row.id}`}
                               className="hover:opacity-80 transition-opacity"
                             >
-                              {teams.find(t => t.id === row.id)?.name ?? row.id}
+                              {clubName(row.id)}
                             </Link>
                             {isQualified && (
                               <span className="text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full">
@@ -1498,7 +1542,7 @@ export default function TournamentPage() {
           </div>
           <DeductionNote
             deductions={deductionsInTable(tournament, table.map((row) => row.id))}
-            nameOf={(id) => teams.find((team) => team.id === id)?.name ?? id}
+            nameOf={clubName}
           />
           <PointDeductionsEditor tournament={tournament} teams={teams} />
         </section>

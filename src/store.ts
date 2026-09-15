@@ -59,6 +59,24 @@ type AppStore = {
     teams: boolean
     tournaments: boolean
   }
+
+  /**
+   * Whether the clubs have been fetched at all in this scope, which is a
+   * different question from whether a fetch is in flight.
+   *
+   * `loading.teams` is false before the request starts as well as after it
+   * finishes, so a screen that waits on it alone renders in the gap and reads
+   * an empty list as "this competition has no clubs". Every name on the
+   * organiser's season page comes from that list, and the season and the clubs
+   * are two independent requests: on a cold API the season arrives seconds
+   * first, and the table printed a club id in place of every name while the
+   * fixture list read "TBD vs TBD" for every round.
+   *
+   * Set when the fetch settles, failure included — a screen gated on this must
+   * come back with something rather than spin for ever — and cleared by
+   * `applyScope`, which empties the clubs when the account changes.
+   */
+  teamsLoaded: boolean
   
   // Actions
   /**
@@ -242,6 +260,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     teams: false,
     tournaments: false,
   },
+  teamsLoaded: false,
 
   // Organizer actions
   createOrganizer: async (name: string, email: string) => {
@@ -334,6 +353,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({
       superAdmin,
       teams: [],
+      teamsLoaded: false,
       tournaments: [],
       ...(user ? {} : { organizers: [] }),
     })
@@ -1128,25 +1148,30 @@ export const useAppStore = create<AppStore>((set, get) => ({
         const allTeams = await teamService.getAll()
         set({
           teams: allTeams,
+          teamsLoaded: true,
           loading: { ...get().loading, teams: false }
         })
         return
       } catch (error) {
         console.error('Error loading all teams:', error)
-        set(state => ({ loading: { ...state.loading, teams: false } }))
+        // Settled, and settled badly. A screen waiting on this has to be let
+        // through to whatever it can draw without the clubs rather than kept
+        // on a spinner nothing will ever take off.
+        set(state => ({ teamsLoaded: true, loading: { ...state.loading, teams: false } }))
         return
       }
     }
-    
+
     try {
       const teams = await teamService.getByOrganizer(currentOrganizerId)
       set({
         teams,
+        teamsLoaded: true,
         loading: { ...get().loading, teams: false }
       })
     } catch (error) {
       console.error('Error loading teams:', error)
-      set(state => ({ loading: { ...state.loading, teams: false } }))
+      set(state => ({ teamsLoaded: true, loading: { ...state.loading, teams: false } }))
     }
   },
 
