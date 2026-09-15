@@ -22,6 +22,7 @@ import {
 } from '../utils/standings'
 import type { PlayoffCut, PlayoffTier, TierMark } from '../utils/standings'
 import { IconTrophy } from '../components/icons'
+import { DeductionMark, DeductionNote, deductionsInTable } from '../components/PointDeductions'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
 import { cdnUrl } from '../utils/images'
@@ -419,6 +420,11 @@ export default function PublicTournamentPage() {
 
   // Calculate table directly without useMemo to avoid infinite loops
   const { table, eliminatedTeams, groupTables, qualified } = calculateTable()
+  const nameOfTeam = (id: string) =>
+    teams.find((team: any) => team.id === id)?.name ?? 'Unknown Team'
+  // The punishments that belong to this table. A grouped season asks the same
+  // question once per group, further down, since a club sits in one of them.
+  const tableDeductions = deductionsInTable(tournament, table.map((row: any) => row.id))
   const tiers = playoffTiers(tournament?.format?.groupsWithDivisionsConfig)
   const groupMark = groupMarkFor(tiers)
 
@@ -454,6 +460,22 @@ export default function PublicTournamentPage() {
     }
   }
 
+  /**
+   * The punishments under a poster's table, as one line.
+   *
+   * A total that does not add up to the results is the one thing a table
+   * outside this application cannot be checked against, so the reason travels
+   * with it. Several are run together on one line and the poster cuts what does
+   * not fit: the page beside it carries them in full.
+   */
+  const postFootnote = (rows: any[]): string | undefined => {
+    const list = deductionsInTable(tournament, rows.map((row: any) => row.id))
+    if (list.length === 0) return undefined
+    return list
+      .map((deduction) => `${nameOfTeam(deduction.teamId)} −${deduction.points}: ${deduction.reason}`)
+      .join('   ·   ')
+  }
+
   const tablePost = (
     rows: any[],
     mark: (index: number, teamId: string) => PostMark,
@@ -467,6 +489,7 @@ export default function PublicTournamentPage() {
     logoDimmed: Boolean(tournament.logoOpaqueBackground),
     color: competitionColor(tournament),
     rows: rows.map((row: any, index: number) => postRow(row, mark(index, row.id))),
+    footnote: postFootnote(rows),
   })
 
   const postFilename = (part: string) =>
@@ -874,6 +897,7 @@ export default function PublicTournamentPage() {
                                       <span className="font-medium text-xs sm:text-lg group-hover:text-blue-300 transition-colors duration-300">
                                         {team?.name || 'Unknown Team'}
                                       </span>
+                                      <DeductionMark points={row.deducted} />
                                     </Link>
                                   </td>
                                   <td className="py-2 px-1 sm:px-6 text-center text-white text-xs sm:text-lg font-medium">{row.p}</td>
@@ -890,6 +914,13 @@ export default function PublicTournamentPage() {
                           </tbody>
                         </table>
                       </div>
+                      <DeductionNote
+                        deductions={deductionsInTable(
+                          tournament,
+                          groupTable.map((row: any) => row.id),
+                        )}
+                        nameOf={nameOfTeam}
+                      />
                       <StandingsLegend />
                       <div className="text-center mt-3 text-xs sm:text-sm text-gray-300">
                         {tiers.map((tier) => (
@@ -990,6 +1021,7 @@ export default function PublicTournamentPage() {
                                   Eliminated
                                 </span>
                               )}
+                              <DeductionMark points={row.deducted} />
                             </Link>
                           </td>
                           <td className="py-2 px-1 sm:px-6 text-center text-white text-xs sm:text-lg font-medium">{row.p}</td>
@@ -1006,6 +1038,7 @@ export default function PublicTournamentPage() {
                   </tbody>
                 </table>
               </div>
+              <DeductionNote deductions={tableDeductions} nameOf={nameOfTeam} />
               <QualificationNote cut={qualified} />
               <StandingsLegend />
             </div>

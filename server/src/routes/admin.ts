@@ -35,6 +35,7 @@ import {
 } from '../lib/lineups.js'
 import { assertCompetitionColours, assertTeamColours } from '../lib/colours.js'
 import { assertShootout, assertShootoutsInBody } from '../lib/shootout.js'
+import { assertDeductionsInBody, composeDeduction } from '../lib/deductions.js'
 import {
   assertScorerOrCounted,
   composeGoal,
@@ -1434,6 +1435,9 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertCompetitionColours(ctx.body)
     // And the fixtures it arrives with, in both of the places a fixture lives.
     assertShootoutsInBody(ctx.body)
+    // And the punishments, for the same reason: the PATCH refuses the field
+    // outright, so this is the only way a season can be written carrying one.
+    assertDeductionsInBody(ctx.body)
     // Nothing has agreed to anything yet, so a club this organiser does not own
     // cannot be in a competition on the day it is created.
     await assertEnterableTeams(organizerId, ctx.body.teamIds, [])
@@ -1469,7 +1473,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
   // `hiddenRounds` joins them for the ordinary reason a list does: this PATCH
   // writes the attribute whole from the copy the browser is holding, and the
   // route below appends and removes one round under a condition instead.
-  const TOURNAMENT_PATCH_FORBIDDEN = ['squads', 'squadsStrict', 'hiddenRounds']
+  // `pointDeductions` joins it for the same reason, and one of its own: the
+  // list is what a public table subtracts from, so a save from a stale copy of
+  // this screen would put a punishment back or take one away unnoticed.
+  const TOURNAMENT_PATCH_FORBIDDEN = ['squads', 'squadsStrict', 'hiddenRounds', 'pointDeductions']
 
   router.patch('/admin/tournaments/:id', async (ctx, params) => {
     const user = await ctx.user()
@@ -1684,6 +1691,63 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     }
 
     return { round, hidden, changed }
+  })
+
+  /**
+   * A punishment in points, entered against one club.
+   *
+   * Its own route rather than a field on the season's PATCH, because the list
+   * has the two properties that have cost this repository data before: it is a
+   * list, so writing it whole from the browser's copy drops whatever the other
+   * tab entered, and it changes a published table, so a save from a stale
+   * screen would quietly restore a punishment the organiser had lifted.
+   */
+  router.post('/admin/tournaments/:id/point-deductions', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const deduction = composeDeduction(
+      generateId(),
+      ctx.body,
+      (tournament.teamIds ?? []) as string[],
+    )
+    await tournaments.addPointDeduction(params.id!, deduction)
+
+    const club = await teams.get(deduction.teamId)
+    await record(user, {
+      action: 'tournament.deduct_points',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Deducted ${deduction.points} ${deduction.points === 1 ? 'point' : 'points'} from ${club?.name ?? deduction.teamId} in ${tournament.name}: ${deduction.reason}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return deduction
+  })
+
+  router.delete('/admin/tournaments/:id/point-deductions/:deductionId', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const removed = await tournaments.removePointDeduction(params.id!, params.deductionId!)
+    if (!removed) throw notFound('That deduction is no longer on this competition')
+
+    // The record is gone from the season, so this line is the only thing left
+    // that says what it was: a summary naming neither the club nor the points
+    // cannot answer "which punishment did they lift".
+    const club = await teams.get(String(removed.teamId ?? ''))
+    const points = typeof removed.points === 'number' ? removed.points : 0
+    await record(user, {
+      action: 'tournament.restore_points',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Lifted a deduction of ${points} ${points === 1 ? 'point' : 'points'} from ${club?.name ?? removed.teamId ?? 'a club'} in ${tournament.name}: ${removed.reason ?? 'no reason recorded'}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return { ok: true }
   })
 
   router.patch('/admin/tournaments/:tournamentId/matches/:matchId', async (ctx, params) => {

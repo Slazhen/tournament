@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom'
 import type { Match, Tournament } from '../types'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
+import { afterDeductions, deductedFrom } from '../utils/standings'
+import { DeductionMark } from './PointDeductions'
 
 /**
  * One competition's table, cut down to the part a club cares about.
@@ -25,18 +27,31 @@ export type MiniTableRow = {
   played: number
   points: number
   goalDifference: number
+  /** Points the organiser has taken off this club, already out of `points`. */
+  deducted: number
 }
 
 /** The full table of a season, in order. */
 export function tableOf(tournament: Tournament, matches?: Match[]): MiniTableRow[] {
   const ids = tournament.teamIds ?? []
   const played = matches ?? seasonMatches(tournament)
-  return sortTeamsByStandings(ids.map((id) => calculateTeamStandings(played, id))).map((row) => ({
+  // A punishment comes off before the rows are ordered, so this window shows a
+  // club where the competition's own table puts it. It is subtracted here and
+  // not in `calculateTeamStandings`, which is also what seeds the playoff
+  // bracket: a club's position in this table is a fact it can read on the
+  // season page, and the seeding of a season already under way is not something
+  // a change to a side panel should move.
+  const standings = afterDeductions(
+    tournament,
+    ids.map((id) => calculateTeamStandings(played, id)),
+  )
+  return sortTeamsByStandings(standings).map((row) => ({
     teamId: row.teamId,
     position: row.position,
     played: row.played,
     points: row.points,
     goalDifference: row.goalDifference,
+    deducted: deductedFrom(tournament, row.teamId),
   }))
 }
 
@@ -140,7 +155,8 @@ export default function MiniTable({
                   {row.position}
                 </td>
                 <td className="py-1.5 px-1 truncate max-w-0">
-                  {teamNames[row.teamId] ?? 'Unknown club'}
+                  {teamNames[row.teamId] ?? 'Unknown club'}{' '}
+                  <DeductionMark points={row.deducted} />
                 </td>
                 <td className="py-1.5 px-1 text-center text-gray-300">{row.played}</td>
                 <td className="py-1.5 px-1 text-center text-gray-300">

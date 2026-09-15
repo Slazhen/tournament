@@ -141,6 +141,18 @@ type AppStore = {
    * teamsheets a club's own manager writes.
    */
   setRoundHidden: (tournamentId: string, round: number, hidden: boolean) => Promise<void>
+  /**
+   * Points taken off a club, and put back.
+   *
+   * The list moves only once the server has agreed, the same arrangement as
+   * `setSquad` and `setLineup`: a table that subtracted the points first would
+   * show a punishment a refused write never recorded.
+   */
+  addPointDeduction: (
+    tournamentId: string,
+    deduction: { teamId: string; points: number; reason: string },
+  ) => Promise<void>
+  removePointDeduction: (tournamentId: string, deductionId: string) => Promise<void>
   addPlayoffRound: (tournamentId: string, round: Partial<CustomPlayoffRoundConfig>) => Promise<void>
   updatePlayoffRound: (
     tournamentId: string,
@@ -768,6 +780,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
             : rounds.filter((one) => one !== round),
         }
       }),
+    }))
+  },
+
+  addPointDeduction: async (
+    tournamentId: string,
+    deduction: { teamId: string; points: number; reason: string },
+  ) => {
+    const stored = await tournamentService.addPointDeduction(tournamentId, deduction)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? { ...tournament, pointDeductions: [...(tournament.pointDeductions ?? []), stored] }
+          : tournament,
+      ),
+    }))
+  },
+
+  removePointDeduction: async (tournamentId: string, deductionId: string) => {
+    await tournamentService.removePointDeduction(tournamentId, deductionId)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? {
+              ...tournament,
+              pointDeductions: (tournament.pointDeductions ?? []).filter(
+                (deduction) => deduction.id !== deductionId,
+              ),
+            }
+          : tournament,
+      ),
     }))
   },
 

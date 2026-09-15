@@ -406,6 +406,29 @@ export type CustomPlayoffMatchConfig = Partial<Omit<Match, 'id' | 'isElimination
   notes?: string
 }
 
+/**
+ * Points taken off a club by the organiser, and why.
+ *
+ * A punishment is not a result, so it is a record of its own on the season
+ * rather than a score typed into a match that was never played — which is what
+ * an organiser had to do before this existed. Nothing derived from a fixture
+ * reads it: it moves the points and nothing else, so goal difference, the
+ * scorer table and every appearance are exactly as the pitch left them.
+ *
+ * `points` is how many come off and is always positive: there is no way to
+ * award points here, because an organiser who could would be able to undo
+ * anything the season decided. `reason` is required and public — a table that
+ * takes three points off a club without saying why is a table its readers
+ * correct in the comments.
+ */
+export type PointDeduction = {
+  id: string
+  teamId: string
+  points: number
+  reason: string
+  createdAtISO: string
+}
+
 export type Tournament = {
   id: string
   name: string
@@ -573,6 +596,16 @@ export type Tournament = {
    * held-back score would make it wrong rather than discreet.
    */
   hiddenRounds?: number[]
+  /**
+   * Punishments the organiser has handed down, in points.
+   *
+   * Written one at a time by `POST`/`DELETE
+   * /admin/tournaments/:id/point-deductions` and refused by the tournament
+   * `PATCH`, the way `hiddenRounds` is: it is a list, and it is subtracted from
+   * a table people have already read. `utils/standings.ts` is the one place
+   * that applies it.
+   */
+  pointDeductions?: PointDeduction[]
 }
 
 export type AppSettings = {

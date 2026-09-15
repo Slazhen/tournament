@@ -128,6 +128,11 @@ const CARRIED_TOURNAMENT_FIELDS = [
   // squad screen under the ordinary rules, and told everybody was registered
   // when in fact nobody was.
   'squadsStrict',
+  // The table a club reads on its own page is worked out in the browser from
+  // this answer, so a punishment missing from it is a table that disagrees with
+  // the public one — and the club it was handed to is the one person who must
+  // not have to hear about it from somebody else.
+  'pointDeductions',
 ]
 
 /**

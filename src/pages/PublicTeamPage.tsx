@@ -16,7 +16,7 @@ import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
 import LastAndNextMatch from '../components/LastAndNextMatch'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
-import { pointsFor, tableRules } from '../utils/standings'
+import { deductedFrom, pointsFor, tableRules } from '../utils/standings'
 import { activeSquad, hasSquadEntry, isArchived, squadInTournament } from '../utils/squads'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { formatOptionFor } from '../utils/formats'
@@ -678,8 +678,15 @@ export default function PublicTeamPage() {
                               )
                               if (completedMatches.length === 0) return 'No games played'
                               
-                              // Counted by this season's own rules, the same ones its table uses.
-                              const points = pointsFor(team.id, completedMatches, tableRules(tournament))
+                              // Counted by this season's own rules, the same ones its
+                              // table uses — the punishments it has handed down included,
+                              // or this line and the table would print two numbers.
+                              const points = pointsFor(
+                                team.id,
+                                completedMatches,
+                                tableRules(tournament),
+                                deductedFrom(tournament, team.id),
+                              )
                               
                               return `${points} pts`
                             })()}
@@ -709,8 +716,14 @@ export default function PublicTeamPage() {
                         )
                         if (completedMatches.length === 0) return <span className="text-sm opacity-70">No games</span>
                         
-                        // Counted by this season's own rules, the same ones its table uses.
-                        const points = pointsFor(team.id, completedMatches, tableRules(tournament))
+                        // Counted by this season's own rules, the same ones its table
+                        // uses — the punishments it has handed down included.
+                        const points = pointsFor(
+                          team.id,
+                          completedMatches,
+                          tableRules(tournament),
+                          deductedFrom(tournament, team.id),
+                        )
                         
                         return <span className="font-semibold text-green-400">{points} pts</span>
                       })()}

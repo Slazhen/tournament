@@ -1,4 +1,4 @@
-import type { Match, Tournament } from '../types'
+import type { Match, PointDeduction, TeamStanding, Tournament } from '../types'
 import { allMatches } from './matches'
 import { outcomeOf } from './ties'
 
@@ -24,9 +24,18 @@ export type StandingsRow = {
   gf: number
   ga: number
   pts: number
+  /**
+   * Points this club has had taken off, already subtracted from `pts`.
+   *
+   * Zero for almost every row. It is carried here so that a table can mark the
+   * row without asking a second question about the same club — and so that the
+   * screens cannot answer it differently from the arithmetic that moved the
+   * position.
+   */
+  deducted: number
 }
 
-const emptyRow = (id: string): StandingsRow => ({ id, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 })
+const emptyRow = (id: string): StandingsRow => ({ id, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0, deducted: 0 })
 
 /**
  * How a season's table is worked out.
@@ -111,6 +120,68 @@ export function tableRules(tournament?: Tournament | null): TableRules {
     : []
 
   return { scoring, tiebreakers: tiebreakers.length > 0 ? tiebreakers : LEGACY_TIEBREAKERS }
+}
+
+/**
+ * The punishments a season is carrying, read defensively.
+ *
+ * `POST /admin/tournaments` passes its body through, so anything at all can be
+ * sitting under this key on a season created that way, and a row that is not a
+ * deduction must cost the table nothing rather than turning every total into
+ * NaN. Anything unreadable is dropped here and nowhere else.
+ */
+export function deductionsOf(tournament?: Tournament | null): PointDeduction[] {
+  const stored = tournament?.pointDeductions
+  if (!Array.isArray(stored)) return []
+  return stored.filter(
+    (entry): entry is PointDeduction =>
+      Boolean(entry) &&
+      typeof entry === 'object' &&
+      typeof entry.teamId === 'string' &&
+      typeof entry.points === 'number' &&
+      Number.isFinite(entry.points) &&
+      entry.points > 0,
+  )
+}
+
+/** How many points one club has lost in this season, across every punishment. */
+export function deductedFrom(tournament: Tournament | null | undefined, teamId: string): number {
+  return deductionsOf(tournament)
+    .filter((deduction) => deduction.teamId === teamId)
+    .reduce((total, deduction) => total + deduction.points, 0)
+}
+
+/** The same, as a total per club, which is what a whole table needs. */
+function deductionTotals(tournament?: Tournament | null): Map<string, number> {
+  const totals = new Map<string, number>()
+  for (const deduction of deductionsOf(tournament)) {
+    totals.set(deduction.teamId, (totals.get(deduction.teamId) ?? 0) + deduction.points)
+  }
+  return totals
+}
+
+/**
+ * The same, applied to the other answer to "who is first".
+ *
+ * `sortTeamsByStandings` in `schedule.ts` is a second ordering this repository
+ * deliberately keeps — it seeds the playoff brackets, and routing it through
+ * here would move the seeding of seasons already under way. But three things
+ * read it to say where a club *stands* rather than who it plays: the champion
+ * of a finished league, the club's own position on its dashboard and the window
+ * beside it. Those are claims about the table, and a table that has had points
+ * taken off it is the table. So the deduction is applied to the rows before
+ * they are ordered, at those three call sites and nowhere else.
+ */
+export function afterDeductions(
+  tournament: Tournament | null | undefined,
+  standings: TeamStanding[],
+): TeamStanding[] {
+  const deducted = deductionTotals(tournament)
+  if (deducted.size === 0) return standings
+  return standings.map((row) => {
+    const points = deducted.get(row.teamId) ?? 0
+    return points > 0 ? { ...row, points: row.points - points } : row
+  })
 }
 
 /**
@@ -279,8 +350,34 @@ function orderRows(
   return buckets.flatMap((bucket) => orderRows(bucket, matches, rules, rest))
 }
 
-function tally(teamIds: string[], matches: Match[], rules: TableRules): StandingsRow[] {
+/**
+ * The table: what the matches gave, less what the organiser took away.
+ *
+ * The deduction is applied here, once, before anything is ordered — so the
+ * punishment moves the club's position and not merely the number printed beside
+ * it. It deliberately does not reach the head-to-head mini-table below:
+ * `splitByHeadToHead` re-tallies the matches among the clubs that are level and
+ * is handed no deductions, because a punishment already counted in the total
+ * that made them level would be counted a second time to separate them.
+ */
+function tally(
+  teamIds: string[],
+  matches: Match[],
+  rules: TableRules,
+  deducted?: Map<string, number>,
+): StandingsRow[] {
   const rows = countRows(teamIds, matches, rules.scoring)
+  if (deducted && deducted.size > 0) {
+    for (const row of rows) {
+      const points = deducted.get(row.id) ?? 0
+      if (points > 0) {
+        row.deducted = points
+        // A club can finish on a negative total. That is the honest answer, and
+        // a floor at zero would hide the size of the punishment.
+        row.pts -= points
+      }
+    }
+  }
   return splitBy(rows, 'points').flatMap((bucket) =>
     orderRows(bucket, matches, rules, rules.tiebreakers),
   )
@@ -292,7 +389,19 @@ function tally(teamIds: string[], matches: Match[], rules: TableRules): Standing
  * The club pages and the player pages each print this beside a season's name,
  * and each of them worked it out with its own copy of "three for a win".
  */
-export function pointsFor(teamId: string, matches: Match[], rules: TableRules): number {
+export function pointsFor(
+  teamId: string,
+  matches: Match[],
+  rules: TableRules,
+  /**
+   * What the organiser has taken off this club in this season — `deductedFrom`.
+   * Defaulted rather than required so that a caller with the matches and no
+   * tournament to hand still gets the same arithmetic, but every page that
+   * prints a season's points passes it: a club page saying 12 beside a table
+   * saying 9 is two answers to one question.
+   */
+  deducted = 0,
+): number {
   let points = 0
   for (const match of matches) {
     if (!decided(match)) continue
@@ -308,7 +417,9 @@ export function pointsFor(teamId: string, matches: Match[], rules: TableRules): 
     const other = home ? (match.awayGoals as number) : (match.homeGoals as number)
     points += own > other ? rules.scoring.win : own === other ? rules.scoring.draw : rules.scoring.loss
   }
-  return points
+  // Subtracted at the end rather than counted down from, so that a club with
+  // nothing to its name scores zero and not negative zero.
+  return points - deducted
 }
 
 /**
@@ -437,6 +548,7 @@ export function groupTables(tournament: Tournament): Record<number, StandingsRow
   if (groups.length === 0) return {}
 
   const rules = tableRules(tournament)
+  const deducted = deductionTotals(tournament)
   const tables: Record<number, StandingsRow[]> = {}
   groups.forEach((teamIds, index) => {
     const number = index + 1
@@ -451,14 +563,19 @@ export function groupTables(tournament: Tournament): Record<number, StandingsRow
         teamIds.includes(match.awayTeamId)
       )
     })
-    tables[number] = tally(teamIds, matches, rules)
+    tables[number] = tally(teamIds, matches, rules, deducted)
   })
   return tables
 }
 
 /** The competition's own table: every club in it, every match its rules count. */
 export function leagueTable(tournament: Tournament): StandingsRow[] {
-  return tally(tournament.teamIds ?? [], allMatches(tournament), tableRules(tournament))
+  return tally(
+    tournament.teamIds ?? [],
+    allMatches(tournament),
+    tableRules(tournament),
+    deductionTotals(tournament),
+  )
 }
 
 export type PlayoffCut = {

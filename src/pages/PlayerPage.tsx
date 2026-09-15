@@ -16,7 +16,7 @@ import {
   IconGlobe,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
-import { pointsFor, tableRules } from '../utils/standings'
+import { deductedFrom, pointsFor, tableRules } from '../utils/standings'
 
 export default function PlayerPage() {
   const { playerId } = useParams()
@@ -530,8 +530,15 @@ export default function PlayerPage() {
                               )
                               if (completedMatches.length === 0) return 'No games played'
                               
-                              // Counted by this season's own rules, the same ones its table uses.
-                              const points = pointsFor(currentTeam.id, completedMatches, tableRules(tournament))
+                              // Counted by this season's own rules, the same ones its
+                              // table uses — the punishments it has handed down included,
+                              // or this line and the table would print two numbers.
+                              const points = pointsFor(
+                                currentTeam.id,
+                                completedMatches,
+                                tableRules(tournament),
+                                deductedFrom(tournament, currentTeam.id),
+                              )
                               
                               return `${points} pts`
                             })()}

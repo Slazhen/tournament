@@ -1035,6 +1035,53 @@ anything.** `countRows` skips it. Without that the two lookups are one row and i
 is handed a played game, a win and a defeat at once — which is what the admin
 table did, and the public one still did until this.
 
+**A punishment is points and nothing else.** An organiser can dock a club:
+`pointDeductions` on the season is a list of `{ id, teamId, points, reason,
+createdAtISO }`, `points` is always positive and there is no way to award any —
+an organiser who could add points could undo anything the pitch decided.
+`standings.ts` applies it in `tally`, once, before the rows are ordered, so the
+punishment moves the club's position and not merely the number printed beside
+it. Nothing else reads it: played, won, goal difference, the scorer table and
+every appearance are exactly what the results left them.
+
+It deliberately does not reach the head-to-head mini-table. `splitByHeadToHead`
+re-tallies the matches among the clubs that are level and is handed no
+deductions, because a punishment already counted in the total that made them
+level would be counted a second time to separate them. There is a test for that
+shape, since it is the sort of thing a later "consistency" tidy-up removes.
+
+Three places outside `standings.ts` say where a club *stands* through
+`sortTeamsByStandings` — the champion of a finished league (`championOf`), the
+club's own position on `/my-club`, and the window in `MiniTable`. All three pass
+their rows through `afterDeductions` first, or a page names a champion that the
+table printed underneath it shows in second place. The playoff **seeding** is
+untouched, which is the deliberate half of that line: it is the same function,
+and routing it through here would move the seeding of seasons already under way.
+
+`reason` is required and public. A table that takes three points off a club
+without saying why is a table its readers correct in the comments, so the line
+under the table names the club, the points and the reason, and the row carries a
+mark — a total that does not add up to the results is unreadable without one.
+The Instagram poster carries the same line, cut to fit, because a poster leaves
+this application and can be checked against nothing.
+
+The write is a list, so it is never written back whole: `pointDeductions` is in
+`TOURNAMENT_PATCH_FORBIDDEN`, `POST`/`DELETE
+/admin/tournaments/:id/point-deductions[/:deductionId]` append and remove one at
+a time, and the create validates the field it can still arrive carrying
+(`assertDeductionsInBody`) — a validation that runs on the update and not on the
+create has not been done. The append and the removal each write under the
+condition that made their branch the right one, the cap is `size(#deductions) <
+:max` in the condition rather than a check against the read, and the re-read
+after a failed condition is consistent: an eventually consistent one hands back
+the same stale answer three times and turns a full list into a silent no-op. The
+removal returns the element it deleted, because once it is gone the audit line
+is the only thing left that names the club, the points and the reason.
+
+Still open: a club removed from a season keeps its deductions in the record.
+Nothing shows them — every display filters by the clubs in the table — but
+entering that club again brings the old punishment back.
+
 Still open, and named rather than quietly fixed: `sortTeamsByStandings` in
 `schedule.ts` is a second answer to "who is first". It sorts for playoff seeding
 and has its own order (points, goal difference, goals scored, head-to-head,

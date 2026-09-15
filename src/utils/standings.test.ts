@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Match, Tournament } from '../types'
-import { leagueTable, pointsFor, tableRules } from './standings'
+import { deductedFrom, leagueTable, pointsFor, tableRules } from './standings'
 
 /**
  * The table's rules belong to the season, and the first thing these tests have
@@ -209,6 +209,97 @@ describe('a season that carries its own rules', () => {
       const table = leagueTable(season(['b', 'a'], matches, newRules()))
       expect(table.map((row) => row.id)).toEqual(['b', 'a'])
     })
+  })
+})
+
+describe('a points deduction', () => {
+  const punished = (teamIds: string[], matches: Match[], deductions: unknown[]): Tournament =>
+    ({ ...season(teamIds, matches), pointDeductions: deductions }) as Tournament
+
+  it('comes off the total and moves the club down the table', () => {
+    const matches = [played('m1', 'a', 'b', 1, 0), played('m2', 'a', 'b', 1, 0)]
+    const clean = leagueTable(season(['a', 'b'], matches))
+    expect(clean.map((row) => row.id)).toEqual(['a', 'b'])
+
+    const table = leagueTable(
+      punished(['a', 'b'], matches, [
+        { id: 'd1', teamId: 'a', points: 7, reason: 'Ineligible player', createdAtISO: '2026-01-01' },
+      ]),
+    )
+    expect(table[0]).toMatchObject({ id: 'b', pts: 0, deducted: 0 })
+    expect(table[1]).toMatchObject({ id: 'a', pts: -1, deducted: 7 })
+    // The goal difference is what the pitch left it: the punishment is points.
+    expect(table[1].gf - table[1].ga).toBe(2)
+  })
+
+  it('leaves everything the matches decided alone', () => {
+    const matches = [played('m1', 'a', 'b', 3, 0)]
+    const row = leagueTable(
+      punished(['a', 'b'], matches, [
+        { id: 'd1', teamId: 'a', points: 1, reason: 'Late teamsheet', createdAtISO: '2026-01-01' },
+      ]),
+    ).find((candidate) => candidate.id === 'a')
+    expect(row).toMatchObject({ p: 1, w: 1, gf: 3, ga: 0, pts: 2, deducted: 1 })
+  })
+
+  it('can take a club below zero', () => {
+    const table = leagueTable(
+      punished(['a', 'b'], [played('m1', 'a', 'b', 0, 1)], [
+        { id: 'd1', teamId: 'a', points: 3, reason: 'Walkover', createdAtISO: '2026-01-01' },
+      ]),
+    )
+    expect(table[1]).toMatchObject({ id: 'a', pts: -3 })
+  })
+
+  it('adds up where a club has been punished twice', () => {
+    const tournament = punished(['a', 'b'], [], [
+      { id: 'd1', teamId: 'a', points: 3, reason: 'One', createdAtISO: '2026-01-01' },
+      { id: 'd2', teamId: 'a', points: 2, reason: 'Two', createdAtISO: '2026-01-02' },
+    ])
+    expect(deductedFrom(tournament, 'a')).toBe(5)
+    expect(leagueTable(tournament).find((row) => row.id === 'a')).toMatchObject({ pts: -5 })
+  })
+
+  it('is not counted a second time in the head-to-head', () => {
+    // A beat B twice and was then docked exactly what those wins were worth, so
+    // the two are level and head-to-head is what has to separate them. It is
+    // re-tallied from the matches among them alone: A won both, so A stays
+    // above. Subtracting the punishment there too would put A six points behind
+    // in the mini-table and rank B first on the strength of one punishment
+    // counted twice.
+    const matches = [played('m1', 'a', 'b', 1, 0), played('m2', 'b', 'a', 0, 1)]
+    const tournament = {
+      ...punished(['a', 'b'], matches, [
+        { id: 'd1', teamId: 'a', points: 6, reason: 'Ineligible player', createdAtISO: '2026-01-01' },
+      ]),
+      format: { rounds: 1, mode: 'league', tiebreakers: ['headToHead'] },
+    } as unknown as Tournament
+    const table = leagueTable(tournament)
+    expect(table.map((row) => row.pts)).toEqual([0, 0])
+    expect(table.map((row) => row.id)).toEqual(['a', 'b'])
+  })
+
+  it('is ignored when the record holds something that is not one', () => {
+    const matches = [played('m1', 'a', 'b', 1, 0)]
+    const table = leagueTable(
+      punished(['a', 'b'], matches, [
+        'nonsense',
+        null,
+        { id: 'd1', teamId: 'a', points: -3, reason: 'A bonus by another name' },
+        { id: 'd2', teamId: 'a', points: 'three', reason: 'Not a number' },
+      ]),
+    )
+    expect(table[0]).toMatchObject({ id: 'a', pts: 3, deducted: 0 })
+  })
+
+  it('reaches the points a club page prints for the season', () => {
+    const matches = [played('m1', 'a', 'b', 1, 0)]
+    const tournament = punished(['a', 'b'], matches, [
+      { id: 'd1', teamId: 'a', points: 1, reason: 'Late teamsheet', createdAtISO: '2026-01-01' },
+    ])
+    expect(
+      pointsFor('a', matches, tableRules(tournament), deductedFrom(tournament, 'a')),
+    ).toBe(2)
   })
 })
 

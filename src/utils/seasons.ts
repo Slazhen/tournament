@@ -2,6 +2,7 @@ import type { Tournament, Match } from '../types'
 import type { TournamentSummary } from '../lib/data'
 import { getAdminTournamentUrl, slugify, type SluggableTournament } from './urls'
 import { calculateTeamStandings, sortTeamsByStandings } from './schedule'
+import { afterDeductions } from './standings'
 
 /**
  * Seasons.
@@ -124,7 +125,10 @@ export function championOf(tournament: Tournament): string | undefined {
   const table = (tournament.teamIds || []).map((teamId) =>
     calculateTeamStandings(league.length > 0 ? league : matches, teamId),
   )
-  return sortTeamsByStandings(table)[0]?.teamId
+  // Less whatever the organiser has docked, or this names a champion the table
+  // printed underneath it shows in second place — which is the one thing a
+  // deduction must never leave standing.
+  return sortTeamsByStandings(afterDeductions(tournament, table))[0]?.teamId
 }
 
 /** The last match with a result, by kick-off and then by round. */

@@ -48,6 +48,11 @@ import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivor
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, getSeasonUrl, publicSeasonUrl } from '../utils/seasons'
 import { cdnUrl } from '../utils/images'
+import PointDeductionsEditor, {
+  DeductionMark,
+  DeductionNote,
+  deductionsInTable,
+} from '../components/PointDeductions'
 
 /**
  * Which round a click was aimed at, sent with the write.
@@ -1200,6 +1205,7 @@ export default function TournamentPage() {
                                     {tier.mark === 'advance' ? 'Qualified' : TIER_LABEL[tier.mark]}
                                   </span>
                                 )}
+                                <DeductionMark points={row.deducted} />
                               </td>
                               <td className="py-2 pr-2 text-center">{row.p}</td>
                               <td className="py-2 pr-2 text-center">{row.w}</td>
@@ -1214,10 +1220,15 @@ export default function TournamentPage() {
                       </tbody>
                     </table>
                   </div>
+                  <DeductionNote
+                    deductions={deductionsInTable(tournament, groupTable.map((row: any) => row.id))}
+                    nameOf={(id) => teams.find((team) => team.id === id)?.name ?? id}
+                  />
                 </div>
               )
             })}
           </div>
+          <PointDeductionsEditor tournament={tournament} teams={teams} />
         </section>
       ) : null}
       
@@ -1470,6 +1481,7 @@ export default function TournamentPage() {
                                 Qualified
                               </span>
                             )}
+                            <DeductionMark points={row.deducted} />
                           </td>
                     <td className="py-2 pr-3">{row.p}</td>
                     <td className="py-2 pr-3">{row.w}</td>
@@ -1484,6 +1496,11 @@ export default function TournamentPage() {
               </tbody>
             </table>
           </div>
+          <DeductionNote
+            deductions={deductionsInTable(tournament, table.map((row) => row.id))}
+            nameOf={(id) => teams.find((team) => team.id === id)?.name ?? id}
+          />
+          <PointDeductionsEditor tournament={tournament} teams={teams} />
         </section>
       )}
 

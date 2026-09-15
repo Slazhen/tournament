@@ -15,6 +15,7 @@ import { generateId } from './lib/passwords.js'
 import { badRequest, notFound } from './lib/http.js'
 import { locateMatch, type MatchLocation } from './lib/matches.js'
 import type { MatchExpectation } from './lib/goals.js'
+import { MAX_DEDUCTIONS } from './lib/deductions.js'
 import type { Organizer, Team, Tournament } from './lib/types.js'
 
 /* ------------------------------------------------------------------ *
@@ -735,6 +736,140 @@ export const tournaments = {
     // Three writers moved the list under this one. Answering true would leave
     // the screen saying a round is published while it is still held back.
     return false
+  },
+
+  /**
+   * One point deduction, appended.
+   *
+   * `pointDeductions` is a list and is never written back whole, for the same
+   * reason `hiddenRounds` is not: an organiser with the season open in two tabs
+   * would drop whichever punishment the other tab had just entered. It is
+   * appended under a condition on the record existing, and removed by an index
+   * whose id is checked in the same request.
+   */
+  async addPointDeduction(
+    tournamentId: string,
+    deduction: Record<string, unknown>,
+  ): Promise<void> {
+    let stored = ((await this.getOrThrow(tournamentId)) as { pointDeductions?: unknown })
+      .pointDeductions
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // `POST /admin/tournaments` passes its body through, so anything at all
+      // can be sitting under this key — and `list_append` onto a value that is
+      // not a list is a ValidationException, which reaches the screen as a 500
+      // with nothing in it to explain why the button stopped working. Which
+      // branch is taken is decided from a read, so each is written under the
+      // condition that made it the right one: without that, two organisers
+      // saving at once over a record holding something that is not a list would
+      // each replace the other's punishment with no trace of either.
+      const appendable = stored === undefined || Array.isArray(stored)
+
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.TOURNAMENTS,
+            Key: { id: tournamentId },
+            UpdateExpression: appendable
+              ? 'SET #deductions = list_append(if_not_exists(#deductions, :none), :one)'
+              : 'SET #deductions = :one',
+            // The cap is a condition rather than a check against the read: two
+            // organisers appending at once both pass a check made at 49.
+            ConditionExpression: appendable
+              ? 'attribute_exists(id) AND (attribute_not_exists(#deductions) OR (attribute_type(#deductions, :list) AND size(#deductions) < :max))'
+              : 'attribute_exists(id) AND NOT attribute_type(#deductions, :list)',
+            ExpressionAttributeNames: { '#deductions': 'pointDeductions' },
+            ExpressionAttributeValues: appendable
+              ? { ':none': [], ':one': [deduction], ':list': 'L', ':max': MAX_DEDUCTIONS }
+              : { ':one': [deduction], ':list': 'L' },
+          }),
+        )
+        invalidate('tournaments:')
+        return
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+
+        // Either the season is gone, the list is full, or somebody else changed
+        // its shape under this write. A consistent read is what tells the three
+        // apart — an eventually consistent one can hand back the same stale
+        // answer three times and turn a full list into a silent no-op.
+        const current = await this.readConsistently(tournamentId)
+        if (!current) throw notFound('Tournament not found')
+        stored = (current as { pointDeductions?: unknown }).pointDeductions
+        if (Array.isArray(stored) && stored.length >= MAX_DEDUCTIONS) {
+          throw badRequest('That is as many deductions as one season can hold')
+        }
+      }
+    }
+
+    throw badRequest('Somebody else is editing this competition. Try that again.')
+  },
+
+  /**
+   * One tournament, read straight from the leader.
+   *
+   * `get` is eventually consistent, which is right for every ordinary read and
+   * wrong for the re-read after a conditional write has failed: the whole point
+   * of that read is to find out what the record actually holds now, and a stale
+   * answer sends the retry into the same failure.
+   */
+  async readConsistently(id: string): Promise<Tournament | null> {
+    const result = await ddb.send(
+      new GetCommand({ TableName: TABLES.TOURNAMENTS, Key: { id }, ConsistentRead: true }),
+    )
+    return (result.Item as Tournament | undefined) ?? null
+  },
+
+  /**
+   * One point deduction, removed by the place it sits in.
+   *
+   * An index is not an identity: a deduction removed in another tab shifts
+   * every one after it up by one. So the id is checked at that index in the
+   * same request, and a mismatch means the list moved and the caller is told
+   * to look again rather than having somebody else's punishment deleted.
+   */
+  async removePointDeduction(
+    tournamentId: string,
+    deductionId: string,
+  ): Promise<Record<string, unknown> | null> {
+    let current: Tournament | null = await this.getOrThrow(tournamentId)
+
+    for (let attempt = 0; attempt < 3 && current; attempt++) {
+      const stored = (current as { pointDeductions?: unknown }).pointDeductions
+      const list = Array.isArray(stored) ? stored : []
+      const index = list.findIndex(
+        (entry) =>
+          Boolean(entry) &&
+          typeof entry === 'object' &&
+          (entry as { id?: unknown }).id === deductionId,
+      )
+      if (index === -1) return null
+      // Handed back so that the audit line can say which punishment was lifted:
+      // once the element is gone there is nothing left anywhere that names the
+      // club, the points or the reason.
+      const removed = list[index] as Record<string, unknown>
+
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.TOURNAMENTS,
+            Key: { id: tournamentId },
+            UpdateExpression: `REMOVE #deductions[${index}]`,
+            ConditionExpression: `#deductions[${index}].#id = :deductionId`,
+            ExpressionAttributeNames: { '#deductions': 'pointDeductions', '#id': 'id' },
+            ExpressionAttributeValues: { ':deductionId': deductionId },
+          }),
+        )
+        invalidate('tournaments:')
+        return removed
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+        current = await this.readConsistently(tournamentId)
+      }
+    }
+
+    // Three writers moved the list under this one.
+    return null
   },
 
   /**

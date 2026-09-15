@@ -1,5 +1,5 @@
 import { api, isSignedIn } from './api'
-import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate, CustomPlayoffRoundConfig } from '../types'
+import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate, CustomPlayoffRoundConfig, PointDeduction } from '../types'
 
 /**
  * Data access for the whole app.
@@ -448,6 +448,31 @@ export const tournamentService = {
     return api.put(
       `/admin/tournaments/${encodeURIComponent(tournamentId)}/rounds/${round}/visibility`,
       { hidden },
+    )
+  },
+
+  /**
+   * A punishment in points, entered against one club.
+   *
+   * Not part of `update` for the two reasons a list never is here: the PATCH
+   * writes the attribute whole from this page's copy, and what it would
+   * overwrite is a punishment somebody else has just entered or lifted. The API
+   * appends and removes one at a time, and refuses the field on the tournament
+   * PATCH.
+   */
+  async addPointDeduction(
+    tournamentId: string,
+    deduction: { teamId: string; points: number; reason: string },
+  ): Promise<PointDeduction> {
+    return api.post<PointDeduction>(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/point-deductions`,
+      deduction,
+    )
+  },
+
+  async removePointDeduction(tournamentId: string, deductionId: string): Promise<void> {
+    await api.delete(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/point-deductions/${encodeURIComponent(deductionId)}`,
     )
   },
 

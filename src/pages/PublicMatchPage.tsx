@@ -17,6 +17,7 @@ import {
 import { publicTeamUrl } from '../utils/teams'
 import { numberInMatch } from '../utils/players'
 import { tableForMatch } from '../utils/standings'
+import { DeductionMark } from '../components/PointDeductions'
 import type { Tournament, Team, Match, Organizer, Player } from '../types'
 import { getSeasonUrl, seasonLabel, seriesName } from '../utils/seasons'
 import { formatMatchDateTime, kickOffClock, matchDay } from '../utils/datetime'
@@ -1031,6 +1032,7 @@ function TablePanel({
                       ) : (
                         <span className="truncate text-gray-400">Unknown team</span>
                       )}
+                      <DeductionMark points={row.deducted} className="shrink-0" />
                     </div>
                   </td>
                   <td className="text-center px-1.5 tabular-nums">{row.p}</td>

@@ -12,6 +12,7 @@ import type { Entry, TournamentSummary } from '../lib/data'
 import type { Organizer, Player, Team, Tournament, Match } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { calculateTeamStandings, sortTeamsByStandings } from '../utils/schedule'
+import { afterDeductions } from '../utils/standings'
 import { seasonLabel, seasonMatches, seriesName } from '../utils/seasons'
 import {
   activeSquad,
@@ -2289,7 +2290,12 @@ function positionIn(tournament: Tournament, teamId: string) {
   if (!ids.includes(teamId)) return null
 
   const matches = seasonMatches(tournament)
-  const table = sortTeamsByStandings(ids.map((id) => calculateTeamStandings(matches, id)))
+  // Points the organiser has docked come off before the rows are ordered: this
+  // is the club's own position and the banner that calls it top of the table,
+  // and both have to say what the competition's table says.
+  const table = sortTeamsByStandings(
+    afterDeductions(tournament, ids.map((id) => calculateTeamStandings(matches, id))),
+  )
   const index = table.findIndex((row) => row.teamId === teamId)
   if (index === -1) return null
 

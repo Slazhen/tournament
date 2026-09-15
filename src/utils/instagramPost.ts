@@ -70,7 +70,18 @@ export type PostClub = {
   color: string
 }
 
-export type TablePost = PostChrome & { rows: PostRow[] }
+export type TablePost = PostChrome & {
+  rows: PostRow[]
+  /**
+   * The line under the table: points an organiser has deducted, and why.
+   *
+   * A poster leaves this application and cannot be checked against anything, so
+   * a total that does not add up to the results has to say so on the picture
+   * itself. One line, cut where it will not fit — the page it was made from
+   * carries every punishment in full.
+   */
+  footnote?: string
+}
 
 /** One fixture on the poster of a round, played or still to be played. */
 export type PostFixture = {
@@ -537,7 +548,12 @@ export async function renderTablePost(post: TablePost): Promise<Blob> {
   const panelX = MARGIN
   const panelW = WIDTH - MARGIN * 2
   const areaTop = sheet.top
-  const area = sheet.height
+  // The footnote is taken out of the table's own room rather than drawn over
+  // the poster's foot: a line of type under the last row is what makes a total
+  // that does not add up readable, and a table one row shorter is a cheaper
+  // price than a line nobody can read.
+  const footnoteRoom = post.footnote ? 56 : 0
+  const area = sheet.height - footnoteRoom
   // Room for the top padding, the column labels and the rule under them.
   const labels = 96
   const padding = 24
@@ -646,6 +662,13 @@ export async function renderTablePost(post: TablePost): Promise<Blob> {
   })
 
   ctx.restore()
+
+  if (post.footnote) {
+    ctx.textAlign = 'center'
+    ctx.font = font(24, 500)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.62)'
+    ctx.fillText(fit(ctx, post.footnote, panelW - 24), WIDTH / 2, panelY + panelH + 38)
+  }
 
   return finishPost(sheet)
 }

@@ -11,7 +11,7 @@ import {
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { allMatches, isPlayed, recordOf } from '../utils/matches'
-import { pointsFor, tableRules } from '../utils/standings'
+import { deductedFrom, pointsFor, tableRules } from '../utils/standings'
 import { formatOptionFor } from '../utils/formats'
 import { cdnUrl } from '../utils/images'
 
@@ -341,8 +341,15 @@ export default function PublicPlayerPage() {
                               )
                               if (completedMatches.length === 0) return 'No games played'
                               
-                              // Counted by this season's own rules, the same ones its table uses.
-                              const points = pointsFor(currentTeam.id, completedMatches, tableRules(tournament))
+                              // Counted by this season's own rules, the same ones its
+                              // table uses — the punishments it has handed down included,
+                              // or this line and the table would print two numbers.
+                              const points = pointsFor(
+                                currentTeam.id,
+                                completedMatches,
+                                tableRules(tournament),
+                                deductedFrom(tournament, currentTeam.id),
+                              )
                               
                               return `${points} pts`
                             })()}
