@@ -194,6 +194,13 @@ export default function TournamentSettingsPage() {
         : undefined,
     groupsWithDivisionsConfig:
       selectedFormat.mode === 'groups_with_divisions' ? groupsConfig : undefined,
+    // The table's rules are the season's and have nothing to do with which
+    // scheme it is played by. The whole `format` object is replaced on save, so
+    // a change of scheme that did not carry these would silently put the season
+    // back on the defaults of September 2026 — three points, every playoff
+    // match counted, no head-to-head.
+    scoring: tournament.format?.scoring,
+    tiebreakers: tournament.format?.tiebreakers,
   }
 
   const formatPlan = planFormatChange(tournament, nextFormat)

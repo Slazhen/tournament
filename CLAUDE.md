@@ -164,6 +164,33 @@ leader resting on an odd count and the bottom pair playing to go out. When
 touching playoff config, carry `format.customPlayoffConfig.preset` through every
 rebuild of that object, or editing a round silently reverts the format.
 
+**A scheme is not a setting, and the create screen asks them in that order.**
+`SCHEMES` is three: a league, groups and finals, and a straight knockout. Legs,
+what happens after the league, how many clubs the finals take and how the groups
+are cut are all settings *about* the scheme already chosen, and `formatFor` is
+the one place that turns a scheme and its settings into a stored `format`.
+
+`FORMAT_OPTIONS` was the whole of that question before, as eight cards on one
+screen — "League" and "League, home and away" are one scheme with the legs
+changed, and three more cards were the same league again with a different
+finish. Eight combinations offered before a single club has been picked is not a
+decision anybody can make, and the settings for whichever card was chosen sat
+three sections further down, under the logo, the clubs and the schedule, in two
+coloured boxes that looked like nothing else in the application.
+
+`mode` is untouched by all of this. The screen is a way of choosing one, not a
+new way of storing it, so every season in the database reads exactly as it did
+and `schemeOf` is the way back — which of the three a stored format is, and how
+it finishes. `FORMAT_OPTIONS` stays for now because it is what names a stored
+format in the Format column of the club and player pages, and what the settings
+screen still picks from; that screen is the next one to move.
+
+`swiss_elimination` is off the create screen. Its generator never was a Swiss
+system: it played a round robin and then built a bracket from the order the
+clubs were entered rather than from the table, with a placeholder comment saying
+so, and an odd count put a club up against itself. No season in production uses
+it.
+
 **A grouped season runs one, two or three playoff brackets, and they are named
 after the medals.** `groups_with_divisions` took the top two of every group into
 "Division 1" and the next two into "Division 2", written separately into the

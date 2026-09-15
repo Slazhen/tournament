@@ -337,6 +337,22 @@ export function IconArrowRight(props: IconProps) {
   )
 }
 
+export function IconArrowUp(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 19V5M6 11l6-6 6 6" />
+    </Svg>
+  )
+}
+
+export function IconArrowDown(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 5v14M6 13l6 6 6-6" />
+    </Svg>
+  )
+}
+
 export function IconPencil(props: IconProps) {
   return (
     <Svg {...props}>

@@ -1,5 +1,11 @@
 import type { Tournament } from '../types'
-import { playoffTiers } from './standings'
+import {
+  playoffTiers,
+  DEFAULT_SCORING,
+  DEFAULT_TIEBREAKERS,
+  type PlayoffScoring,
+  type TiebreakerKey,
+} from './standings'
 
 /** Which drawing goes on the card. Emoji rendered differently on every device. */
 export type FormatIconName =
@@ -144,6 +150,197 @@ export const FORMAT_OPTIONS: FormatOption[] = [
     hasSettings: true,
   },
 ]
+
+/**
+ * The choice a competition actually starts from.
+ *
+ * There are three of these and there were eight cards, because the old list put
+ * a setting on the same footing as a scheme: "League" and "League, home and
+ * away" are one scheme with the number of legs changed, and "League +
+ * playoffs", "League + custom playoffs" and the week-by-week system are the
+ * same scheme again with a different finish. An organiser reading eight cards
+ * before they have picked a single club is reading a list of combinations, not
+ * making a decision.
+ *
+ * So the first screen asks which of these it is, and everything else — legs,
+ * finals, how many go through, how the groups are cut — is asked afterwards,
+ * about the one they chose.
+ */
+export type SchemeId = 'league' | 'groups' | 'knockout'
+
+export type Scheme = {
+  id: SchemeId
+  title: string
+  tagline: string
+  icon: FormatIconName
+  /** Two or three plain statements about how it plays out. */
+  points: string[]
+  minTeams: number
+}
+
+export const SCHEMES: Scheme[] = [
+  {
+    id: 'league',
+    title: 'League',
+    tagline: 'Everyone plays everyone, one table',
+    icon: 'table',
+    points: [
+      'One round or several, home and away if you want',
+      'Finish on the table, or add finals for the best of it',
+    ],
+    minTeams: 2,
+  },
+  {
+    id: 'groups',
+    title: 'Groups and finals',
+    tagline: 'Group stage first, then the knockout',
+    icon: 'groups',
+    points: ['Clubs split into groups with a table each', 'The top of every group goes through'],
+    minTeams: 4,
+  },
+  {
+    id: 'knockout',
+    title: 'Straight knockout',
+    tagline: 'Lose once and you are out',
+    icon: 'bracket',
+    points: ['Seeded by the order you pick the clubs', 'Odd numbers get byes in the first round'],
+    minTeams: 2,
+  },
+]
+
+/** How a league ends. The order is how much structure each one adds. */
+export type LeagueFinals = 'none' | 'playoff' | 'custom' | 'progressive'
+
+export const LEAGUE_FINALS: Array<{ id: LeagueFinals; title: string; detail: string }> = [
+  {
+    id: 'none',
+    title: 'Nothing — the table decides',
+    detail: 'The club on top when the last round is played wins it.',
+  },
+  {
+    id: 'playoff',
+    title: 'Playoffs for the top clubs',
+    detail: 'A knockout bracket, drawn from the table once the league is complete.',
+  },
+  {
+    id: 'custom',
+    title: 'Rounds I build myself',
+    detail: 'Each round of the finals is set up by hand on the season screen.',
+  },
+  {
+    id: 'progressive',
+    title: 'One club out a week',
+    detail:
+      'Everyone keeps playing: the survivors are paired by table position each week and the bottom pair plays to stay in.',
+  },
+]
+
+export type SchemeSettings = {
+  /** League: how many times everyone plays everyone. */
+  legs: number
+  finals: LeagueFinals
+  /** How many clubs the finals take, where the finals take a number of them. */
+  qualifiers: number
+  groups: GroupsPlanInput
+  scoring: { win: number; draw: number; loss: number }
+  tiebreakers: TiebreakerKey[]
+}
+
+export const defaultSchemeSettings = (): SchemeSettings => ({
+  legs: 1,
+  finals: 'none',
+  qualifiers: 4,
+  groups: {
+    numberOfGroups: 4,
+    teamsPerGroup: 4,
+    groupRounds: 1,
+    qualifiersPerGroup: 2,
+    secondDivisionPerGroup: 2,
+    thirdDivisionPerGroup: 0,
+  },
+  scoring: { win: DEFAULT_SCORING.win, draw: DEFAULT_SCORING.draw, loss: DEFAULT_SCORING.loss },
+  tiebreakers: [...DEFAULT_TIEBREAKERS],
+})
+
+/**
+ * Which playoff matches give points, for the scheme being created.
+ *
+ * Only the hand-built schemes have finals that are not all knockouts: a round
+ * the organiser marks as a league round counts, and the ones that send a club
+ * out do not. Everywhere else the finals decide who wins and the table is the
+ * league that led to them.
+ */
+const playoffScoringFor = (scheme: SchemeId, finals: LeagueFinals): PlayoffScoring =>
+  scheme === 'league' && (finals === 'custom' || finals === 'progressive')
+    ? 'non_elimination'
+    : 'none'
+
+/**
+ * The record a scheme and its settings add up to.
+ *
+ * `mode` is unchanged from what it has always been — the screen is a way of
+ * choosing one, not a new way of storing it, and every season in the database
+ * goes on reading exactly as it did.
+ */
+export function formatFor(
+  scheme: SchemeId,
+  settings: SchemeSettings,
+  teamCount: number,
+): NonNullable<Tournament['format']> {
+  const rules = {
+    scoring: { ...settings.scoring, playoffMatches: playoffScoringFor(scheme, settings.finals) },
+    tiebreakers: [...settings.tiebreakers],
+  }
+
+  if (scheme === 'knockout') return { rounds: 1, mode: 'knockout', ...rules }
+
+  if (scheme === 'groups') {
+    return {
+      rounds: 1,
+      mode: 'groups_with_divisions',
+      groupsWithDivisionsConfig: { ...settings.groups },
+      ...rules,
+    }
+  }
+
+  const legs = Math.max(1, settings.legs)
+
+  if (settings.finals === 'playoff') {
+    return { rounds: legs, mode: 'league_playoff', playoffQualifiers: settings.qualifiers, ...rules }
+  }
+
+  if (settings.finals === 'custom' || settings.finals === 'progressive') {
+    return {
+      rounds: legs,
+      mode: 'league_custom_playoff',
+      customPlayoffConfig: {
+        // The week-by-week system starts with everybody, so the number of clubs
+        // it takes is not a choice the organiser makes.
+        playoffTeams: settings.finals === 'progressive' ? teamCount : settings.qualifiers,
+        enableBye: true,
+        playoffRounds: [],
+        preset: settings.finals === 'progressive' ? 'progressive_elimination' : undefined,
+      },
+      ...rules,
+    }
+  }
+
+  return { rounds: legs, mode: 'league', ...rules }
+}
+
+/** Which of the three schemes a stored format is, for a season being edited or copied. */
+export function schemeOf(format?: Tournament['format']): { scheme: SchemeId; finals: LeagueFinals } {
+  if (format?.mode === 'knockout') return { scheme: 'knockout', finals: 'none' }
+  if (format?.mode === 'groups_with_divisions') return { scheme: 'groups', finals: 'none' }
+  if (format?.customPlayoffConfig?.preset === 'progressive_elimination') {
+    return { scheme: 'league', finals: 'progressive' }
+  }
+  if (format?.mode === 'league_custom_playoff') return { scheme: 'league', finals: 'custom' }
+  if (format?.mode === 'league_playoff') return { scheme: 'league', finals: 'playoff' }
+  // `swiss_elimination` lands here too: it is off the create screen, and a
+  // season carrying it reads as the league it actually generated.
+  return { scheme: 'league', finals: 'none' }
+}
 
 export const findFormat = (id: string): FormatOption =>
   FORMAT_OPTIONS.find((option) => option.id === id) ?? FORMAT_OPTIONS[0]
@@ -291,4 +488,36 @@ export function planSchedule(
     rounds: null,
     summary: 'The fixture list depends on the settings below',
   }
+}
+
+/** Which card of the old list a scheme and its finish correspond to. */
+const OPTION_FOR_SCHEME: Record<string, string> = {
+  'league:none': 'league_single',
+  'league:playoff': 'league_playoff',
+  'league:custom': 'league_custom_playoff',
+  'league:progressive': 'progressive_elimination',
+  'groups:none': 'groups_with_divisions',
+  'knockout:none': 'knockout',
+}
+
+/**
+ * What the scheme on screen will produce, before anything is written.
+ *
+ * The legs are handed over separately because they are a setting now and no
+ * longer a card: the option this finds carries the number its own card was
+ * fixed at, and a three-leg league would otherwise be counted as one.
+ */
+export function planFor(
+  scheme: SchemeId,
+  settings: SchemeSettings,
+  teamCount: number,
+): SchedulePlan {
+  const finals = scheme === 'league' ? settings.finals : 'none'
+  const option = findFormat(OPTION_FOR_SCHEME[`${scheme}:${finals}`] ?? 'league_single')
+  return planSchedule(
+    { ...option, rounds: scheme === 'league' ? Math.max(1, settings.legs) : option.rounds },
+    teamCount,
+    settings.qualifiers,
+    settings.groups,
+  )
 }
