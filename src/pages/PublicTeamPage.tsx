@@ -16,6 +16,7 @@ import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
 import LastAndNextMatch from '../components/LastAndNextMatch'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
+import { pointsFor, tableRules } from '../utils/standings'
 import { activeSquad, hasSquadEntry, isArchived, squadInTournament } from '../utils/squads'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { formatOptionFor } from '../utils/formats'
@@ -677,17 +678,8 @@ export default function PublicTeamPage() {
                               )
                               if (completedMatches.length === 0) return 'No games played'
                               
-                              // Calculate points
-                              let points = 0
-                              completedMatches.forEach(match => {
-                                const isHome = match.homeTeamId === team.id
-                                const teamGoals = isHome ? match.homeGoals : match.awayGoals
-                                const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (typeof teamGoals === 'number' && typeof opponentGoals === 'number') {
-                                  if (teamGoals > opponentGoals) points += 3
-                                  else if (teamGoals === opponentGoals) points += 1
-                                }
-                              })
+                              // Counted by this season's own rules, the same ones its table uses.
+                              const points = pointsFor(team.id, completedMatches, tableRules(tournament))
                               
                               return `${points} pts`
                             })()}
@@ -717,17 +709,8 @@ export default function PublicTeamPage() {
                         )
                         if (completedMatches.length === 0) return <span className="text-sm opacity-70">No games</span>
                         
-                        // Calculate points
-                        let points = 0
-                        completedMatches.forEach(match => {
-                          const isHome = match.homeTeamId === team.id
-                          const teamGoals = isHome ? match.homeGoals : match.awayGoals
-                          const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                          if (typeof teamGoals === 'number' && typeof opponentGoals === 'number') {
-                            if (teamGoals > opponentGoals) points += 3
-                            else if (teamGoals === opponentGoals) points += 1
-                          }
-                        })
+                        // Counted by this season's own rules, the same ones its table uses.
+                        const points = pointsFor(team.id, completedMatches, tableRules(tournament))
                         
                         return <span className="font-semibold text-green-400">{points} pts</span>
                       })()}

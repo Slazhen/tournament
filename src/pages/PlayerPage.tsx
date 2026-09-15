@@ -16,6 +16,7 @@ import {
   IconGlobe,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
+import { pointsFor, tableRules } from '../utils/standings'
 
 export default function PlayerPage() {
   const { playerId } = useParams()
@@ -529,17 +530,8 @@ export default function PlayerPage() {
                               )
                               if (completedMatches.length === 0) return 'No games played'
                               
-                              // Calculate points
-                              let points = 0
-                              completedMatches.forEach(match => {
-                                const isHome = match.homeTeamId === currentTeam.id
-                                const teamGoals = isHome ? match.homeGoals : match.awayGoals
-                                const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (teamGoals != null && opponentGoals != null) {
-                                  if (teamGoals > opponentGoals) points += 3
-                                  else if (teamGoals === opponentGoals) points += 1
-                                }
-                              })
+                              // Counted by this season's own rules, the same ones its table uses.
+                              const points = pointsFor(currentTeam.id, completedMatches, tableRules(tournament))
                               
                               return `${points} pts`
                             })()}

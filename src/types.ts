@@ -429,6 +429,25 @@ export type Tournament = {
       secondDivisionPerGroup?: number
       thirdDivisionPerGroup?: number
     }
+    /**
+     * How this season's table is worked out. Both fields belong to the season
+     * and not to the application: absent means what this application did in
+     * September 2026 — three points for a win, every playoff match counted,
+     * and the table separated by goal difference and then goals scored. A
+     * default changed later must not move a table already published, so no
+     * season is ever migrated into carrying these.
+     *
+     * `utils/standings.ts` is the one place that reads either of them.
+     */
+    scoring?: {
+      win: number
+      draw: number
+      loss: number
+      /** Which matches of the finals give points at all. */
+      playoffMatches: 'all' | 'non_elimination' | 'none'
+    }
+    /** What separates two clubs level on points, in order. Points are never in the list. */
+    tiebreakers?: Array<'headToHead' | 'goalDifference' | 'goalsFor' | 'wins'>
   }
   /**
    * Seasons.

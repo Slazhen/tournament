@@ -11,6 +11,7 @@ import {
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import { allMatches, isPlayed, recordOf } from '../utils/matches'
+import { pointsFor, tableRules } from '../utils/standings'
 import { formatOptionFor } from '../utils/formats'
 import { cdnUrl } from '../utils/images'
 
@@ -340,17 +341,8 @@ export default function PublicPlayerPage() {
                               )
                               if (completedMatches.length === 0) return 'No games played'
                               
-                              // Calculate points
-                              let points = 0
-                              completedMatches.forEach(match => {
-                                const isHome = match.homeTeamId === currentTeam.id
-                                const teamGoals = isHome ? match.homeGoals : match.awayGoals
-                                const opponentGoals = isHome ? match.awayGoals : match.homeGoals
-                                if (typeof teamGoals === 'number' && typeof opponentGoals === 'number') {
-                                  if (teamGoals > opponentGoals) points += 3
-                                  else if (teamGoals === opponentGoals) points += 1
-                                }
-                              })
+                              // Counted by this season's own rules, the same ones its table uses.
+                              const points = pointsFor(currentTeam.id, completedMatches, tableRules(tournament))
                               
                               return `${points} pts`
                             })()}

@@ -965,6 +965,55 @@ page's view of it: the group a fixture belongs to where there is one, nothing at
 all for a straight knockout, where every club has played the same single game
 and the bracket is the standing.
 
+"One place" was aspirational for a long time. The organiser's own season page
+worked the table out itself — three copies of "three points for a win" inside
+`TournamentPage.tsx` — and four more places counted a club's points for a season
+beside its name on the club and player pages. Seven answers to one question, and
+they did not agree: the admin table counted a bye as a played game, and a season
+could not be given rules of its own while each of the seven had its own copy of
+them. All seven read `standings.ts` now.
+
+**The rules of the table belong to the season, not to the application.**
+`format.scoring` and `format.tiebreakers` are that: what a win is worth, whether
+the finals give points at all, and what separates two clubs level. **Absence is
+itself a rule.** A season carrying neither — which is every season in the
+database before this — is worked out exactly as this application worked it out in
+September 2026: three points for a win, one for a draw, every playoff match
+counted, and the table separated by goal difference and then by goals scored.
+`tableRules` is the one place that answers it and the only place the legacy
+values are written down.
+
+That is not a transition to be finished later. A published table is a record
+people have already read, and a default changed here must never move one. So
+nothing is migrated into carrying these fields, the create screen writes them
+into the seasons it creates, and an old season takes new rules only when its
+organiser opens the settings and chooses them. Two rules therefore run in
+production at once, deliberately: the Homebush season keeps giving points for the
+knockout rounds of its progressive scheme until it ends, and a season created
+after this does not.
+
+`format` is one of the few things the API passes through whole, so `tableRules`
+reads both fields defensively and falls back to the legacy answer for anything it
+cannot read — a `win` that is not a number, a tiebreaker nobody has heard of.
+
+Two details in the ordering are worth knowing. Head-to-head is not a comparison
+between two rows: the clubs level on points are re-tallied over the matches among
+themselves alone, and the mini-table splits them — which is the only shape that
+answers the question for three clubs or five. And clubs that criterion cannot
+separate fall through to the next one rather than being ordered by it, so clubs
+that have never met do not quietly rank by who was entered first.
+
+**A fixture naming the same club on both sides is a bye and gives nobody
+anything.** `countRows` skips it. Without that the two lookups are one row and it
+is handed a played game, a win and a defeat at once — which is what the admin
+table did, and the public one still did until this.
+
+Still open, and named rather than quietly fixed: `sortTeamsByStandings` in
+`schedule.ts` is a second answer to "who is first". It sorts for playoff seeding
+and has its own order (points, goal difference, goals scored, head-to-head,
+disciplinary points), and it is deliberately not routed through `standings.ts` —
+doing that would change the seeding of seasons already under way.
+
 **A league that ends in a knockout awards no medals.** Gold, silver and bronze
 on the top three rows are a claim about who finished first, second and third,
 and a season whose finals decide that has not decided it in the table. So

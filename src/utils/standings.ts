@@ -27,6 +27,104 @@ export type StandingsRow = {
 
 const emptyRow = (id: string): StandingsRow => ({ id, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 })
 
+/**
+ * How a season's table is worked out.
+ *
+ * The rules belong to the season and not to the application. Every competition
+ * created before they were a setting carries none of them, and that absence is
+ * itself a rule: it means what this application did in September 2026 — three
+ * points for a win, one for a draw, every playoff match counted, and the table
+ * separated by goal difference and then by goals scored. A default changed here
+ * must never move a table that has already been published, which is why the
+ * legacy values below are read from the absence of the field rather than
+ * written into old records by a migration.
+ */
+export type PlayoffScoring =
+  /** Every playoff match gives points. What every season did before the setting. */
+  | 'all'
+  /** Only the rounds that are not knockouts — the custom scheme's league rounds. */
+  | 'non_elimination'
+  /** No playoff match touches the table. */
+  | 'none'
+
+export type ScoringRules = {
+  win: number
+  draw: number
+  loss: number
+  playoffMatches: PlayoffScoring
+}
+
+/**
+ * What separates two clubs level on points, in order.
+ *
+ * Points are the table itself and are never in this list — a list that could
+ * leave them out is a list somebody can misconfigure into nonsense.
+ */
+export type TiebreakerKey = 'headToHead' | 'goalDifference' | 'goalsFor' | 'wins'
+
+export type TableRules = {
+  scoring: ScoringRules
+  tiebreakers: TiebreakerKey[]
+}
+
+const LEGACY_SCORING: ScoringRules = { win: 3, draw: 1, loss: 0, playoffMatches: 'all' }
+const LEGACY_TIEBREAKERS: TiebreakerKey[] = ['goalDifference', 'goalsFor']
+
+/** What a competition created from now on starts with, and may edit. */
+export const DEFAULT_SCORING: ScoringRules = { win: 3, draw: 1, loss: 0, playoffMatches: 'none' }
+export const DEFAULT_TIEBREAKERS: TiebreakerKey[] = ['headToHead', 'goalDifference', 'goalsFor']
+
+const TIEBREAKER_KEYS: TiebreakerKey[] = ['headToHead', 'goalDifference', 'goalsFor', 'wins']
+const PLAYOFF_SCORING: PlayoffScoring[] = ['all', 'non_elimination', 'none']
+
+/** A stored number, or the fallback. These records are schemaless and `format` is written whole. */
+const storedNumber = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
+/**
+ * The rules this season is played by.
+ *
+ * Read defensively: `format` is one of the few things the API passes through
+ * whole, so anything can be sitting in these fields. An unreadable value falls
+ * back to what the season would have done without the field at all.
+ */
+export function tableRules(tournament?: Tournament | null): TableRules {
+  const stored = tournament?.format?.scoring
+  const scoring: ScoringRules = stored
+    ? {
+        win: storedNumber(stored.win, LEGACY_SCORING.win),
+        draw: storedNumber(stored.draw, LEGACY_SCORING.draw),
+        loss: storedNumber(stored.loss, LEGACY_SCORING.loss),
+        playoffMatches: PLAYOFF_SCORING.includes(stored.playoffMatches as PlayoffScoring)
+          ? (stored.playoffMatches as PlayoffScoring)
+          : DEFAULT_SCORING.playoffMatches,
+      }
+    : LEGACY_SCORING
+
+  const list = tournament?.format?.tiebreakers
+  const tiebreakers = Array.isArray(list)
+    ? list.filter(
+        (key, index): key is TiebreakerKey =>
+          TIEBREAKER_KEYS.includes(key as TiebreakerKey) && list.indexOf(key) === index,
+      )
+    : []
+
+  return { scoring, tiebreakers: tiebreakers.length > 0 ? tiebreakers : LEGACY_TIEBREAKERS }
+}
+
+/**
+ * Whether this fixture gives points at all.
+ *
+ * A group table asks its own question and never gets here: it is the group
+ * stage by definition and filters the playoffs out before counting.
+ */
+export function countsForTable(match: Match, scoring: ScoringRules): boolean {
+  if (!match.isPlayoff) return true
+  if (scoring.playoffMatches === 'all') return true
+  if (scoring.playoffMatches === 'none') return false
+  return match.isElimination !== true
+}
+
 /** A fixture counts only when both scores are real numbers — NaN makes every total NaN. */
 const decided = (match: Match): boolean =>
   typeof match.homeGoals === 'number' &&
@@ -36,12 +134,17 @@ const decided = (match: Match): boolean =>
   match.homeGoals >= 0 &&
   match.awayGoals >= 0
 
-function tally(teamIds: string[], matches: Match[]): StandingsRow[] {
+function countRows(teamIds: string[], matches: Match[], scoring: ScoringRules): StandingsRow[] {
   const stats = new Map<string, StandingsRow>()
   for (const id of teamIds) if (id) stats.set(id, emptyRow(id))
 
   for (const match of matches) {
     if (!decided(match)) continue
+    if (!countsForTable(match, scoring)) continue
+    // A fixture naming the same club on both sides is a bye, not a result. The
+    // two lookups below would be one row, and it would be given a played game,
+    // a win and a defeat at once.
+    if (match.homeTeamId === match.awayTeamId) continue
     const home = stats.get(match.homeTeamId)
     const away = stats.get(match.awayTeamId)
     // A club that is not in this table — a playoff opponent from another group,
@@ -61,26 +164,150 @@ function tally(teamIds: string[], matches: Match[]): StandingsRow[] {
     if (homeGoals > awayGoals) {
       home.w++
       away.l++
-      home.pts += 3
+      home.pts += scoring.win
+      away.pts += scoring.loss
     } else if (homeGoals < awayGoals) {
       away.w++
       home.l++
-      away.pts += 3
+      away.pts += scoring.win
+      home.pts += scoring.loss
     } else {
       home.d++
       away.d++
-      home.pts++
-      away.pts++
+      home.pts += scoring.draw
+      away.pts += scoring.draw
     }
   }
 
-  // Points, then goal difference, then goals scored. Nothing here separates two
-  // clubs level on all three, and the comparator says so rather than guessing:
-  // sort is stable, so they hold the order the competition entered them in,
-  // which is the same order on every render.
-  return [...stats.values()].sort(
-    (a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf,
+  return [...stats.values()]
+}
+
+/** What a tiebreak compares, higher first. Points are the table and lead every ordering. */
+type RankKey = 'points' | 'goalDifference' | 'goalsFor' | 'wins'
+
+const rankValue = (row: StandingsRow, key: RankKey): number => {
+  if (key === 'points') return row.pts
+  if (key === 'goalDifference') return row.gf - row.ga
+  if (key === 'goalsFor') return row.gf
+  return row.w
+}
+
+/**
+ * The rows split into groups that this criterion cannot separate, best first.
+ *
+ * Splitting rather than comparing is what makes head-to-head possible at all:
+ * three clubs level on points are ranked by a table of the matches among the
+ * three, and a pairwise comparator has nowhere to put that question.
+ */
+function splitBy(rows: StandingsRow[], key: RankKey): StandingsRow[][] {
+  const buckets = new Map<number, StandingsRow[]>()
+  for (const row of rows) {
+    const value = rankValue(row, key)
+    const bucket = buckets.get(value)
+    if (bucket) bucket.push(row)
+    else buckets.set(value, [row])
+  }
+  return [...buckets.entries()].sort((a, b) => b[0] - a[0]).map(([, bucket]) => bucket)
+}
+
+/**
+ * The same, for the matches these clubs played against each other.
+ *
+ * Only the tied clubs are in it and only the matches among them are counted, so
+ * a club that beat everybody else and lost to the two it is level with finishes
+ * behind them. Clubs that have not met yet tie on everything here and fall
+ * through to the next criterion, which is the honest answer rather than a
+ * silent ordering by whoever was entered first.
+ */
+function splitByHeadToHead(
+  rows: StandingsRow[],
+  matches: Match[],
+  scoring: ScoringRules,
+): StandingsRow[][] {
+  const ids = new Set(rows.map((row) => row.id))
+  const among = matches.filter((match) => ids.has(match.homeTeamId) && ids.has(match.awayTeamId))
+  const mini = countRows([...ids], among, scoring)
+  const rank = new Map(mini.map((row) => [row.id, row]))
+
+  const buckets = new Map<string, StandingsRow[]>()
+  const order: string[] = []
+  for (const row of rows) {
+    const own = rank.get(row.id) ?? emptyRow(row.id)
+    const key = `${own.pts}:${own.gf - own.ga}:${own.gf}`
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(row)
+    else {
+      buckets.set(key, [row])
+      order.push(key)
+    }
+  }
+
+  const value = (key: string) => key.split(':').map(Number)
+  return order
+    .sort((a, b) => {
+      const [aPts, aGd, aGf] = value(a)
+      const [bPts, bGd, bGf] = value(b)
+      return bPts - aPts || bGd - aGd || bGf - aGf
+    })
+    .map((key) => buckets.get(key) as StandingsRow[])
+}
+
+/**
+ * The rows in order: points first, then the season's tiebreakers in the order
+ * it lists them.
+ *
+ * Clubs that nothing separates keep the order the competition entered them in,
+ * which is the same order on every render — this used to end in a coin toss,
+ * and a season nobody had played dealt out different positions every time the
+ * page drew itself.
+ */
+function orderRows(
+  rows: StandingsRow[],
+  matches: Match[],
+  rules: TableRules,
+  keys: TiebreakerKey[],
+): StandingsRow[] {
+  if (rows.length < 2 || keys.length === 0) return rows
+
+  const [key, ...rest] = keys
+  const buckets =
+    key === 'headToHead'
+      ? splitByHeadToHead(rows, matches, rules.scoring)
+      : splitBy(rows, key)
+
+  return buckets.flatMap((bucket) => orderRows(bucket, matches, rules, rest))
+}
+
+function tally(teamIds: string[], matches: Match[], rules: TableRules): StandingsRow[] {
+  const rows = countRows(teamIds, matches, rules.scoring)
+  return splitBy(rows, 'points').flatMap((bucket) =>
+    orderRows(bucket, matches, rules, rules.tiebreakers),
   )
+}
+
+/**
+ * What one club has scored in one competition, by that competition's rules.
+ *
+ * The club pages and the player pages each print this beside a season's name,
+ * and each of them worked it out with its own copy of "three for a win".
+ */
+export function pointsFor(teamId: string, matches: Match[], rules: TableRules): number {
+  let points = 0
+  for (const match of matches) {
+    if (!decided(match)) continue
+    if (!countsForTable(match, rules.scoring)) continue
+
+    const home = match.homeTeamId === teamId
+    const away = match.awayTeamId === teamId
+    if (!home && !away) continue
+    // A fixture naming the same club on both sides is a BYE, not a result.
+    if (home && away) continue
+
+    const own = home ? (match.homeGoals as number) : (match.awayGoals as number)
+    const other = home ? (match.awayGoals as number) : (match.homeGoals as number)
+    points += own > other ? rules.scoring.win : own === other ? rules.scoring.draw : rules.scoring.loss
+  }
+  return points
 }
 
 /**
@@ -208,6 +435,7 @@ export function groupTables(tournament: Tournament): Record<number, StandingsRow
   const groups = groupsOf(tournament)
   if (groups.length === 0) return {}
 
+  const rules = tableRules(tournament)
   const tables: Record<number, StandingsRow[]> = {}
   groups.forEach((teamIds, index) => {
     const number = index + 1
@@ -222,14 +450,14 @@ export function groupTables(tournament: Tournament): Record<number, StandingsRow
         teamIds.includes(match.awayTeamId)
       )
     })
-    tables[number] = tally(teamIds, matches)
+    tables[number] = tally(teamIds, matches, rules)
   })
   return tables
 }
 
-/** The competition's own table: every club in it, every match it holds. */
+/** The competition's own table: every club in it, every match its rules count. */
 export function leagueTable(tournament: Tournament): StandingsRow[] {
-  return tally(tournament.teamIds ?? [], allMatches(tournament))
+  return tally(tournament.teamIds ?? [], allMatches(tournament), tableRules(tournament))
 }
 
 export type PlayoffCut = {

@@ -12,6 +12,9 @@ CLI_user_accessKeys.csv
 # Previews and posters generated during a session, not part of the app.
 /Claude outputs/
 .vite/
+# Vitest writes its config out beside the original while a run starts and does
+# not always clear it, and deploy.sh commits whatever is in the tree.
+vitest.config.ts.timestamp-*
 .vercel/
 .idea/
 .vscode/
