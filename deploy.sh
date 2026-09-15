@@ -92,6 +92,12 @@ fi
 step "Type-checking the site"
 npx tsc -p tsconfig.app.json --noEmit
 
+# No SKIP flag, unlike the API's: this is unit tests over pure logic (standings,
+# fixtures, formats), a fraction of a second to run, and the whole reason it was
+# added was a site-side regression that shipped silently because nothing ran it.
+step "Testing the site"
+npm test
+
 step "Building the site"
 npm run build
 
