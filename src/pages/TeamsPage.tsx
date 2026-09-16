@@ -9,6 +9,7 @@ import { headerColor } from "../utils/crest"
 import { activeSquad } from "../utils/squads"
 import { cdnUrl } from '../utils/images'
 import type { Organizer, Team } from '../types'
+import { IconShield } from '../components/icons'
 
 /**
  * The clubs.
@@ -472,6 +473,18 @@ export default function TeamsPage() {
                     {activeSquad(team).length} players
                     {team.visiting && <span className="opacity-70"> · guest club</span>}
                   </p>
+                  {/* A club this organiser also runs as its manager. It sits
+                      here with every other club in their competitions, and
+                      this is what tells the two kinds apart; the club's own
+                      page is under My teams. */}
+                  {user && team.managerUserIds?.includes(user.id) && (
+                    <Link
+                      to={`/my-club/${team.id}`}
+                      className="mt-1 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors"
+                    >
+                      <IconShield size={11} /> You manage this
+                    </Link>
+                  )}
                   {!currentOrganizer && (
                     <p className="text-xs opacity-60">
                       {getOrganizerById(team.organizerId)?.name ??

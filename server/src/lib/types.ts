@@ -71,6 +71,12 @@ export type Team = {
    * treats a missing date as unknown rather than as a date it invents.
    */
   managerLinkedAt?: Record<string, string>
+  /**
+   * Which of `managerUserIds` is in charge of the others. Absent means the
+   * first of them — `headManagerOf` in `lib/club-managers.ts` is the only
+   * reader, and says why.
+   */
+  headManagerId?: string
   [key: string]: unknown
 }
 

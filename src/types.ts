@@ -125,6 +125,12 @@ export type Team = {
    */
   managerUserIds?: string[]
   /**
+   * Which of `managerUserIds` is in charge of the others; absent means the
+   * first of them. `headManagerOf` in `utils/teams.ts` reads it the way
+   * `lib/club-managers.ts` does on the server.
+   */
+  headManagerId?: string
+  /**
    * Set by a club that does not want organisers it does not play for to find it.
    *
    * The club's own decision, written by its managers or — while nobody has

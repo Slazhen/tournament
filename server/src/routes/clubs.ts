@@ -9,7 +9,8 @@ import {
 } from '../lib/auth.js'
 import { assertPasswordStrength, generateId, generateSalt, hashPassword } from '../lib/passwords.js'
 import { hiddenLeagueRounds, publicForm } from '../lib/rounds.js'
-import { createSession } from '../lib/sessions.js'
+import { createSession, getUserById } from '../lib/sessions.js'
+import { emailIsTaken } from './auth.js'
 import { ddb, PutCommand, scanAll } from '../lib/ddb.js'
 import { SITE_URL, TABLES } from '../lib/env.js'
 import { record } from '../lib/audit.js'
@@ -17,15 +18,28 @@ import { adminRead } from '../lib/cache.js'
 import { sendTeamInvite } from '../lib/mail.js'
 import { teams, tournaments, organizers, isPublic, seasonStatus } from '../repos.js'
 import {
+  assertHeadManager,
+  assertIsClubManager,
+  headCondition,
+  headManagerOf,
+  headUnchanged,
+  whyManagerMayNotRemove,
+} from '../lib/club-managers.js'
+import {
+  cancelClubInvite,
   consumeInvite,
+  deleteClubInvitesBy,
   createInvite,
   decideEntry,
   entriesForTeam,
   entriesForTournament,
   getEntry,
   linkManagerToTeam,
+  listClubInvites,
   peekInvite,
   putEntry,
+  setHeadManager,
+  unlinkManagerFromTeam,
   type Entry,
   type EntryStatus,
   type TeamInvite,
@@ -370,6 +384,41 @@ export function organiserMayDecide(
   return false
 }
 
+/**
+ * How many people may run one club, and how many unused links it may hold.
+ *
+ * Both exist because the head can issue links at will and each is a door that
+ * stays open for a fortnight; neither number is a product decision anybody has
+ * asked for, only a ceiling nobody should reach.
+ */
+const MAX_CLUB_MANAGERS = 10
+const MAX_OPEN_CLUB_INVITES = 5
+
+/**
+ * Whether a link the club wrote still speaks for the club.
+ *
+ * Only while its author is the head, and only if it was written after they
+ * last joined. Being a manager is not enough: a head who has handed the role
+ * on must not keep bringing people in through links from before, and a head
+ * removed and later invited back must not find their old links alive again.
+ * A missing join date is a link from before dates were kept, which no club
+ * link is.
+ */
+export function clubInviteStillStands(
+  invite: Pick<TeamInvite, 'createdBy' | 'createdAt'>,
+  team: Pick<Team, 'managerUserIds' | 'headManagerId' | 'managerLinkedAt'>,
+): boolean {
+  if (headManagerOf(team) !== invite.createdBy) return false
+  const joined = team.managerLinkedAt?.[invite.createdBy]
+  if (!joined) return true
+  return new Date(invite.createdAt).getTime() >= new Date(joined).getTime()
+}
+
+/** The club's own open links, as the head who wrote them sees them. */
+async function openInvitesOf(team: Team): Promise<TeamInvite[]> {
+  return (await listClubInvites(team.id)).filter((invite) => clubInviteStillStands(invite, team))
+}
+
 export function registerClubRoutes(router: Router<RequestContext>): void {
   /* ---------------- invitations ---------------- */
 
@@ -381,6 +430,19 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     // it must not be able to pass it on — nor to send mail from the product's
     // own address to an address of their choosing.
     assertCanAccessOrganizer(user, team.organizerId)
+
+    // A club somebody already runs brings its own people in, through its head
+    // manager. An organizer's link would add a manager with full say over the
+    // squad without the club being asked — the owner stepping round the rule
+    // that a claimed club is its manager's to edit. No exception for the
+    // super admin: the claim refuses such a link whoever wrote it, and a club
+    // whose head is out of reach is repaired by removing that head, after
+    // which the next manager on the list is in charge.
+    if (isClaimedTeam(team as Team)) {
+      throw forbidden(
+        'This club already has a manager. Its head manager invites anyone else who should help run it.',
+      )
+    }
 
     // An invitation may also enter the club in one competition. That is a write
     // against the competition, so the same check is made against its organizer
@@ -396,6 +458,7 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const invite = await createInvite(team as Team, user.id, {
       email: email || undefined,
       tournament: tournament ? { id: tournament.id, name: tournament.name } : undefined,
+      issuedBy: 'organizer',
     })
     const link = `${SITE_URL}/join?token=${invite.token}`
 
@@ -434,9 +497,15 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     if (!invite) throw notFound('This invitation has expired or has already been used')
 
     const organizer = await organizers.get(invite.organizerId)
+    // A helper invited by the club's head is told who asked — the name only,
+    // never the address, since this answer needs no session and is cached.
+    const fromClub = invite.issuedBy === 'club'
+    const inviter = fromClub ? await getUserById(invite.createdBy) : null
     return {
       teamName: invite.teamName,
       organizerName: organizer?.name ?? '',
+      fromClub,
+      invitedByName: inviter?.displayName ?? '',
       // Only the name. The id would tell an unauthenticated holder of a stolen
       // link which competition to go looking at, and buys the person who was
       // actually invited nothing the name does not.
@@ -464,24 +533,39 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
     const team = await teams.get(invite.teamId)
     if (!team) throw notFound('That club no longer exists')
 
+    // A club's invitation speaks for the club only while the person who wrote
+    // it still runs it. A helper the head has since removed, or a head who has
+    // left, must not be able to keep bringing people in through links issued
+    // before they went. Refused without spending it: it is dead either way,
+    // and the row expires on its own.
+    if (invite.issuedBy === 'club' && !clubInviteStillStands(invite, team as Team)) {
+      throw badRequest('This invitation was withdrawn. Ask the club for a new one.')
+    }
+
+    // The mirror of the rule at the invitation route, for links issued before
+    // somebody else took the club on: once a club has a manager, only its head
+    // brings people in. This also covers the organizer who owns the club
+    // writing a link to themselves. Refused before the token is spent.
+    if (invite.issuedBy !== 'club' && isClaimedTeam(team as Team)) {
+      throw forbidden(
+        'This club already has a manager. Ask its head manager for an invitation instead.',
+      )
+    }
+
     // Already signed in: just add the club.
     const authorization = ctx.headers['authorization']
     if (authorization) {
       const user = await ctx.user()
-      // An invitation is not a way back into a club somebody already runs. The
-      // organizer who owns the club is the one who issues these links, so
-      // without this they could write one to themselves, open it, and become a
-      // manager of a club that is no longer theirs to edit — the same write
-      // `POST /admin/teams/:id/managers/me` refuses, three clicks further
-      // round. Taking a club back means removing its manager first, where the
-      // manager can see it happen. Refused before the token is spent, so a
-      // link meant for a coach is still there for them.
-      if (
-        isClaimedTeam(team as Team) &&
-        user.organizerId &&
-        user.organizerId === team.organizerId
-      ) {
-        throw forbidden('This club already has a manager. Remove them first to run it yourself.')
+      // An invitation sent to somebody is for them, signed in or not. Only the
+      // signed-out branch used to ask, so a link bound to one address could be
+      // spent by any account that happened to be signed in when it was opened.
+      if (invite.email && (user.email ?? '').toLowerCase() !== invite.email) {
+        throw badRequest('This invitation was sent to a different email address')
+      }
+      // Already on the list: spending the link would buy nothing and cost the
+      // club an invitation it may have meant for somebody else.
+      if (managesTeam(user, team as Team)) {
+        throw badRequest('You already run this club')
       }
       if (!(await consumeInvite(token))) {
         throw badRequest('This invitation has expired or has already been used')
@@ -491,7 +575,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
         action: 'team.claim',
         entity: 'team',
         entityId: team.id,
-        summary: `Took over running ${team.name}`,
+        summary:
+          invite.issuedBy === 'club'
+            ? `Joined the managers of ${team.name}`
+            : `Took over running ${team.name}`,
         organizerId: team.organizerId,
       })
       await enterInvitedTournament(user, team as Team, invite)
@@ -514,8 +601,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
       throw badRequest((error as Error).message)
     }
 
-    const existing = await findActiveUserByEmail(email)
-    if (existing) {
+    // Any row on the address, active or not. A club's head can now issue these
+    // links, and a check that could not see a switched-off account would let
+    // them open a second one on that person's address.
+    if (await emailIsTaken(email)) {
       throw badRequest('There is already an account with this email — sign in first, then open the link again')
     }
 
@@ -545,7 +634,10 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
       action: 'team.claim',
       entity: 'team',
       entityId: team.id,
-      summary: `Signed up and took over running ${team.name}`,
+      summary:
+        invite.issuedBy === 'club'
+          ? `Signed up and joined the managers of ${team.name}`
+          : `Signed up and took over running ${team.name}`,
       organizerId: team.organizerId,
     })
     await enterInvitedTournament(user, team as Team, invite)
@@ -557,6 +649,237 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
       expiresAt: session.expiresAt,
       teamId: team.id,
     }
+  })
+
+  /* ---------------- the people who run a club ---------------- */
+
+  /**
+   * The clubs this account runs, and whether it is the head of each.
+   *
+   * What the top bar needs to draw "My teams", and nothing more: the overview
+   * behind the club page scans every competition, and the bar is on every
+   * screen. Decided from the club records, like the overview, because the
+   * account's own list can name a club it no longer runs.
+   */
+  router.get('/manager/teams', async (ctx) => {
+    const user = await ctx.user()
+    const claimed = user.teamIds ?? []
+    if (claimed.length === 0) return []
+    const mine = ((await teams.getMany(claimed)) as Team[]).filter((team) => managesTeam(user, team))
+    return mine
+      .map((team) => ({
+        id: team.id,
+        name: team.name,
+        logo: typeof team.logo === 'string' ? team.logo : undefined,
+        crestColor: typeof team.crestColor === 'string' ? team.crestColor : undefined,
+        isHead: headManagerOf(team) === user.id,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  })
+
+  /**
+   * Who runs one club, as its own managers see it.
+   *
+   * Every manager sees the others, addresses included: they run the club
+   * together, and a helper who cannot tell who brought them in has nobody to
+   * ask. The open invitations are the head's alone, because each carries a
+   * live link and only the head may issue or withdraw one.
+   */
+  router.get('/manager/teams/:id/managers', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = (await teams.getOrThrow(params.id!)) as Team
+    assertIsClubManager(user, team)
+
+    // A read per manager rather than a scan of every account: a club has a
+    // handful of them and this page is opened far more often than the
+    // organizer's list is.
+    const ids = team.managerUserIds ?? []
+    const accounts = await Promise.all(ids.map((id) => getUserById(id)))
+    const byId = new Map(
+      accounts.filter((account): account is AuthUser => Boolean(account)).map((a) => [a.id, a]),
+    )
+
+    const head = headManagerOf(team)
+    const managers = ids.map((id) => {
+      const account = byId.get(id)
+      return {
+        id,
+        email: account?.email ?? '',
+        displayName: account?.displayName,
+        isActive: account ? account.isActive !== false : false,
+        linkedAt: team.managerLinkedAt?.[id],
+        isHead: id === head,
+      }
+    })
+
+    const youAreHead = head === user.id
+    const invites = youAreHead
+      ? (await openInvitesOf(team)).map((invite) => ({
+          token: invite.token,
+          link: `${SITE_URL}/join?token=${invite.token}`,
+          email: invite.email ?? '',
+          expiresAt: invite.expiresAt,
+        }))
+      : []
+
+    return { managers, invites, youAreHead }
+  })
+
+  /**
+   * The head manager bringing somebody in to help run the club.
+   *
+   * A link and nothing else: no mail is sent. The product's own address must
+   * not be something a club manager can point at an inbox of their choosing,
+   * and a link is how these travel anyway — over WhatsApp, to the person
+   * standing next to the coach. An address, when given, binds the link to it.
+   *
+   * Nothing here can enter the club in a competition, which an organizer's
+   * invitation can: that is a write to the competition, and not the club's.
+   */
+  router.post('/manager/teams/:id/invites', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = (await teams.getOrThrow(params.id!)) as Team
+    assertHeadManager(user, team)
+
+    const email = typeof ctx.body.email === 'string' ? ctx.body.email.trim().toLowerCase() : ''
+    if (email && (!email.includes('@') || email.length > 254)) {
+      throw badRequest('That does not look like an email address')
+    }
+
+    // Both caps are counted from a read, not held by a condition: invitations
+    // are separate rows and DynamoDB has no condition across them. Two heads
+    // pressing at once can go one over, which costs nothing worth a lock.
+    const open = await openInvitesOf(team)
+    if (open.length >= MAX_OPEN_CLUB_INVITES) {
+      throw badRequest(
+        `There are already ${open.length} unused invitations. Withdraw one before creating another.`,
+      )
+    }
+    if ((team.managerUserIds ?? []).length + open.length >= MAX_CLUB_MANAGERS) {
+      throw badRequest(`A club can have at most ${MAX_CLUB_MANAGERS} managers.`)
+    }
+
+    const invite = await createInvite(team, user.id, {
+      email: email || undefined,
+      issuedBy: 'club',
+    })
+    await record(user, {
+      action: 'team.manager.invite',
+      entity: 'team',
+      entityId: team.id,
+      summary: email
+        ? `Invited ${email} to help run ${team.name}`
+        : `Created a link to help run ${team.name}`,
+      organizerId: team.organizerId,
+    })
+    return {
+      token: invite.token,
+      link: `${SITE_URL}/join?token=${invite.token}`,
+      email,
+      expiresAt: invite.expiresAt,
+    }
+  })
+
+  router.delete('/manager/teams/:id/invites/:token', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = (await teams.getOrThrow(params.id!)) as Team
+    assertHeadManager(user, team)
+
+    if (!(await cancelClubInvite(params.token!, team.id))) {
+      throw notFound('That invitation has already been used or withdrawn')
+    }
+    await record(user, {
+      action: 'team.manager.invite_cancel',
+      entity: 'team',
+      entityId: team.id,
+      summary: `Withdrew an invitation to help run ${team.name}`,
+      organizerId: team.organizerId,
+    })
+    return { ok: true }
+  })
+
+  /**
+   * Taking a manager off the club, or leaving it.
+   *
+   * `whyManagerMayNotRemove` holds the rule. The head's removal of somebody
+   * else is written under the condition that they are still the head, worked
+   * out again from every read — a head who handed the club on in another tab
+   * must not be able to empty it from this one.
+   */
+  router.delete('/manager/teams/:id/managers/:userId', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = (await teams.getOrThrow(params.id!)) as Team
+    const targetId = params.userId!
+    const refusal = whyManagerMayNotRemove(user, team, targetId)
+    if (refusal) throw forbidden(refusal)
+
+    const leaving = targetId === user.id
+    const done = await unlinkManagerFromTeam(
+      targetId,
+      team,
+      (current) => {
+        if (whyManagerMayNotRemove(user, current, targetId)) return null
+        // Leaving asks nothing of anybody else, beyond the rule above: that
+        // the head does not walk out on helpers without naming a successor.
+        // That rule reads the list length, so it is repeated as a condition
+        // too, or two helpers leaving at the moment the head does would leave
+        // the club to whoever is left first on the list.
+        if (leaving) {
+          return headManagerOf(current) === user.id
+            ? {
+                expression: 'size(#managers) = :one',
+                names: { '#managers': 'managerUserIds' },
+                values: { ':one': 1 },
+              }
+            : headUnchanged(current)
+        }
+        return headCondition(current, user.id)
+      },
+    )
+    if (!done) throw forbidden('That could not be changed. Reload the page and try again.')
+
+    await record(user, {
+      action: leaving ? 'team.manager.leave' : 'team.manager.remove',
+      entity: 'team',
+      entityId: team.id,
+      summary: leaving ? `Stopped running ${team.name}` : `Removed a manager from ${team.name}`,
+      organizerId: team.organizerId,
+    })
+    return { ok: true }
+  })
+
+  /** The head handing the club to another of its managers. */
+  router.put('/manager/teams/:id/head', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = (await teams.getOrThrow(params.id!)) as Team
+    assertHeadManager(user, team)
+
+    const newHeadId = typeof ctx.body.userId === 'string' ? ctx.body.userId : ''
+    if (!newHeadId || newHeadId === user.id) throw badRequest('Choose another manager')
+    if (!(team.managerUserIds ?? []).includes(newHeadId)) {
+      throw badRequest('That person does not run this club')
+    }
+    // A head nobody can sign in as is a club nobody can invite to or tidy up.
+    const successor = await getUserById(newHeadId)
+    if (!successor || successor.isActive === false) {
+      throw badRequest('That account is switched off, so it cannot run the club')
+    }
+
+    if (!(await setHeadManager(team.id, newHeadId, headCondition(team, user.id)))) {
+      throw forbidden('That could not be changed. Reload the page and try again.')
+    }
+    // The links the outgoing head wrote are dead from this moment
+    // (`clubInviteStillStands`), and the new head cannot see them to withdraw
+    // them. Deleted so that handing the role back does not revive them.
+    await deleteClubInvitesBy(team.id, user.id)
+    await record(user, {
+      action: 'team.manager.head',
+      entity: 'team',
+      entityId: team.id,
+      summary: `Handed ${team.name} to another manager`,
+      organizerId: team.organizerId,
+    })
+    return { ok: true }
   })
 
   /* ---------------- finding a club to invite ---------------- */
@@ -1709,8 +2032,3 @@ function assertClubWrote(goal: Record<string, unknown>, side: 'home' | 'away'): 
   }
 }
 
-/** Local to this file: the auth routes own the shared version. */
-async function findActiveUserByEmail(email: string): Promise<AuthUser | null> {
-  const { findUserByCredential } = await import('./auth.js')
-  return findUserByCredential(email)
-}

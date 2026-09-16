@@ -120,3 +120,16 @@ export function canEditClub(
   if (userId && managers.includes(userId)) return true
   return managers.length === 0
 }
+
+/**
+ * Which of a club's managers is its head.
+ *
+ * The same answer as `headManagerOf` in `server/src/lib/club-managers.ts`, and
+ * it has to be: the name stored if it is still on the list, otherwise the
+ * first manager. Only for drawing — the server decides what the head may do.
+ */
+export function headManagerOf(team: Pick<Team, 'managerUserIds' | 'headManagerId'>): string | null {
+  const ids = team.managerUserIds ?? []
+  if (team.headManagerId && ids.includes(team.headManagerId)) return team.headManagerId
+  return ids[0] ?? null
+}

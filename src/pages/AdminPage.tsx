@@ -161,13 +161,13 @@ export default function AdminPage() {
 
               {runsAClub && (
                 <div className="glass rounded-2xl p-6 shadow-2xl border border-white/20">
-                  <h3 className="text-xl font-semibold text-white mb-4">My clubs</h3>
+                  <h3 className="text-xl font-semibold text-white mb-4">My teams</h3>
                   <p className="text-gray-400 mb-4">The clubs you run yourself</p>
                   <Link
                     to="/my-club"
                     className="inline-flex items-center px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 rounded-lg transition-all text-emerald-400"
                   >
-                    Open My clubs
+                    Open My teams
                   </Link>
                 </div>
               )}

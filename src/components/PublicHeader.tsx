@@ -31,7 +31,7 @@ export default function PublicHeader({ back }: { back?: { to: string; label: str
             to="/my-club"
             className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-colors"
           >
-            <IconShield size={14} /> My club
+            <IconShield size={14} /> My teams
           </Link>
         )}
 

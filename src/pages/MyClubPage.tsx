@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import {
   clubService,
   organizerService,
@@ -35,6 +35,7 @@ import LogoUploader from '../components/LogoUploader'
 import MiniTable from '../components/MiniTable'
 import PhotoUploader from '../components/PhotoUploader'
 import {
+  IconArrowLeft,
   IconCalendar,
   IconChart,
   IconCheck,
@@ -53,6 +54,9 @@ import {
   IconUsers,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
+import ClubManagers from '../components/ClubManagers'
+import { headManagerOf } from '../utils/teams'
+import { announceMyTeamsChanged } from '../utils/myTeams'
 
 /**
  * The club's own page, for the person who runs it.
@@ -66,7 +70,12 @@ import { cdnUrl } from '../utils/images'
  * fixtures, and whether a club is in a competition at all.
  */
 export default function MyClubPage() {
-  const { user, isLoading: authLoading } = useAuth()
+  const { user, isLoading: authLoading, refresh } = useAuth()
+  // One club per address. With several clubs on one page a coach running
+  // three of them scrolled past two to reach the third, and nothing could link
+  // to one of them. /my-club itself is the list, or the club when there is one.
+  const { teamId } = useParams<{ teamId: string }>()
+  const navigate = useNavigate()
   const [teams, setTeams] = useState<Team[]>([])
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [entries, setEntries] = useState<Entry[]>([])
@@ -135,50 +144,146 @@ export default function MyClubPage() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="glass rounded-xl p-8 max-w-md w-full text-center">
-          <h1 className="text-xl font-semibold mb-3">No club yet</h1>
+          <h1 className="text-xl font-semibold mb-3">No team yet</h1>
           <p className="opacity-70">
-            An organiser has to invite you to run a club. They send a link; opening it puts the club
-            here.
+            An organiser, or the head manager of a club, has to invite you. They send a link; opening
+            it puts the club here.
           </p>
         </div>
       </div>
     )
   }
 
+  if (!teamId) {
+    if (teams.length === 1) return <Navigate to={`/my-club/${teams[0].id}`} replace />
+    return <ClubChooser teams={teams} viewerId={user.id} />
+  }
+
+  const team = teams.find((candidate) => candidate.id === teamId)
+  if (!team) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="glass rounded-xl p-8 max-w-md w-full text-center">
+          <h1 className="text-xl font-semibold mb-3">Not one of your teams</h1>
+          <p className="opacity-70 mb-6">
+            This club is not on your account. You may have left it, or been removed by its head
+            manager.
+          </p>
+          <Link to="/my-club" className="px-6 py-3 rounded-lg glass hover:bg-white/10">
+            My teams
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  const isHead = headManagerOf(team) === user.id
+
   return (
     <div className="w-full max-w-4xl mx-auto space-y-10">
       <div>
-        <h1 className="text-3xl font-bold">{teams.length === 1 ? teams[0].name : 'Your clubs'}</h1>
+        {teams.length > 1 && (
+          <Link
+            to="/my-club"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-300 hover:text-white transition-colors mb-2"
+          >
+            <IconArrowLeft size={15} /> My teams
+          </Link>
+        )}
+        <h1 className="text-3xl font-bold">{team.name}</h1>
         <p className="opacity-70 mt-1">
           {user.displayName ? `${user.displayName} — ` : ''}
-          club manager
+          {isHead ? 'head manager' : 'club manager'}
         </p>
       </div>
 
-      {teams.map((team) => (
-        <ClubCard
-          key={team.id}
-          team={team}
-          viewerOrganizerId={user.organizerId}
-          tournaments={tournaments}
-          entries={entries.filter((entry) => entry.teamId === team.id)}
-          teamNames={teamNames}
-          openCompetitions={openCompetitions}
-          organizerNames={organizerNames}
-          onReload={load}
-          // Errors are deliberately left to the caller: an application is made
-          // from a row in a list, and that row is where the reason it failed
-          // belongs — not in an alert that says nothing about which one.
-          onApply={async (tournamentId) => {
-            await clubService.apply(team.id, tournamentId)
-            await load()
-          }}
-          onAnswerInvitation={async (tournamentId, status) => {
-            await clubService.answerInvitation(tournamentId, team.id, status)
-            await load()
-          }}
-        />
-      ))}
+      <ClubCard
+        key={team.id}
+        team={team}
+        viewerOrganizerId={user.organizerId}
+        tournaments={tournaments}
+        entries={entries.filter((entry) => entry.teamId === team.id)}
+        teamNames={teamNames}
+        openCompetitions={openCompetitions}
+        organizerNames={organizerNames}
+        onReload={load}
+        // Errors are deliberately left to the caller: an application is made
+        // from a row in a list, and that row is where the reason it failed
+        // belongs — not in an alert that says nothing about which one.
+        onApply={async (tournamentId) => {
+          await clubService.apply(team.id, tournamentId)
+          await load()
+        }}
+        onAnswerInvitation={async (tournamentId, status) => {
+          await clubService.answerInvitation(tournamentId, team.id, status)
+          await load()
+        }}
+      />
+
+      <ClubManagers
+        team={team}
+        viewerId={user.id}
+        onChanged={async () => {
+          await load()
+          announceMyTeamsChanged()
+        }}
+        onLeft={async () => {
+          // The session carries the account's list of clubs, and the page and
+          // the top bar both start from it.
+          await refresh()
+          announceMyTeamsChanged()
+          await load()
+          navigate('/my-club', { replace: true })
+        }}
+      />
+    </div>
+  )
+}
+
+/**
+ * Every club this account runs, for somebody who runs more than one.
+ *
+ * Only the crest, the name and the role — the page behind each is where the
+ * work is, and the top bar's "My teams" goes straight to it.
+ */
+function ClubChooser({ teams, viewerId }: { teams: Team[]; viewerId: string }) {
+  const sorted = [...teams].sort((a, b) => a.name.localeCompare(b.name))
+  return (
+    <div className="w-full max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">My teams</h1>
+        <p className="opacity-70 mt-1">The clubs you run.</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {sorted.map((team) => (
+          <Link
+            key={team.id}
+            to={`/my-club/${team.id}`}
+            className="glass rounded-2xl p-4 border border-white/15 hover:bg-white/10 transition-colors flex items-center gap-4"
+          >
+            {team.logo ? (
+              <img
+                src={cdnUrl(team.logo)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="w-12 h-12 rounded-lg object-cover shrink-0"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-lg shrink-0 flex items-center justify-center bg-white/10">
+                <IconShield size={20} />
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className="font-semibold truncate">{team.name}</div>
+              <div className="text-xs opacity-60">
+                {headManagerOf(team) === viewerId ? 'Head manager' : 'Manager'} ·{' '}
+                {activeSquad(team).length} players
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
     </div>
   )
 }

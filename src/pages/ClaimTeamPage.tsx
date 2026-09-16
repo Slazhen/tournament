@@ -6,6 +6,7 @@ import { claimTeam } from '../lib/auth'
 import { useAuth } from '../contexts/AuthContext'
 import Logo from '../components/Logo'
 import { IconShield } from '../components/icons'
+import { announceMyTeamsChanged } from '../utils/myTeams'
 
 /**
  * Taking over a club from an invitation.
@@ -58,13 +59,14 @@ export default function ClaimTeamPage() {
     setIsSaving(true)
     setError(null)
     try {
-      await claimTeam(
+      const { teamId } = await claimTeam(
         user
           ? { token }
           : { token, email: email.trim().toLowerCase(), password, displayName: displayName.trim() },
       )
       await refresh()
-      navigate('/my-club')
+      announceMyTeamsChanged()
+      navigate(`/my-club/${teamId}`)
     } catch (caught) {
       setError(
         caught instanceof Error && caught.message
@@ -90,7 +92,7 @@ export default function ClaimTeamPage() {
         <div className="glass rounded-2xl p-8 max-w-md w-full text-center border border-white/15">
           <h1 className="text-xl font-semibold mb-3">This invitation is no longer good</h1>
           <p className="opacity-70 mb-6">
-            An invitation works once and lasts a fortnight. Ask the organiser for a new one.
+            An invitation works once and lasts a fortnight. Ask whoever sent it for a new one.
           </p>
           <Link to="/" className="px-6 py-3 rounded-xl glass hover:bg-white/10 transition-all">
             Go to the home page
@@ -109,9 +111,13 @@ export default function ClaimTeamPage() {
             <IconShield size={22} /> {invite.teamName}
           </h1>
           <p className="text-gray-400 mt-2">
-            {invite.organizerName
-              ? `${invite.organizerName} has invited you to run this club.`
-              : 'You have been invited to run this club.'}
+            {invite.fromClub
+              ? invite.invitedByName
+                ? `${invite.invitedByName} has invited you to help run this club.`
+                : 'You have been invited to help run this club.'
+              : invite.organizerName
+                ? `${invite.organizerName} has invited you to run this club.`
+                : 'You have been invited to run this club.'}
           </p>
         </div>
 
@@ -188,7 +194,11 @@ export default function ClaimTeamPage() {
               disabled={isSaving}
               className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition-colors disabled:opacity-50"
             >
-              {isSaving ? 'Just a moment...' : `Take over ${invite.teamName}`}
+              {isSaving
+                ? 'Just a moment...'
+                : invite.fromClub
+                  ? `Join ${invite.teamName}`
+                  : `Take over ${invite.teamName}`}
             </button>
           </form>
         </div>

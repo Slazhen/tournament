@@ -8,6 +8,7 @@ import {
   isClaimedTeam,
   isSuperAdmin,
 } from '../lib/auth.js'
+import { headManagerOf } from '../lib/club-managers.js'
 import {
   assertPasswordStrength,
   generateId,
@@ -330,6 +331,8 @@ type ClubManager = {
   isActive: boolean
   /** Absent for clubs claimed before the date was recorded. */
   linkedAt?: string
+  /** The one of them who may bring others in and take them off. */
+  isHead: boolean
 }
 
 /**
@@ -356,13 +359,20 @@ async function managersOfTeams(list: Team[]): Promise<Record<string, ClubManager
 
   const out: Record<string, ClubManager[]> = {}
   for (const team of list) {
+    const head = headManagerOf(team)
     out[team.id] = (team.managerUserIds ?? [])
       .map((id): ClubManager => {
         const account = byId.get(id)
         // A link to an account that no longer exists is worth saying out loud:
         // it is the club nobody can edit and nobody can see why.
         if (!account) {
-          return { id, email: '', isActive: false, linkedAt: team.managerLinkedAt?.[id] }
+          return {
+            id,
+            email: '',
+            isActive: false,
+            linkedAt: team.managerLinkedAt?.[id],
+            isHead: id === head,
+          }
         }
         return {
           id: account.id,
@@ -373,6 +383,7 @@ async function managersOfTeams(list: Team[]): Promise<Record<string, ClubManager
           displayName: account.displayName,
           isActive: account.isActive !== false,
           linkedAt: team.managerLinkedAt?.[id],
+          isHead: id === head,
         }
       })
       .sort((a, b) => (a.linkedAt ?? '').localeCompare(b.linkedAt ?? ''))

@@ -690,6 +690,36 @@ export type TeamInvitePreview = {
   /** The competition the club joins on taking the invitation up, if any. */
   tournamentName: string
   expiresAt: string
+  /** Written by the club's own head manager, to bring in a helper. */
+  fromClub?: boolean
+  /** The head manager's name, where they gave one. Never an address. */
+  invitedByName?: string
+}
+
+/** A club on the account's "My teams" list. */
+export type ManagedClub = {
+  id: string
+  name: string
+  logo?: string
+  crestColor?: string
+  isHead: boolean
+}
+
+/** An unused link the head manager has issued for a helper. */
+export type CoManagerInvite = {
+  token: string
+  link: string
+  /** Empty when the link is not bound to an address. */
+  email: string
+  expiresAt: string
+}
+
+/** Who runs one club, as the club's own managers see it. */
+export type ClubPeople = {
+  managers: ClubManager[]
+  /** Only ever filled in for the head. */
+  invites: CoManagerInvite[]
+  youAreHead: boolean
 }
 
 /** Somebody who runs a club, as the organizer who owns it may see them. */
@@ -700,6 +730,8 @@ export type ClubManager = {
   isActive: boolean
   /** Absent for clubs claimed before the date was recorded. */
   linkedAt?: string
+  /** The one of them who may bring others in and take them off. */
+  isHead?: boolean
 }
 
 /**
@@ -816,6 +848,43 @@ export const clubService = {
     } catch {
       return null
     }
+  },
+
+  /** The clubs this account runs, for the top bar. */
+  async myTeams(): Promise<ManagedClub[]> {
+    return api.get('/manager/teams')
+  },
+
+  /** Who runs one club, for its own managers. */
+  async people(teamId: string): Promise<ClubPeople> {
+    return api.get(`/manager/teams/${encodeURIComponent(teamId)}/managers`)
+  },
+
+  /**
+   * A link that brings somebody in to help run the club. The head only.
+   *
+   * Nothing is emailed: the link is handed on by whoever made it. An address,
+   * when given, means only that address can take it up.
+   */
+  async inviteCoManager(teamId: string, email?: string): Promise<CoManagerInvite> {
+    return api.post(`/manager/teams/${encodeURIComponent(teamId)}/invites`, { email })
+  },
+
+  async withdrawCoManagerInvite(teamId: string, token: string): Promise<void> {
+    await api.delete(
+      `/manager/teams/${encodeURIComponent(teamId)}/invites/${encodeURIComponent(token)}`,
+    )
+  },
+
+  /** Taking a helper off, or — with one's own id — leaving the club. */
+  async removeCoManager(teamId: string, userId: string): Promise<void> {
+    await api.delete(
+      `/manager/teams/${encodeURIComponent(teamId)}/managers/${encodeURIComponent(userId)}`,
+    )
+  },
+
+  async makeHead(teamId: string, userId: string): Promise<void> {
+    await api.put(`/manager/teams/${encodeURIComponent(teamId)}/head`, { userId })
   },
 
   /** Everything a manager's own page needs, in one request. */

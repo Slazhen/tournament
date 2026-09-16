@@ -269,10 +269,11 @@ who its managers are. What they lose is the club record and the squad.
 
 Three things had to move with that line, each of them a way round it or a way
 to get stuck behind it. `POST /admin/teams/:id/managers/me` refuses a club that
-already has a manager, and so does the signed-in branch of `POST /auth/claim`
-when the claimer is the club's own organizer — otherwise the organizer writes
-themselves an invitation, opens it, and is a manager of a club that was no
-longer theirs to edit. `POST /admin/teams` picks its body from `TEAM_FIELDS`
+already has a manager, and so do both ends of the organiser's invitation:
+`POST /admin/teams/:id/invites` refuses a claimed club, and `POST /auth/claim`
+refuses any link not written by the club itself once the club has a manager —
+otherwise the organizer writes themselves (or a friend) an invitation, opens
+it, and is a manager of a club that was no longer theirs to edit. `POST /admin/teams` picks its body from `TEAM_FIELDS`
 the way the `PATCH` does, because a create that could name `managerUserIds` was
 a club its own creator could neither edit nor unlink. And deleting an account
 unlinks the clubs it ran, because an id is the whole record of the link: a club
@@ -319,7 +320,62 @@ through. That bug has been written here twice.
 Two things are deliberately closed to a club's own manager: deleting the club
 (it may sit in someone else's league) and writing `managerUserIds` (who runs a
 club is decided by invitation, and a manager who could write it could hand the
-club away or remove the others). Invitations are the organiser's to issue.
+club away or remove the others).
+
+**A club is run by several people, and one of them is in charge.** One account
+may run many clubs (its `teamIds`) and one club may be run by many accounts
+(`managerUserIds`). Among a club's managers one is the head: `headManagerId`,
+absent meaning the first on the list, which is every club from before the field
+and needs no migration. `server/src/lib/club-managers.ts` holds the rule and
+`headManagerOf` is the only reader, on the site too (`utils/teams.ts`). A name
+that is no longer on the list reads as absent, and `clearStaleHead` takes it off
+on every removal and again before anybody is linked, because an id left behind
+makes that person head the day they come back.
+
+Who invites is decided by whether the club has anybody. An unclaimed club is
+the organiser's to hand over, by link, as before. Once it has a manager, only
+its head brings people in (`POST /manager/teams/:id/invites`), and the
+organiser's link is refused at both ends — the organiser keeps removing
+managers, which is how a club whose head is out of reach is repaired: the next
+on the list becomes head. The head also removes helpers and hands the role on
+(`PUT /manager/teams/:id/head`, only to a live account); anybody may leave, the
+head only once nobody else is left, because otherwise the role falls to
+whoever is first on the list and nobody chose that. Every one of those writes
+carries the condition that the head is still who the route read
+(`headCondition`, `headUnchanged`), since a head who handed the club on in
+another tab was still the head in this request's read.
+
+A club's own link sends no mail: the product's address must not be something a
+manager can point at an inbox of their choosing, and the link is passed on by
+hand anyway. It carries `issuedBy: 'club'`, never a competition, and it speaks
+for the club only while its author is the head and was written after they last
+joined (`clubInviteStillStands`) — a head who handed the role on, or was removed
+and came back, must not keep bringing people in with old links. Handing the
+role on deletes the outgoing head's links, since the successor cannot see them.
+A claim that names an address is checked against the signed-in account as well
+as the one being created, and a signed-out claim asks `emailIsTaken`, because a
+head can now issue these links and a check blind to switched-off accounts would
+let them open a second login on somebody's address. Both caps — ten managers,
+five open links — are counted from a read; they are ceilings, not guards.
+
+A manager's own list of who runs the club (`GET /manager/teams/:id/managers`)
+shows every manager's address to the others: they run the club together. Open
+links are the head's alone. `headManagerId` is an account id and leaves no
+public route — `toPublicTeam` strips it with `managerUserIds`.
+
+Two things fell out of it that are worth knowing. `ensureLinkedAtMap` is
+conditional on the club existing: an update is an upsert, and deleting a club
+unlinks its managers after the record is gone, which wrote the club back as a
+record holding nothing but an id. And `REMOVE managerLinkedAt.#user` fails on a
+club whose map was never created, so the removal creates it first.
+
+On the site a club has an address, `/my-club/:teamId`, and `/my-club` is the
+list — or the club, when there is one. The top bar's "My teams" is those clubs
+(`GET /manager/teams`, one small read, not the overview), a link when there is
+one and a list when there are several. It sits beside the organiser's "Teams",
+which is every club in their competitions; a club the organiser also runs is
+marked "You manage this" there. The bar learns about a change the session does
+not carry — who is head — through `announceMyTeamsChanged`.
 
 **An entry is written by both sides.** A club's application to a competition is
 one item that the club writes when it applies and the organiser writes when it
@@ -752,7 +808,8 @@ write never fails the request that caused it.
 **The site's URLs carry no `/admin`.** There is one sign-in address, `/login`,
 for organisers, club managers and the super admin alike. The organiser's screens
 are `/dashboard`, `/tournaments`, `/teams`, `/players/:id`, `/calendar`,
-`/organizers` and `/changes`; a club manager's are `/my-club`. The one address
+`/organizers` and `/changes`; a club manager's are `/my-club`,
+`/my-club/:teamId` and `/my-club/players/:id`. The one address
 that keeps a prefix is the readable form of a competition,
 `/tournaments/:orgSlug/:tournamentSlug`, because `/:orgSlug/:tournamentSlug` is
 the public page. Everything that used to sit under `/admin` redirects

@@ -27,7 +27,12 @@ import type { RequestContext } from '../context.js'
  * with them; any further field about who runs the club belongs on this line.
  */
 function toPublicTeam(team: Team): Team {
-  const { managerUserIds: _managers, managerLinkedAt: _linked, ...rest } = team
+  const {
+    managerUserIds: _managers,
+    managerLinkedAt: _linked,
+    headManagerId: _head,
+    ...rest
+  } = team
   if (!Array.isArray(team.players)) return rest as Team
 
   const showAges = team.hidePlayerAges !== true

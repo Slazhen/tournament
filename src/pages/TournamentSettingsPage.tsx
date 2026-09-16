@@ -1060,6 +1060,7 @@ function ClubManagers({
                     ) : (
                       running.map((manager) => (
                         <div key={manager.id} className="text-xs opacity-70">
+                          {manager.isHead && running.length > 1 ? 'Head: ' : ''}
                           {manager.displayName ? `${manager.displayName} — ` : ''}
                           {manager.email || 'account no longer exists'}
                           {manager.linkedAt
@@ -1071,18 +1072,26 @@ function ClubManagers({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpenFor(openFor === team.id ? null : team.id)
-                      setEmail('')
-                      setFailed(null)
-                    }}
-                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
-                  >
-                    <IconLink size={14} />
-                    {running.length === 0 ? 'Invite manager' : 'Invite another'}
-                  </button>
+                  {/* A club with a manager brings its own people in, through
+                      its head manager; the API refuses a link from here. */}
+                  {/* A guest club is another organiser's to hand over, and its
+                      managers are not in this list at all. */}
+                  {team.visiting ? null : loaded && running.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenFor(openFor === team.id ? null : team.id)
+                        setEmail('')
+                        setFailed(null)
+                      }}
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass hover:bg-white/10 transition-all text-sm"
+                    >
+                      <IconLink size={14} />
+                      Invite manager
+                    </button>
+                  ) : loaded ? (
+                    <span className="shrink-0 text-xs opacity-60">Its head manager invites others</span>
+                  ) : null}
                 </div>
 
                 {openFor === team.id && (

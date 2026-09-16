@@ -374,6 +374,11 @@ export default function TeamPage() {
                       <span className="font-medium">
                         {manager.displayName || manager.email || 'Account no longer exists'}
                       </span>
+                      {manager.isHead && managers.length > 1 && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-200">
+                          Head manager
+                        </span>
+                      )}
                       {manager.displayName && manager.email && (
                         <span className="opacity-70">{manager.email}</span>
                       )}
@@ -453,7 +458,7 @@ export default function TeamPage() {
                     {isChangingSelf ? 'Working...' : 'Manage this club myself'}
                   </button>
                   <p className="text-xs opacity-60 mt-1.5">
-                    Puts {team.name} on your My club tab, alongside running the competition.
+                    Puts {team.name} under My teams, alongside running the competition.
                   </p>
                 </div>
               )}
@@ -467,7 +472,17 @@ export default function TeamPage() {
               </p>
             )}
 
-            {/* Handing the club to the person who actually runs it. */}
+            {/* Handing the club to the person who actually runs it. Only a
+                club nobody runs yet: once it has a manager, its head manager
+                brings anyone else in, and the API refuses any link from here —
+                the super admin's included. A club whose head is out of reach
+                is repaired by removing that head above. */}
+            {managersLoaded && !managersFailed && managers.length > 0 ? (
+              <p className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl text-left text-sm opacity-70">
+                Anyone else who should help run {team.name} is invited by its head manager, from
+                the club's own page.
+              </p>
+            ) : (
             <div className="mt-4 pt-4 border-t border-white/10 w-full max-w-2xl text-left">
               <p className="text-sm opacity-70 mb-2">
                 Invite the coach or club secretary to run {team.name}: the squad, the crest and
@@ -524,6 +539,7 @@ export default function TeamPage() {
                 </div>
               )}
             </div>
+            )}
               </>
             )}
 

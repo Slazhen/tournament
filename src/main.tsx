@@ -150,6 +150,9 @@ const router = createBrowserRouter([
 
       /* ---------- The club manager's own screens ---------- */
       { path: 'my-club', element: <MyClubPage /> },
+      // One club of several. A club id is 32 hex characters, so it never
+      // collides with the static `players` segment below.
+      { path: 'my-club/:teamId', element: <MyClubPage /> },
       // A player of a club this account runs. Separate from /players/:id, which
       // is the organiser's screen and reads the organiser's store; this one
       // reads /manager/overview, so a coach with no organizer can open it.

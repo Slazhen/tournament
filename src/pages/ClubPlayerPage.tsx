@@ -208,7 +208,7 @@ function PlayerDetail({
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
       <Link
-        to="/my-club"
+        to={`/my-club/${team.id}`}
         className="inline-flex items-center gap-1.5 text-sm text-gray-300 hover:text-white transition-colors"
       >
         <IconArrowLeft size={15} /> {team.name}

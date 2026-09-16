@@ -16,6 +16,8 @@ import {
   type InviteBase,
 } from './lib/invites.js'
 import { generateId } from './lib/passwords.js'
+import { notFound } from './lib/http.js'
+import type { Condition } from './lib/club-managers.js'
 import { getUserById } from './lib/sessions.js'
 import type { AuthUser, Team } from './lib/types.js'
 
@@ -48,12 +50,26 @@ export type TeamInvite = InviteBase & {
    */
   tournamentId?: string
   tournamentName?: string
+  /**
+   * Who wrote it: the organizer who owns the club, or the club's own head
+   * manager bringing in a helper. Absent on everything written before a club
+   * could invite, all of which were the organizer's.
+   *
+   * It matters at the claim. An invitation the organizer wrote cannot put the
+   * organizer themselves on a club somebody already runs — that would be the
+   * owner stepping round the manager. One the club wrote can: the head asked.
+   */
+  issuedBy?: 'organizer' | 'club'
 }
 
 export async function createInvite(
   team: Team,
   createdBy: string,
-  options: { email?: string; tournament?: { id: string; name: string } } = {},
+  options: {
+    email?: string
+    tournament?: { id: string; name: string }
+    issuedBy?: 'organizer' | 'club'
+  } = {},
 ): Promise<TeamInvite> {
   const invite: TeamInvite = {
     ...inviteEnvelope('team', createdBy, options.email),
@@ -63,10 +79,103 @@ export async function createInvite(
     organizerId: team.organizerId,
     tournamentId: options.tournament?.id,
     tournamentName: options.tournament?.name,
+    issuedBy: options.issuedBy ?? 'organizer',
   }
 
   await putInvite(invite)
   return invite
+}
+
+/**
+ * The invitations a club has written for its own helpers and nobody has used.
+ *
+ * A scan: the table is keyed by token alone and holds a handful of live rows,
+ * the same trade `deleteInvitesOfOrganizer` makes. Only the club's own — an
+ * organizer's link may carry a competition entry, and is the organizer's to
+ * withdraw, not the club's.
+ */
+export async function listClubInvites(teamId: string): Promise<TeamInvite[]> {
+  const all = await scanAll<TeamInvite>(TABLES.INVITES)
+  const now = Date.now()
+  return all.filter((invite) => {
+    if ((invite.kind ?? 'team') !== 'team') return false
+    if (invite.teamId !== teamId || invite.issuedBy !== 'club') return false
+    const expiresAt = new Date(invite.expiresAt).getTime()
+    return Number.isFinite(expiresAt) && expiresAt >= now
+  })
+}
+
+/**
+ * Withdraws one of the club's own invitations.
+ *
+ * Conditional on the row still being this club's and the club's to withdraw,
+ * because the token arrives in the request and a token for another club, or
+ * one the organizer wrote, must not be deletable by knowing it.
+ */
+export async function cancelClubInvite(token: string, teamId: string): Promise<boolean> {
+  try {
+    await ddb.send(
+      new DeleteCommand({
+        TableName: TABLES.INVITES,
+        Key: { token },
+        ConditionExpression: '#team = :teamId AND #issuedBy = :club',
+        ExpressionAttributeNames: { '#team': 'teamId', '#issuedBy': 'issuedBy' },
+        ExpressionAttributeValues: { ':teamId': teamId, ':club': 'club' },
+      }),
+    )
+    return true
+  } catch (error) {
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return false
+    throw error
+  }
+}
+
+/**
+ * Withdraws every link one person wrote for a club.
+ *
+ * Run when a head hands the role on: their successor cannot see those links
+ * (the listing is the current head's) and so cannot withdraw them, and they
+ * would come back to life if the role were ever handed back.
+ */
+export async function deleteClubInvitesBy(teamId: string, createdBy: string): Promise<void> {
+  for (const invite of await listClubInvites(teamId)) {
+    if (invite.createdBy !== createdBy) continue
+    await cancelClubInvite(invite.token, teamId)
+  }
+}
+
+/**
+ * Hands the head of a club to another of its managers.
+ *
+ * Conditional on the caller still being the head, in the shape the route read
+ * it (`headCondition`), and on the new head still being on the list — somebody
+ * removed in the same second must not come back in charge.
+ */
+export async function setHeadManager(
+  teamId: string,
+  newHeadId: string,
+  stillHead: Condition,
+): Promise<boolean> {
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TEAMS,
+        Key: { id: teamId },
+        UpdateExpression: 'SET #head = :newHead',
+        ConditionExpression: `contains(#managers, :newHead) AND (${stillHead.expression})`,
+        ExpressionAttributeNames: {
+          '#head': 'headManagerId',
+          '#managers': 'managerUserIds',
+          ...stillHead.names,
+        },
+        ExpressionAttributeValues: { ':newHead': newHeadId, ...stillHead.values },
+      }),
+    )
+    return true
+  } catch (error) {
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return false
+    throw error
+  }
 }
 
 /**
@@ -108,14 +217,17 @@ export async function linkManagerToTeam(user: AuthUser, team: Team): Promise<voi
   //
   // The date map has to exist before a key inside it can be written, and the
   // two cannot be one expression: DynamoDB rejects overlapping paths.
-  await ddb.send(
-    new UpdateCommand({
-      TableName: TABLES.TEAMS,
-      Key: { id: team.id },
-      UpdateExpression: 'SET managerLinkedAt = if_not_exists(managerLinkedAt, :emptyMap)',
-      ExpressionAttributeValues: { ':emptyMap': {} },
-    }),
-  )
+  if (!(await ensureLinkedAtMap(team.id))) throw notFound('That club no longer exists')
+
+  // A head's name left behind by a removal whose tidy-up did not land would
+  // make this person the head again the moment they are back on the list.
+  // Best effort: `headManagerOf` ignores such a name already, and this runs
+  // after an invitation has been spent.
+  try {
+    await clearStaleHead(team.id, user.id)
+  } catch {
+    // See above.
+  }
 
   try {
     await ddb.send(
@@ -161,6 +273,59 @@ export async function linkManagerToTeam(user: AuthUser, team: Team): Promise<voi
 }
 
 /**
+ * The date map has to exist before a key inside it can be written or removed:
+ * DynamoDB refuses a document path through a parent that is not there, and
+ * clubs claimed before the map existed have none.
+ */
+async function ensureLinkedAtMap(teamId: string): Promise<boolean> {
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TEAMS,
+        Key: { id: teamId },
+        UpdateExpression: 'SET managerLinkedAt = if_not_exists(managerLinkedAt, :emptyMap)',
+        // An update is an upsert. Deleting a club unlinks its managers after
+        // the record is gone, and without this the unlink wrote the club back
+        // as a record holding nothing but an id — a nameless club in every
+        // list that reads the table.
+        ConditionExpression: 'attribute_exists(#id)',
+        ExpressionAttributeNames: { '#id': 'id' },
+        ExpressionAttributeValues: { ':emptyMap': {} },
+      }),
+    )
+    return true
+  } catch (error) {
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return false
+    throw error
+  }
+}
+
+/**
+ * Takes a head's name off a club where that person is no longer a manager.
+ *
+ * `headManagerOf` already ignores such a name, so this is what keeps it from
+ * coming back to life on a later link, not what keeps it from counting now.
+ * Conditional on both halves, so it never touches a head who is on the list.
+ */
+async function clearStaleHead(teamId: string, userId: string): Promise<void> {
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TEAMS,
+        Key: { id: teamId },
+        UpdateExpression: 'REMOVE #head',
+        ConditionExpression:
+          '#head = :userId AND (attribute_not_exists(#managers) OR NOT contains(#managers, :userId))',
+        ExpressionAttributeNames: { '#head': 'headManagerId', '#managers': 'managerUserIds' },
+        ExpressionAttributeValues: { ':userId': userId },
+      }),
+    )
+  } catch (error) {
+    if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+  }
+}
+
+/**
  * Drops the manager links an organizer held over their own club when the club
  * moves to somebody else.
  *
@@ -193,12 +358,32 @@ export async function unlinkOwnerManagers(team: Team, previousOrganizerId: strin
  * a whole-list write on the linking side, is the one that used to restore a
  * manager the organizer had just removed.
  */
-export async function unlinkManagerFromTeam(userId: string, team: Team): Promise<void> {
+export async function unlinkManagerFromTeam(
+  userId: string,
+  team: Team,
+  /**
+   * What must still be true for this removal to go ahead, worked out afresh
+   * from every read — the head manager's removal of a helper passes the
+   * condition that they are still the head (`headCondition`). Answering null
+   * means the fresh read no longer allows it, and nothing is written.
+   */
+  guard?: (current: Team) => Condition | null,
+): Promise<boolean> {
   let current: Team | null = team
+  let removed = false
+
+  // A club already deleted has nothing to take the person off — only their
+  // account's list is left to tidy, which is what the loop below skips to.
+  if ((team.managerUserIds ?? []).includes(userId) && !(await ensureLinkedAtMap(team.id))) {
+    current = null
+  }
 
   for (let attempt = 0; attempt < 3 && current; attempt++) {
     const index = (current.managerUserIds ?? []).indexOf(userId)
     if (index === -1) break
+
+    const extra = guard ? guard(current) : undefined
+    if (extra === null) return false
 
     try {
       await ddb.send(
@@ -206,24 +391,49 @@ export async function unlinkManagerFromTeam(userId: string, team: Team): Promise
           TableName: TABLES.TEAMS,
           Key: { id: team.id },
           UpdateExpression: `REMOVE managerUserIds[${index}], managerLinkedAt.#user`,
-          ConditionExpression: `managerUserIds[${index}] = :userId`,
-          ExpressionAttributeNames: { '#user': userId },
-          ExpressionAttributeValues: { ':userId': userId },
+          ConditionExpression: extra
+            ? `managerUserIds[${index}] = :userId AND (${extra.expression})`
+            : `managerUserIds[${index}] = :userId`,
+          ExpressionAttributeNames: { '#user': userId, ...(extra?.names ?? {}) },
+          ExpressionAttributeValues: { ':userId': userId, ...(extra?.values ?? {}) },
         }),
       )
+      removed = true
       break
     } catch (error) {
       if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
       // Somebody else moved the list between the read and the write. Read it
-      // again rather than removing whatever now sits at that position.
-      const fresh = await ddb.send(new GetCommand({ TableName: TABLES.TEAMS, Key: { id: team.id } }))
+      // again rather than removing whatever now sits at that position — and
+      // consistently, or a stale answer comes back three times over.
+      const fresh = await ddb.send(
+        new GetCommand({ TableName: TABLES.TEAMS, Key: { id: team.id }, ConsistentRead: true }),
+      )
       current = (fresh.Item as Team | undefined) ?? null
+    }
+  }
+
+  // A guarded removal that never happened must not touch the account either
+  // (a deleted club is not a refusal: there is nothing left to guard):
+  // the account's list is the other half of a link the club still holds.
+  if (guard && !removed && current) return false
+
+  // The head is named by id, and an id left behind would make them the head
+  // again the day they are invited back. Attempted on every removal rather
+  // than only when the read named them, because the head can change between
+  // that read and this write; the condition decides. Tidiness and not the
+  // guard — `headManagerOf` already ignores such a name, and `linkManagerToTeam`
+  // clears it again — so no failure here may fail a removal that has happened.
+  if (removed) {
+    try {
+      await clearStaleHead(team.id, userId)
+    } catch {
+      // See above.
     }
   }
 
   const result = await ddb.send(new GetCommand({ TableName: TABLES.AUTH_USERS, Key: { id: userId } }))
   let account = result.Item as AuthUser | undefined
-  if (!account) return
+  if (!account) return true
 
   for (let attempt = 0; attempt < 3 && account; attempt++) {
     const index = (account.teamIds ?? []).indexOf(team.id)
@@ -248,6 +458,7 @@ export async function unlinkManagerFromTeam(userId: string, team: Team): Promise
       account = fresh.Item as AuthUser | undefined
     }
   }
+  return true
 }
 
 /* ------------------------------------------------------------------ *

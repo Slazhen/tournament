@@ -4,6 +4,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../store'
 import Logo from './Logo'
 import { useAuth } from '../contexts/AuthContext'
+import { clubService } from '../lib/data'
+import type { ManagedClub } from '../lib/data'
+import { MY_TEAMS_CHANGED } from '../utils/myTeams'
+import { cdnUrl } from '../utils/images'
+import { IconArrowDown, IconShield } from './icons'
 
 const ORGANIZER_NAV_ITEMS = [
   { to: '/tournaments', label: 'Tournaments' },
@@ -20,7 +25,11 @@ const SUPER_ADMIN_NAV_ITEMS = [
   { to: '/changes', label: 'Changes' },
 ]
 
-const CLUB_NAV_ITEM = { to: '/my-club', label: 'My clubs' }
+// The clubs this account runs itself, as against "Teams", which is every club
+// in the organiser's competitions. An organiser who also coaches a side has
+// both, and they are different questions: one is a list to run a league from,
+// the other is the club they answer for.
+const MY_TEAMS_PATH = '/my-club'
 
 /**
  * The admin bar.
@@ -72,6 +81,56 @@ export default function AdminNavigation() {
   // whose list came back empty was left with a bar that offered them nothing.
   const runsAClub = isTeamManager || (user?.teamIds?.length ?? 0) > 0
 
+  const [clubs, setClubs] = useState<ManagedClub[]>([])
+  const [clubsOpen, setClubsOpen] = useState(false)
+  const clubsRef = useRef<HTMLDivElement>(null)
+  // Reloaded when the account's list moves (joining or leaving a club
+  // refreshes the session) and when a page announces a change the session
+  // does not carry, such as who is head.
+  const clubsKey = runsAClub ? `${user?.id}:${(user?.teamIds ?? []).join(',')}` : ''
+
+  useEffect(() => {
+    if (!clubsKey) {
+      setClubs([])
+      return
+    }
+    let cancelled = false
+    const load = () => {
+      clubService
+        .myTeams()
+        .then((list) => {
+          if (!cancelled) setClubs(list)
+        })
+        // The bar still works without the names: "My teams" falls back to the
+        // list page, which loads them itself.
+        .catch(() => undefined)
+    }
+    load()
+    window.addEventListener(MY_TEAMS_CHANGED, load)
+    return () => {
+      cancelled = true
+      window.removeEventListener(MY_TEAMS_CHANGED, load)
+    }
+  }, [clubsKey])
+
+  useEffect(() => {
+    if (!clubsOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (!clubsRef.current?.contains(event.target as Node)) setClubsOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setClubsOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [clubsOpen])
+
+  useEffect(() => setClubsOpen(false), [location.pathname])
+
   // Anybody signed in gets the bar, even with no tabs in it: it carries the
   // account menu, and the way out. Without this an organiser between organisers
   // — or a manager whose club has just gone — was left on a page with no
@@ -81,11 +140,17 @@ export default function AdminNavigation() {
   const navItems = [
     ...(canOrganize ? ORGANIZER_NAV_ITEMS : []),
     ...(isSuperAdmin ? SUPER_ADMIN_NAV_ITEMS : []),
-    ...(runsAClub ? [CLUB_NAV_ITEM] : []),
   ]
 
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(path + '/')
+
+  const linkClass = (active: boolean) =>
+    `px-3 py-1.5 rounded-md text-sm transition-colors ${
+      active
+        ? 'bg-white/10 text-white font-medium'
+        : 'text-white/60 hover:text-white hover:bg-white/5'
+    }`
 
   const accountName = user?.displayName || (isSuperAdmin ? 'Super admin' : currentOrganizer?.name ?? 'Account')
   const initial = (user?.displayName || (isSuperAdmin ? 'S' : currentOrganizer?.name ?? '?'))
@@ -101,18 +166,83 @@ export default function AdminNavigation() {
 
         <nav className="flex items-center gap-1">
           {navItems.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
-                isActive(item.to)
-                  ? 'bg-white/10 text-white font-medium'
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
+            <Link key={item.to} to={item.to} className={linkClass(isActive(item.to))}>
               {item.label}
             </Link>
           ))}
+
+          {/* One club goes straight to it; several open a list, because the
+              point of the item is to reach one club in one click. */}
+          {runsAClub &&
+            (clubs.length <= 1 ? (
+              <Link
+                to={clubs.length === 1 ? `${MY_TEAMS_PATH}/${clubs[0].id}` : MY_TEAMS_PATH}
+                className={linkClass(isActive(MY_TEAMS_PATH))}
+              >
+                My teams
+              </Link>
+            ) : (
+              <div className="relative" ref={clubsRef}>
+                <button
+                  type="button"
+                  onClick={() => setClubsOpen((open) => !open)}
+                  aria-haspopup="menu"
+                  aria-expanded={clubsOpen}
+                  className={`${linkClass(isActive(MY_TEAMS_PATH))} inline-flex items-center gap-1`}
+                >
+                  My teams <IconArrowDown size={12} />
+                </button>
+                {clubsOpen && (
+                  <div
+                    role="menu"
+                    className="absolute left-0 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-white/10 bg-[rgb(var(--bg))] shadow-2xl overflow-hidden"
+                  >
+                    <div className="py-1 max-h-[60vh] overflow-y-auto">
+                      {clubs.map((club) => {
+                        const to = `${MY_TEAMS_PATH}/${club.id}`
+                        return (
+                          <Link
+                            key={club.id}
+                            to={to}
+                            role="menuitem"
+                            className={`flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ${
+                              isActive(to) ? 'bg-white/10' : 'hover:bg-white/5'
+                            }`}
+                          >
+                            {club.logo ? (
+                              <img
+                                src={cdnUrl(club.logo)}
+                                alt=""
+                                className="w-6 h-6 rounded object-cover shrink-0"
+                              />
+                            ) : (
+                              <span className="w-6 h-6 rounded shrink-0 flex items-center justify-center bg-white/10">
+                                <IconShield size={13} />
+                              </span>
+                            )}
+                            <span className="truncate flex-1">{club.name}</span>
+                            {club.isHead && (
+                              <span className="text-[10px] uppercase tracking-wide opacity-50">
+                                Head
+                              </span>
+                            )}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                    <div className="border-t border-white/10 py-1">
+                      <Link
+                        to={MY_TEAMS_PATH}
+                        role="menuitem"
+                        className="block px-4 py-2 text-sm hover:bg-white/5 transition-colors"
+                      >
+                        All my teams
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
         </nav>
 
         <div className="relative shrink-0" ref={menuRef}>
