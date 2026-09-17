@@ -19,12 +19,17 @@ import type { RequestContext } from '../context.js'
 /**
  * A club as the public may see it.
  *
- * These routes returned the stored record whole, which meant two things nobody
- * asked for went out to anyone who asked: `managerUserIds`, the account ids of
- * the people who run the club, and every player marked `isPublic: false` — a
- * flag the player route already honoured and then undid by attaching the club
- * beside it. `managerLinkedAt` is keyed by those same account ids and has to go
- * with them; any further field about who runs the club belongs on this line.
+ * These routes returned the stored record whole, which sent out
+ * `managerUserIds`, the account ids of the people who run the club.
+ * `managerLinkedAt` is keyed by those same account ids and has to go with them;
+ * any further field about who runs the club belongs on this line.
+ *
+ * Every player goes out. A player could once be marked `isPublic: false` and
+ * was dropped here, but every goal, card and teamsheet names a player by id
+ * alone, so a hidden player's events were printed as "Unknown player" with a
+ * link to a page that answered 404 — and nobody could find the switch that had
+ * hidden him. The flag is gone; records still carrying it are stripped of it
+ * below so that no page ever reads it as meaning something.
  */
 function toPublicTeam(team: Team): Team {
   const {
@@ -42,7 +47,6 @@ function toPublicTeam(team: Team): Team {
     // projection below destructures, and a null there answered 500 to every
     // visitor of every page that names this club.
     .filter((player): player is Record<string, unknown> => Boolean(player) && typeof player === 'object')
-    .filter((player) => player.isPublic !== false)
     .map((player) => {
       // The date itself never leaves the club. What a visitor comes for is how
       // old somebody is, and that is a number the server can work out — sending
@@ -56,7 +60,7 @@ function toPublicTeam(team: Team): Team {
       // travels: every goal, card and teamsheet names this player by id and by
       // nothing else, and a name nothing can resolve reads as "Unknown player"
       // over somebody who is demonstrably in the match.
-      const { dateOfBirth, archivedAt, ...rest } = player
+      const { dateOfBirth, archivedAt, isPublic: _retired, ...rest } = player
       const withoutDate = isArchivedPlayer({ archivedAt }) ? { ...rest, archived: true } : rest
       const age = showAges ? ageFrom(dateOfBirth) : undefined
       return age === undefined ? withoutDate : { ...withoutDate, age }
@@ -326,19 +330,13 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
     const allTeams = await teams.listAll()
 
     for (const team of allTeams) {
-      const players = Array.isArray(team.players)
-        ? (team.players as { id?: string; isPublic?: boolean }[])
-        : []
-      // A player marked not public is not served here at all.
-      const player = players.find(
-        (candidate) => candidate?.id === params.id && candidate.isPublic !== false,
-      )
+      const players = Array.isArray(team.players) ? (team.players as { id?: string }[]) : []
+      const player = players.find((candidate) => candidate?.id === params.id)
       if (player) {
         const context = await buildTeamContext(team)
         // The player is taken from the projected squad rather than from the
-        // stored record: returning the stored one beside it is exactly how
-        // `isPublic` was undone once already, and it would put the date of
-        // birth back on the wire that the projection just took off.
+        // stored record: returning the stored one beside it would put the date
+        // of birth back on the wire that the projection just took off.
         const projected = (context.team.players as Array<{ id?: string }> | undefined)?.find(
           (candidate) => candidate?.id === params.id,
         )

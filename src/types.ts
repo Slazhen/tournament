@@ -42,7 +42,6 @@ export type Player = {
     facebook?: string
     instagram?: string
   }
-  isPublic: boolean // Whether to show on public pages
   createdAtISO: string
   /**
    * When this player was taken off the club's books, if they have been.

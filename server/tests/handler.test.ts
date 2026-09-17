@@ -64,6 +64,7 @@ const publicTeam = {
   managerLinkedAt: { 'u-9': '2026-01-01T00:00:00.000Z' },
   players: [
     { id: 'p-open', firstName: 'Open', lastName: 'Player', dateOfBirth: bornInJanuary },
+    // A record from before the flag was retired. It no longer hides anybody.
     { id: 'p-hidden', firstName: 'Hidden', lastName: 'Player', isPublic: false },
     { id: 'p-left', firstName: 'Left', lastName: 'Player', archivedAt: '2026-02-02T00:00:00.000Z' },
     null,
@@ -482,10 +483,10 @@ describe('player editing', () => {
     expect(repos.teams.updatePlayer).not.toHaveBeenCalled()
   })
 
-  // Absent means public, so a null — which clears the field — and a string
-  // "false" both end up showing somebody who asked not to be shown.
-  it('refuses anything but a boolean for isPublic', async () => {
-    for (const value of [null, 'false', 0]) {
+  // The flag is retired, so it is no longer a field anybody may write: a body
+  // holding nothing else is a request that changes nothing.
+  it('no longer writes isPublic', async () => {
+    for (const value of [false, true, null]) {
       const response = await request('PATCH', '/admin/teams/team-own/players/p-1', {
         token: 'good-token',
         body: { isPublic: value },
@@ -581,10 +582,15 @@ describe('what the public is told about a squad', () => {
     expect(player.dateOfBirth).toBeUndefined()
   })
 
-  it('still leaves out a private player and who runs the club', async () => {
+  // A player once marked `isPublic: false` is in the answer: his goals, cards
+  // and teamsheets name him by id, and a squad without him printed them as
+  // "Unknown player". The stale flag itself does not travel.
+  it('sends every player, and still leaves out who runs the club', async () => {
     const team = parse((await request('GET', '/public/teams/team-public')).body)
+    const formerlyHidden = team.players.find((one: any) => one?.id === 'p-hidden')
 
-    expect(team.players.some((one: any) => one?.id === 'p-hidden')).toBe(false)
+    expect(formerlyHidden?.firstName).toBe('Hidden')
+    expect(formerlyHidden?.isPublic).toBeUndefined()
     expect(team.managerUserIds).toBeUndefined()
     expect(team.managerLinkedAt).toBeUndefined()
   })

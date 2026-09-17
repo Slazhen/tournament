@@ -208,7 +208,6 @@ export default function TeamPage() {
       lastName: draftPlayer.lastName.trim(),
       position: draftPlayer.position.trim() || 'Forward',
       number: draftPlayer.number ? Number(draftPlayer.number) : undefined,
-      isPublic: true,
     })
 
     setDraftPlayer({ firstName: '', lastName: '', number: '', position: 'Forward' })

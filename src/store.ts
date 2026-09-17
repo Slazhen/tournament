@@ -483,7 +483,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
         firstName: '',
         lastName: '',
         position: 'Forward',
-        isPublic: true,
         ...player,
       })
       set(state => ({

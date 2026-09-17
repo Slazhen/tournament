@@ -91,9 +91,22 @@ does not want the squad's ages published does not want one of them published.
 Absent means shown, which is what every club did before the flag existed.
 
 `/public/players/:id` returns the player *from the projected squad*, not the
-stored record beside it: returning the stored one is exactly how `isPublic` was
-undone once before, and it would put the date of birth back on the wire the
-projection had just taken off.
+stored record beside it: returning the stored one would put the date of birth
+back on the wire the projection had just taken off.
+
+**Every player is public.** A player could once be marked `isPublic: false`,
+and the public projection dropped him. But every goal, card and teamsheet names
+a player by id and by nothing else, so a hidden player's events were printed as
+"Unknown player" with a link to a page that answered 404 — while the organiser's
+screen, which reads the stored squad, showed the name. The switch was a row at
+the bottom of the player screen that nobody could find, and of the eight players
+it had hidden in September 2026, six were browser-era records nobody had
+knowingly hidden. So the flag is retired rather than reworked: it is in no
+field list, nothing reads it, and `toPublicTeam` strips it from the records that
+still carry it. What a club can still keep back is its players' ages
+(`hidePlayerAges`), which is a decision about the squad and not about one name.
+If a per-player opt-out comes back, it has to be a placeholder the match pages
+can draw — an id with no name — and not a player missing from the squad.
 
 **A round can be held back, and what that means is decided on the server.**
 An organiser draws a whole season at once and does not always want it read that
@@ -1292,9 +1305,7 @@ round: a row whose player cannot be found still counts, under "Former player".
   why emptying a shirt number on screen used to leave the old number in the
   record. A player update sends `null` to clear, `teams.updatePlayer` deletes
   the key rather than storing a null, and `addPlayer` drops them (a new player
-  has nothing to clear). `isPublic` is the exception: absent means public, so
-  the route refuses anything but a boolean there rather than letting a null
-  publish somebody who asked not to be.
+  has nothing to clear).
 - A `PATCH` that would change nothing is refused. It is not free: the write
   rewrites the record from the copy read at the start of the same request, so
   it can undo a save somebody else made in between.
@@ -1639,8 +1650,9 @@ photographs it was protecting keep their size.
   method has to be added to `access-control-allow-methods` in `lib/http.ts` or the
   browser's preflight kills the feature while the API works perfectly.
 - **Public routes project their output.** `toPublicTeam` in `routes/public.ts`
-  drops `managerUserIds` and players marked `isPublic: false`. A new public route
-  that returns a stored record whole undoes that.
+  drops `managerUserIds`, `managerLinkedAt` and `headManagerId`, turns a
+  player's date of birth into an age and `archivedAt` into `archived: true`. A
+  new public route that returns a stored record whole undoes that.
 - **A page a visitor can reach never calls a service method that branches on
   `isSignedIn()`.** `organizerService.getAll` follows a signed-in user to
   `/admin/organizers`, which returns what that user administers: all of them for

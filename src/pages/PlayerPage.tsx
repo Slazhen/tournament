@@ -342,26 +342,6 @@ export default function PlayerPage() {
                   )}
                 </div>
               </div>
-              <div>
-                <span className="opacity-70">Public:</span>
-                <div className="flex items-center gap-2">
-                  {clubIsMineToEdit ? (
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={player.isPublic}
-                        onChange={(e) => updatePlayer(player.id, { isPublic: e.target.checked })}
-                        className="w-4 h-4 rounded border border-white/20"
-                      />
-                      <span className="text-xs">{player.isPublic ? 'Visible' : 'Hidden'}</span>
-                    </label>
-                  ) : (
-                    <span className="text-xs opacity-80">
-                      {player.isPublic ? 'Visible' : 'Hidden'}
-                    </span>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
           

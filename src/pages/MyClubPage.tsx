@@ -2116,7 +2116,6 @@ function Squad({ team, onReload }: { team: Team; onReload: () => Promise<void> }
         lastName: draft.lastName.trim(),
         position: draft.position.trim(),
         number: draft.number ? Number(draft.number) : undefined,
-        isPublic: true,
       })
       setDraft(BLANK_PLAYER)
       await onReload()

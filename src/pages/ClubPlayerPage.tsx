@@ -127,7 +127,6 @@ function PlayerDetail({
   const [dateOfBirth, setDateOfBirth] = useState(player.dateOfBirth?.slice(0, 10) ?? '')
   const [instagram, setInstagram] = useState(player.socialMedia?.instagram ?? '')
   const [facebook, setFacebook] = useState(player.socialMedia?.facebook ?? '')
-  const [isPublic, setIsPublic] = useState(player.isPublic !== false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -145,7 +144,6 @@ function PlayerDetail({
     setDateOfBirth(player.dateOfBirth?.slice(0, 10) ?? '')
     setInstagram(player.socialMedia?.instagram ?? '')
     setFacebook(player.socialMedia?.facebook ?? '')
-    setIsPublic(player.isPublic !== false)
   }, [player])
 
   /**
@@ -178,7 +176,6 @@ function PlayerDetail({
         preferredFoot: foot || null,
         dateOfBirth: dateOfBirth || null,
         socialMedia: { instagram: instagram.trim(), facebook: facebook.trim() },
-        isPublic,
       })
       await onReload()
       setSaved(true)
@@ -325,22 +322,6 @@ function PlayerDetail({
               </Field>
             </div>
 
-            <label className="flex items-start gap-2 text-sm text-gray-300">
-              <input
-                type="checkbox"
-                checked={isPublic}
-                onChange={(event) => setIsPublic(event.target.checked)}
-                className="mt-0.5"
-              />
-              <span>
-                Show on the public pages
-                <span className="block text-xs text-gray-500">
-                  Off, and this player is left out of the squad a visitor sees. Goals already
-                  recorded still count in the competition's tables.
-                </span>
-              </span>
-            </label>
-
             {error && <p className="text-sm text-red-300">{error}</p>}
 
             <div className="flex items-center gap-3">
@@ -352,14 +333,12 @@ function PlayerDetail({
                 {saving ? 'Saving…' : 'Save'}
               </button>
               {saved && <span className="text-sm text-gray-400">Saved.</span>}
-              {player.isPublic !== false && (
-                <Link
-                  to={`/public/players/${player.id}`}
-                  className="text-sm text-gray-300 hover:text-white transition-colors"
-                >
-                  See the public page
-                </Link>
-              )}
+              <Link
+                to={`/public/players/${player.id}`}
+                className="text-sm text-gray-300 hover:text-white transition-colors"
+              >
+                See the public page
+              </Link>
             </div>
           </div>
         </div>

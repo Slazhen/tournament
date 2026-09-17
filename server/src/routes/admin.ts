@@ -143,7 +143,6 @@ const ORGANIZER_FIELDS = ['name', 'email', 'logo', 'description'] as const
  * Absent means "no" for both, so anything that is not a boolean — a null, which
  * clears the field, or the string "false", which is truthy — would either
  * publish a club that did not ask to be listed or quietly unlist one that did.
- * The same rule `isPublic` follows on a player, and for the same reason.
  */
 function assertClubFlags(updates: Record<string, unknown>): void {
   for (const field of ['hiddenFromPool', 'hidePlayerAges'] as const) {
@@ -175,7 +174,6 @@ const PLAYER_FIELDS = [
   'preferredFoot',
   'photo',
   'socialMedia',
-  'isPublic',
 ] as const
 
 const FEET = new Set(['left', 'right', 'both'])
@@ -218,14 +216,6 @@ function playerUpdates(body: Record<string, unknown>): Record<string, unknown> {
   const foot = updates.preferredFoot
   if (foot !== undefined && foot !== null && !FEET.has(foot as string)) {
     throw badRequest('preferredFoot must be left, right or both')
-  }
-
-  // `isPublic` is the one field where a wrong value publishes somebody who
-  // asked not to be published: absent means public, so a null — which clears
-  // the field — and a string "false" both read as "show this player". It is a
-  // boolean or it is not sent.
-  if (updates.isPublic !== undefined && typeof updates.isPublic !== 'boolean') {
-    throw badRequest('isPublic must be true or false')
   }
 
   return updates
@@ -400,11 +390,10 @@ async function managersOfTeams(list: Team[]): Promise<Record<string, ClubManager
  * added next year — `hiddenFromPool` was added this year — would otherwise reach
  * every organiser this club visits on the day it is written.
  *
- * Players hidden with `isPublic: false` are kept, unlike in the public
- * projection: this organiser names the teamsheets for this club and enters it
- * in the competition, and a player they cannot see is a player who cannot be
- * fielded. What is dropped is the date of birth, which a teamsheet has never
- * needed.
+ * Every player is kept: this organiser names the teamsheets for this club and
+ * enters it in the competition, and a player they cannot see is a player who
+ * cannot be fielded. What is dropped is the date of birth, which a teamsheet
+ * has never needed.
  */
 const VISITING_TEAM_FIELDS = [
   'id',
@@ -432,7 +421,6 @@ const VISITING_PLAYER_FIELDS = [
   'preferredFoot',
   'photo',
   'socialMedia',
-  'isPublic',
   'createdAtISO',
   // Whether this player is still on the club's books. The organiser names this
   // club's teamsheets, and a picker that cannot tell an archived player from a
@@ -1332,7 +1320,6 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       lastName: typeof ctx.body.lastName === 'string' ? ctx.body.lastName : '',
       position: typeof ctx.body.position === 'string' ? ctx.body.position : '',
       number: typeof ctx.body.number === 'number' ? ctx.body.number : undefined,
-      isPublic: ctx.body.isPublic !== false,
     })
     await record(user, {
       action: 'player.create',
