@@ -1644,6 +1644,13 @@ photographs it was protecting keep their size.
   policy's day. `ImagesCachePolicy` exists to bound it to a day rather than the
   year the objects themselves claim; if that ever has to be immediate, the fix is
   `cloudfront:CreateInvalidation` on the delete route and not a shorter TTL.
+- **A form that navigates away is still on screen after it has finished.**
+  react-router runs navigation as a transition, so while the next page's lazy
+  chunk loads the old page stays mounted and clickable. The create screen
+  unlocked its button in a `finally` right after `navigate`, the organiser saw
+  nothing happen and pressed again, and one competition was created twice
+  (September 2026, 1.3 seconds apart). A submit that succeeded stays locked;
+  only a thrown error unlocks it, and the guard is a ref, not state.
 - **Content-hashed chunks 404 after a deploy** for anyone holding the old
   `index.html`. `lazyPage()` reloads once, guarded by `sessionStorage`.
 - **CORS is answered in application code**, not in the template, so a new HTTP

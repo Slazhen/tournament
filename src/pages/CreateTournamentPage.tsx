@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, Link, useSearchParams } from "react-router-dom"
 import { useAppStore } from "../store"
 import LogoUploader from "../components/LogoUploader"
@@ -46,6 +46,9 @@ export default function CreateTournamentPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string>("")
   const [isCreating, setIsCreating] = useState(false)
+  // The guard the submit handler reads. State alone is read from the render the
+  // handler was created in, so a ref is what a second press actually sees.
+  const submitting = useRef(false)
 
   const {
     getCurrentOrganizer,
@@ -154,8 +157,9 @@ export default function CreateTournamentPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!tournamentName.trim() || selectedTeamIds.length < 2 || isCreating || !ownerId) return
+    if (!tournamentName.trim() || selectedTeamIds.length < 2 || submitting.current || !ownerId) return
 
+    submitting.current = true
     setIsCreating(true)
     try {
       const created = await createTournament(
@@ -192,9 +196,17 @@ export default function CreateTournamentPage() {
       } else {
         navigate('/tournaments')
       }
-    } finally {
+    } catch (error) {
+      submitting.current = false
       setIsCreating(false)
+      throw error
     }
+    // Deliberately not unlocked on the way out. The router runs navigation as a
+    // transition, so while the season page's chunk loads this form stays on
+    // screen and clickable; unlocking it here is how one press of "Create"
+    // became two identical competitions. A null from the store is no reason to
+    // unlock either: it can mean the season was created and only the fixtures
+    // failed, and a second press would create it again.
   }
 
   const tooFewForScheme = selectedTeamIds.length > 0 && selectedTeamIds.length < chosenScheme.minTeams
@@ -378,10 +390,10 @@ export default function CreateTournamentPage() {
 
         <button
           type="submit"
-          disabled={!tournamentName.trim() || selectedTeamIds.length < 2 || tooFewForScheme}
+          disabled={isCreating || !tournamentName.trim() || selectedTeamIds.length < 2 || tooFewForScheme}
           className="w-full px-4 py-2 rounded-md glass hover:bg-white/10 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Create tournament
+          {isCreating ? 'Creating…' : 'Create tournament'}
         </button>
         {/* Creation defaults to private, which was not visible anywhere before. */}
         <p className="text-xs opacity-60 text-center">
