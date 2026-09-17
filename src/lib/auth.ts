@@ -182,9 +182,57 @@ export type AuditEntry = {
   organizerId?: string
 }
 
+/** Kinds of event the log can be narrowed to; the server owns what each one covers. */
+export type AuditGroup = 'competitions' | 'matches' | 'clubs' | 'entries' | 'organizers' | 'accounts'
+
+export type AuditFilter = {
+  organizerId?: string
+  tournamentId?: string
+  actorId?: string
+  email?: string
+  role?: UserRole
+  group?: AuditGroup
+  action?: string
+  /** ISO timestamps; `from` inclusive, `to` exclusive. */
+  from?: string
+  to?: string
+}
+
+export type AuditPage = {
+  entries: AuditEntry[]
+  cursor?: string
+  /** How far back this request looked, when it stopped before the end of the log. */
+  searchedTo?: string
+}
+
+export type AuditOptions = {
+  organizers: { id: string; name: string }[]
+  tournaments: {
+    id: string
+    name: string
+    organizerId: string
+    seasonLabel?: string
+    createdAtISO?: string
+  }[]
+}
+
 /** The record of who changed what. Super admin only, on the server too. */
-export async function fetchAuditLog(limit = 100): Promise<AuditEntry[]> {
-  return api.get<AuditEntry[]>(`/admin/audit?limit=${limit}`)
+export async function fetchAuditLog(
+  filter: AuditFilter,
+  options: { limit?: number; cursor?: string } = {},
+): Promise<AuditPage> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filter)) {
+    if (typeof value === 'string' && value !== '') params.set(key, value)
+  }
+  params.set('limit', String(options.limit ?? 100))
+  if (options.cursor) params.set('cursor', options.cursor)
+  return api.get<AuditPage>(`/admin/audit?${params.toString()}`)
+}
+
+/** Organisers and seasons, by name, for the log's filters. */
+export async function fetchAuditOptions(): Promise<AuditOptions> {
+  return api.get<AuditOptions>('/admin/audit/options')
 }
 
 /** Takes up an invitation to run a club, creating the account when there is none. */

@@ -17,7 +17,7 @@ import {
 } from '../lib/passwords.js'
 import { createSession, deleteAllUserSessions } from '../lib/sessions.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
-import { organizers, teams, tournaments } from '../repos.js'
+import { organizers, teams, toSummary, tournaments } from '../repos.js'
 import {
   deleteEntriesForTeam,
   deleteEntriesForTournament,
@@ -51,7 +51,7 @@ import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { emailIsTaken, findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
-import { record, recent } from '../lib/audit.js'
+import { decodeCursor, parseAuditFilter, record, search } from '../lib/audit.js'
 import { isInClubPool } from '../lib/pool.js'
 import { adminRead, liveRead } from '../lib/cache.js'
 import { issueResetToken } from '../lib/resets.js'
@@ -2193,11 +2193,50 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     return { link, expiresAt: reset.expiresAt, emailed: mail.sent }
   })
 
-  /** The record of who changed what. */
+  /**
+   * The record of who changed what, one page at a time and filtered here
+   * rather than in the browser: a filter applied to the newest two hundred
+   * lines answers "nothing from this organiser" about everything older than
+   * them, and says so with the same empty list as a true answer.
+   */
   router.get('/admin/audit', async (ctx) => {
     assertSuperAdmin(await ctx.user())
-    const limit = Number(ctx.query?.limit ?? 100)
-    return recent(Number.isFinite(limit) ? limit : 100)
+    const query = ctx.query ?? {}
+    const limit = Number(query.limit ?? 100)
+    return search(parseAuditFilter(query), {
+      limit: Number.isFinite(limit) ? limit : 100,
+      cursor: decodeCursor(query.cursor),
+    })
+  })
+
+  /**
+   * What the log screen offers to filter by: every organiser and every season,
+   * names only. One request rather than the admin lists, because those carry
+   * every match of every season and this screen needs a label.
+   */
+  router.get('/admin/audit/options', async (ctx) => {
+    assertSuperAdmin(await ctx.user())
+    const [allOrganizers, allTournaments] = await Promise.all([
+      organizers.list(adminRead),
+      tournaments.listAll(adminRead),
+    ])
+    return {
+      organizers: allOrganizers
+        .map((organizer) => ({ id: organizer.id, name: organizer.name }))
+        // Organiser records predate the API and are schemaless; one without a
+        // name must not cost the screen every picker.
+        .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''))),
+      tournaments: allTournaments
+        .map(toSummary)
+        .map((summary) => ({
+          id: summary.id,
+          name: summary.name,
+          organizerId: summary.organizerId,
+          seasonLabel: summary.seasonLabel,
+          createdAtISO: summary.createdAtISO,
+        }))
+        .sort((a, b) => String(b.createdAtISO ?? '').localeCompare(String(a.createdAtISO ?? ''))),
+    }
   })
 
   router.post('/admin/accounts/reset-password', async (ctx) => {

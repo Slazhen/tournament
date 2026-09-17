@@ -379,6 +379,17 @@ describe('authorization', () => {
     expect(repos.teams.listByOrganizer).not.toHaveBeenCalled()
   })
 
+  // The log names every organiser's edits and every author's address, so the
+  // filters must not become a way for one organiser to read another's.
+  it('refuses the change log and its filter options to an organizer', async () => {
+    for (const path of ['/admin/audit', '/admin/audit/options']) {
+      const response = await request('GET', path, { token: 'good-token' })
+      expect(response.statusCode).toBe(403)
+    }
+    expect(repos.organizers.list).not.toHaveBeenCalled()
+    expect(repos.tournaments.listAll).not.toHaveBeenCalled()
+  })
+
   it('refuses to tell an organizer what deleting one would cost', async () => {
     const response = await request('GET', '/admin/organizers/org-1/impact', {
       token: 'good-token',

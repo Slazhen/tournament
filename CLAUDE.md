@@ -805,6 +805,27 @@ the rest of that paragraph and this does not pay it.
 Writes that reach the database are recorded by `lib/audit.ts`. A failed audit
 write never fails the request that caused it.
 
+**The log is filtered by the API, never on the screen.** `/changes` narrows by
+organiser, competition, kind of event, exact action, author, role and dates, and
+every one of those is a `FilterExpression` on `GET /admin/audit` rather than a
+filter over the lines already loaded: narrowing the newest page answers
+"nothing from this organiser" about everything older than it, with the same
+empty list as a true answer. DynamoDB applies `Limit` before the filter, so
+`search` reads page after page under a budget and says how far back it looked
+(`searchedTo`); a short page with a cursor means "not found yet", and the screen
+offers to search further rather than claiming there is nothing. The dates are
+the sort key, so they narrow what is read and not only what is returned.
+
+A kind of event is a list of action prefixes (`AUDIT_GROUPS`), so a new
+`thing.verb` lands in a group without anybody remembering to add it. A
+competition is found in both shapes an entity id takes — the tournament id, or
+`<tournamentId>/<matchId>` for a fixture — and nowhere else: a club line does
+not name the season it was written from. Scripts write their own lines
+(`script:merge-teams`, action `merge`), which is why the author filter accepts a
+colon and `clubs` carries a prefix with no dot. The pickers read
+`GET /admin/audit/options`, names only, because the admin lists carry every
+match of every season.
+
 **The site's URLs carry no `/admin`.** There is one sign-in address, `/login`,
 for organisers, club managers and the super admin alike. The organiser's screens
 are `/dashboard`, `/tournaments`, `/teams`, `/players/:id`, `/calendar`,
