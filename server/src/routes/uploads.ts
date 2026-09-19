@@ -21,7 +21,7 @@ const EXTENSION_BY_TYPE: Record<string, string> = {
   'image/gif': 'gif',
 }
 
-type Scope = { kind: 'team' | 'tournament' | 'player'; id: string }
+type Scope = { kind: 'team' | 'tournament' | 'player' | 'staff'; id: string }
 
 /**
  * Confirms the caller owns the thing they are attaching an image to, and
@@ -46,7 +46,14 @@ async function resolveKeyPrefix(ctx: RequestContext, scope: Scope): Promise<stri
   // here is "does this person run the club", not "does this person run the
   // competition it plays in".
   assertManagesTeam(user, team)
-  return scope.kind === 'player' ? `teams/${scope.id}/players` : `teams/${scope.id}`
+  if (scope.kind === 'player') return `teams/${scope.id}/players`
+  // The coaching staff keep their photographs under a prefix of their own, the
+  // way the players do: what an image is of is then readable from its key,
+  // which is the only thing anybody has to go on when looking at the bucket.
+  // (`optimize-images.mjs` asks the records rather than the key, so it treats
+  // these as photographs already and leaves them at 1200px.)
+  if (scope.kind === 'staff') return `teams/${scope.id}/staff`
+  return `teams/${scope.id}`
 }
 
 
@@ -63,7 +70,7 @@ async function resolveKeyPrefix(ctx: RequestContext, scope: Scope): Promise<stri
  * wider than that on purpose, so that an id format changing later does not
  * quietly make every existing image undeletable.
  */
-const KEY_SHAPE = /^(teams\/[A-Za-z0-9_-]+(?:\/players)?|tournaments\/[A-Za-z0-9_-]+)\/[A-Za-z0-9_-]+\.(jpg|png|webp|gif)$/
+const KEY_SHAPE = /^(teams\/[A-Za-z0-9_-]+(?:\/(?:players|staff))?|tournaments\/[A-Za-z0-9_-]+)\/[A-Za-z0-9_-]+\.(jpg|png|webp|gif)$/
 
 export function registerUploadRoutes(router: Router<RequestContext>): void {
   /**
@@ -79,8 +86,8 @@ export function registerUploadRoutes(router: Router<RequestContext>): void {
     if (typeof contentType !== 'string' || !ALLOWED_CONTENT_TYPES.has(contentType)) {
       throw badRequest('contentType must be one of: ' + [...ALLOWED_CONTENT_TYPES].join(', '))
     }
-    if (kind !== 'team' && kind !== 'tournament' && kind !== 'player') {
-      throw badRequest('kind must be team, tournament or player')
+    if (kind !== 'team' && kind !== 'tournament' && kind !== 'player' && kind !== 'staff') {
+      throw badRequest('kind must be team, tournament, player or staff')
     }
     if (typeof id !== 'string' || !id) throw badRequest('id is required')
 

@@ -22,6 +22,8 @@ import {
   IconRepeat,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
+import CoachingStaff from '../components/CoachingStaff'
+import { clubStaff } from '../utils/staff'
 
 export default function TeamPage() {
   const { teamId } = useParams()
@@ -1141,6 +1143,18 @@ export default function TeamPage() {
             </ul>
           </div>
         )}
+      </section>
+
+      {/* Coaching staff. Not players: nobody here is named in a teamsheet,
+          registered in a competition or counted in a statistic. */}
+      <section className="glass rounded-xl p-6 w-full max-w-6xl">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Coaching staff ({clubStaff(team).length})</h2>
+          {!clubIsMineToEdit && (
+            <span className="text-sm opacity-70">The club's manager keeps this list</span>
+          )}
+        </div>
+        <CoachingStaff team={team} canEdit={clubIsMineToEdit} onChange={loadTeams} />
       </section>
 
       {/* Tournaments Section */}

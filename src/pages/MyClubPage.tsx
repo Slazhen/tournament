@@ -35,6 +35,7 @@ import YoutubeIcon from '../components/YoutubeIcon'
 import LogoUploader from '../components/LogoUploader'
 import MiniTable from '../components/MiniTable'
 import PhotoUploader from '../components/PhotoUploader'
+import CoachingStaff from '../components/CoachingStaff'
 import {
   IconArrowLeft,
   IconCalendar,
@@ -53,6 +54,7 @@ import {
   IconTrophy,
   IconUser,
   IconUsers,
+  IconWhistle,
 } from '../components/icons'
 import { cdnUrl } from '../utils/images'
 import ClubManagers from '../components/ClubManagers'
@@ -492,6 +494,19 @@ function ClubCard({
       />
 
       <Squad team={team} onReload={onReload} />
+
+      {/* The coaching staff. Kept beside the squad and counted in nothing: no
+          teamsheet names one of these people and no entry registers them. */}
+      <div className="glass rounded-2xl p-5 border border-white/15">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-300 mb-1 inline-flex items-center gap-2">
+          <IconWhistle size={15} /> Coaching staff
+        </h2>
+        <p className="text-xs text-gray-400 mb-4">
+          The coach, an assistant, the physio. None of it is required, and nobody here counts as
+          a player.
+        </p>
+        <CoachingStaff team={team} canEdit onChange={onReload} />
+      </div>
 
       {standings.some((standing) => standing.position === 1) && (
         <div className="flex items-center gap-3 text-sm text-amber-200/80">

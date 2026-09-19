@@ -1,5 +1,5 @@
 import { api, isSignedIn } from './api'
-import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate, CustomPlayoffRoundConfig, PointDeduction } from '../types'
+import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate, StaffMember, StaffUpdate, CustomPlayoffRoundConfig, PointDeduction } from '../types'
 
 /**
  * Data access for the whole app.
@@ -575,6 +575,39 @@ export const playerService = {
   },
 }
 
+/**
+ * A club's coaching staff.
+ *
+ * Its own service rather than a field on `teamService.update`, because `staff`
+ * is a list: the club PATCH refuses it, and these three routes each touch one
+ * person under a condition, so two people editing the staff at the same moment
+ * do not overwrite each other.
+ */
+export const staffService = {
+  async add(teamId: string, member: Partial<StaffMember>): Promise<StaffMember> {
+    return api.post<StaffMember>(`/admin/teams/${encodeURIComponent(teamId)}/staff`, member)
+  },
+
+  async update(teamId: string, staffId: string, updates: StaffUpdate): Promise<StaffMember> {
+    return api.patch<StaffMember>(
+      `/admin/teams/${encodeURIComponent(teamId)}/staff/${encodeURIComponent(staffId)}`,
+      updates,
+    )
+  },
+
+  /**
+   * Takes somebody off the staff for good.
+   *
+   * Deliberately not the archive a player gets: nothing in the system points at
+   * a member of staff, so there is no history for a removal to leave anonymous.
+   */
+  async remove(teamId: string, staffId: string): Promise<void> {
+    await api.delete(
+      `/admin/teams/${encodeURIComponent(teamId)}/staff/${encodeURIComponent(staffId)}`,
+    )
+  },
+}
+
 export const matchService = {
   async updateMatchInTournament(
     tournamentId: string,
@@ -653,6 +686,9 @@ export const matchService = {
 export type UploadScope =
   | { kind: 'team'; id: string }
   | { kind: 'player'; id: string }
+  // A member of staff's photograph, under the club whose staff they are: the
+  // API decides the key, and the browser names the club rather than the person.
+  | { kind: 'staff'; id: string }
   | { kind: 'tournament'; id: string }
 
 type PresignedUpload = {

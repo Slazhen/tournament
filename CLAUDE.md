@@ -803,6 +803,46 @@ wherever he actually played in it, which is the union `squadInTournament`
 already made — a name in that season's scorer table and not in the list beside
 it is a visitor looking for somebody who is demonstrably there.
 
+**A club has staff, and none of them is a player.** The coach, an assistant,
+the physio: `staff` on the club record, a list of `{ id, role, firstName,
+lastName, photo?, createdAtISO }` written by `POST`/`PATCH`/`DELETE
+/admin/teams/:id/staff[/:staffId]` and guarded by `assertManagesTeam`, like
+everything else the club owns. Nothing in a competition reads it. Nobody here
+is named in a teamsheet, registered in an entry, counted in a statistic or
+capped by a squad limit, which is the whole of what "this does not count as a
+player" means, and it is why `lineups.ts`, `squads.ts` and `standings.ts` did
+not have to change.
+
+A role on each person rather than three fields on the club, because a club with
+two assistants is ordinary and a role somebody asks for next season — a
+goalkeeping coach, a kit manager — is then a value in the list and not a change
+to the shape of every club record. `STAFF_ROLES` is the three, in both
+`server/src/lib/staff.ts` and `src/types.ts`; the stored value is a key and
+`staffRoleLabel` is the only thing that prints it, so `assistant_coach` never
+reaches a page.
+
+It is deleted rather than archived, which is the opposite of what the same
+button does to a player, and the difference is the point: a player's record is
+the only place their name lives and every goal, card and teamsheet points at
+them by id alone, while nothing at all points at a member of staff. There is no
+history a removal here could make anonymous.
+
+The rest is the rules this file already holds. `staff` is absent from
+`TEAM_FIELDS`, so the club `PATCH` and `POST` refuse it and the three routes are
+the only way in — a list written back whole loses whoever a second author added
+in between. The update asserts the name against the record as it will be stored
+and never against the body, because the two halves are sent separately and
+emptying one per request passes any check that only reads what arrived, leaving
+a row with a photograph, a role and nobody nameable on it. It travels out
+through a named list of its own, `toPublicStaff`, used by `toPublicTeam` and
+`toVisitingTeam` alike: these records are schemaless, and a physio's phone
+number added to `STAFF_FIELDS` next year would otherwise be public on the day it
+is written — which is exactly what `VISITING_PLAYER_FIELDS` exists to have
+stopped happening to players. Photographs go up under `teams/<id>/staff` through
+the same presigned POST as everything else, and what is not covered is what is
+not covered for a player either: removing somebody leaves their photograph in
+the bucket.
+
 **A teamsheet has two authors.** Who played for a club in one match is written
 by the organiser, for either side, and by that club's own manager, for their own
 side only — `PUT /admin/tournaments/:t/matches/:m/lineup` and the matching

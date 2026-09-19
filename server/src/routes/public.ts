@@ -1,4 +1,5 @@
 import { Router } from '../lib/router.js'
+import { toPublicStaff } from '../lib/staff.js'
 import { badRequest, notFound } from '../lib/http.js'
 import { organizerSlug, tournamentSlug, seriesSlug, seasonSlug, seriesKey } from '../lib/slugs.js'
 import { isPublic, organizers, teams, toSummary, tournaments } from '../repos.js'
@@ -38,7 +39,13 @@ function toPublicTeam(team: Team): Team {
     headManagerId: _head,
     ...rest
   } = team
-  if (!Array.isArray(team.players)) return rest as Team
+  // A named list rather than the stored one: this record is schemaless, and a
+  // field added to a member of staff next year would otherwise be public on
+  // the day it is written. `lib/staff.ts` holds the list.
+  const staff = toPublicStaff(team.staff)
+  const withStaff = (staff === undefined ? rest : { ...rest, staff }) as Team
+
+  if (!Array.isArray(team.players)) return withStaff
 
   const showAges = team.hidePlayerAges !== true
   const players = (team.players as Array<Record<string, unknown> | null>)
@@ -66,7 +73,7 @@ function toPublicTeam(team: Team): Team {
       return age === undefined ? withoutDate : { ...withoutDate, age }
     })
 
-  return { ...(rest as Team), players }
+  return { ...withStaff, players }
 }
 
 /**

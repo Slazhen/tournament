@@ -18,6 +18,7 @@ import LastAndNextMatch from '../components/LastAndNextMatch'
 import { allMatches, isPlayed, playerRecords } from '../utils/matches'
 import { deductedFrom, pointsFor, tableRules } from '../utils/standings'
 import { activeSquad, hasSquadEntry, isArchived, squadInTournament } from '../utils/squads'
+import { clubStaff, staffFullName, staffRoleLabel } from '../utils/staff'
 import { headerColor, inkOn, shade } from '../utils/crest'
 import { formatOptionFor } from '../utils/formats'
 import { cdnUrl } from '../utils/images'
@@ -143,6 +144,10 @@ export default function PublicTeamPage() {
   // made.
   const everyoneRegistered =
     selectedTournament !== null && !hasSquadEntry(selectedTournament, team.id)
+
+  // The coaching staff, whichever tab is open: they belong to the club rather
+  // than to one competition, and nothing registers them in a season.
+  const staff = clubStaff(team)
 
   // The context carries every club those competitions mention, which is what a
   // table needs to name the rows above and below this one.
@@ -475,6 +480,43 @@ export default function PublicTeamPage() {
       )}
 
 
+
+      {/* Coaching staff. Drawn apart from the squad and with no statistics
+          beside it, because nobody here plays: a member of staff is named in
+          no teamsheet and counted in nothing. */}
+      {staff.length > 0 && (
+        <section className="glass rounded-xl p-6 w-full max-w-6xl">
+          <h2 className="text-xl font-semibold mb-4 text-center">Coaching staff</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {staff.map((member) => (
+              <div
+                key={member.id}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg bg-white/[0.03]"
+              >
+                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
+                  {member.photo ? (
+                    <img
+                      loading="lazy"
+                      decoding="async"
+                      src={cdnUrl(member.photo)}
+                      alt={`${staffFullName(member)} photo`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="opacity-40">
+                      <IconUser size={16} />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{staffFullName(member)}</div>
+                  <div className="text-sm opacity-60">{staffRoleLabel(member.role)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* All Games Section */}
       <section className="glass rounded-xl p-6 w-full max-w-6xl">

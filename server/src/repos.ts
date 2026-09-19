@@ -16,6 +16,7 @@ import { badRequest, notFound } from './lib/http.js'
 import { locateMatch, type MatchLocation } from './lib/matches.js'
 import type { MatchExpectation } from './lib/goals.js'
 import { MAX_DEDUCTIONS } from './lib/deductions.js'
+import { MAX_STAFF } from './lib/staff.js'
 import type { Organizer, Team, Tournament } from './lib/types.js'
 
 /* ------------------------------------------------------------------ *
@@ -145,6 +146,20 @@ export const organizers = {
  * Teams
  * ------------------------------------------------------------------ */
 
+
+/**
+ * A write to one member of staff that landed on nothing.
+ *
+ * The index came from a list read a moment earlier and `REMOVE` shifts what
+ * follows it, so two managers on the same screen are enough: the second
+ * request's index no longer holds the person it read. Uncaught, that is a 500
+ * on an ordinary concurrent edit, which reads on screen as a button that does
+ * not work and then does.
+ */
+const staffMoved = (error: unknown): unknown =>
+  (error as { name?: string })?.name === 'ConditionalCheckFailedException'
+    ? badRequest('This club has changed since the page was loaded. Reload and try again.')
+    : error
 export const teams = {
   async listByOrganizer(organizerId: string, read?: ReadOptions): Promise<Team[]> {
     return cached(`teams:organizer:${organizerId}`, defaultTtl, async () => {
@@ -283,6 +298,150 @@ export const teams = {
   // in the system names them by id alone, so taking it out left the history in
   // place and anonymous. Leaving the club is `archivedAt`, written through
   // `updatePlayer` above — see `lib/players.ts`.
+
+  /**
+   * Adds one member of the coaching staff.
+   *
+   * `list_append` for the same reason the squad uses it: the list is appended
+   * to as it is stored right now, so two people adding somebody at the same
+   * moment both get theirs. The cap is in the condition rather than checked
+   * against the read, or two writes whose reads overlap both pass it.
+   */
+  async addStaff(teamId: string, member: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const created = {
+      ...member,
+      id: generateId(),
+      createdAtISO: new Date().toISOString(),
+    }
+
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TEAMS,
+          Key: { id: teamId },
+          UpdateExpression: 'SET #staff = list_append(if_not_exists(#staff, :empty), :member)',
+          ExpressionAttributeNames: { '#staff': 'staff' },
+          ExpressionAttributeValues: {
+            ':member': [created],
+            ':empty': [],
+            ':max': MAX_STAFF,
+            ':list': 'L',
+          },
+          // `size()` answers a byte count on a string, so the type is asserted
+          // beside the count: a `staff` that was somehow not a list would
+          // otherwise pass the cap and fail inside `list_append`.
+          ConditionExpression:
+            'attribute_exists(id) AND (attribute_not_exists(#staff) OR (attribute_type(#staff, :list) AND size(#staff) < :max))',
+        }),
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      // The club is gone, or the list is full. A consistent read is what tells
+      // the two apart: an eventually consistent one can answer with a copy from
+      // before the write that filled it.
+      const current = await this.readConsistently(teamId)
+      if (!current) throw notFound('Team not found')
+      throw badRequest(`A club may list at most ${MAX_STAFF} people`)
+    }
+
+    invalidate('teams:')
+    return created
+  },
+
+  /**
+   * Changes one member of staff, in place.
+   *
+   * The same targeted write `updatePlayer` makes, and for the same reason: the
+   * whole list written back loses whoever a second author added in the
+   * meantime. The condition re-checks that the element at this index is still
+   * the person who was read, so a concurrent add or removal fails the write
+   * rather than landing on somebody else's row.
+   */
+  async updateStaff(
+    teamId: string,
+    staffId: string,
+    updates: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const team = await this.getOrThrow(teamId)
+    const staff = (Array.isArray(team.staff) ? team.staff : []) as Record<string, unknown>[]
+    const index = staff.findIndex((member) => member?.id === staffId)
+    if (index === -1) throw notFound('That person is not on this club\'s staff')
+
+    const merged = { ...staff[index], ...updates, id: staffId }
+    // `null` is how the client says "clear this"; the key is deleted rather
+    // than stored, so the record never grows one whose value means "no value".
+    for (const [field, value] of Object.entries(updates)) {
+      if (value === null) delete (merged as Record<string, unknown>)[field]
+    }
+
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TEAMS,
+          Key: { id: teamId },
+          UpdateExpression: `SET #staff[${index}] = :member`,
+          ConditionExpression: `#staff[${index}].#staffId = :staffId`,
+          ExpressionAttributeNames: { '#staff': 'staff', '#staffId': 'id' },
+          ExpressionAttributeValues: { ':member': merged, ':staffId': staffId },
+        }),
+      )
+    } catch (error) {
+      throw staffMoved(error)
+    }
+    invalidate('teams:')
+    return merged
+  },
+
+  /**
+   * Takes somebody off the staff, for good.
+   *
+   * The opposite decision to a player's, deliberately: a player is archived
+   * because their record is the only place their name lives and every goal,
+   * card and teamsheet points at them by id alone. Nothing points at a member
+   * of staff — they are in no teamsheet, no entry and no statistic — so there
+   * is no history for a removal to make anonymous, and a club that listed the
+   * wrong person should be able to take them off rather than mark them former.
+   *
+   * `REMOVE` on the element shifts the rest of the list up, which is why the
+   * index is checked against the id in the same request.
+   */
+  async removeStaff(teamId: string, staffId: string): Promise<Record<string, unknown>> {
+    const team = await this.getOrThrow(teamId)
+    const staff = (Array.isArray(team.staff) ? team.staff : []) as Record<string, unknown>[]
+    const index = staff.findIndex((member) => member?.id === staffId)
+    if (index === -1) throw notFound('That person is not on this club\'s staff')
+
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TEAMS,
+          Key: { id: teamId },
+          UpdateExpression: `REMOVE #staff[${index}]`,
+          ConditionExpression: `#staff[${index}].#staffId = :staffId`,
+          ExpressionAttributeNames: { '#staff': 'staff', '#staffId': 'id' },
+          ExpressionAttributeValues: { ':staffId': staffId },
+        }),
+      )
+    } catch (error) {
+      throw staffMoved(error)
+    }
+    invalidate('teams:')
+    return staff[index]!
+  },
+
+  /**
+   * One club, read straight from the leader.
+   *
+   * `get` is eventually consistent, which is right for every ordinary read and
+   * wrong for the re-read after a conditional write has failed: the point of
+   * that read is to find out what the record actually holds now.
+   */
+  async readConsistently(id: string): Promise<Team | null> {
+    const result = await ddb.send(
+      new GetCommand({ TableName: TABLES.TEAMS, Key: { id }, ConsistentRead: true }),
+    )
+    return (result.Item as Team | undefined) ?? null
+  },
 }
 
 /* ------------------------------------------------------------------ *

@@ -37,6 +37,7 @@ import {
 import { assertCompetitionColours, assertTeamColours } from '../lib/colours.js'
 import { assertShootout, assertShootoutsInBody } from '../lib/shootout.js'
 import { assertDeductionsInBody, composeDeduction } from '../lib/deductions.js'
+import { assertStaffName, newStaff, staffName, staffUpdates, toPublicStaff } from '../lib/staff.js'
 import {
   assertScorerOrCounted,
   composeGoal,
@@ -192,6 +193,15 @@ function findPlayer(team: Team, playerId: string): Record<string, unknown> | und
   return players.find(
     (player): player is Record<string, unknown> =>
       Boolean(player) && typeof player === 'object' && (player as { id?: unknown }).id === playerId,
+  )
+}
+
+/** One member of a club's staff as it is stored, holes in the list stepped over. */
+function findStaff(team: Team, staffId: string): Record<string, unknown> | undefined {
+  const staff = Array.isArray(team.staff) ? team.staff : []
+  return (staff as Array<Record<string, unknown> | null>).find(
+    (member): member is Record<string, unknown> =>
+      Boolean(member) && typeof member === 'object' && (member as { id?: unknown }).id === staffId,
   )
 }
 
@@ -416,6 +426,10 @@ const VISITING_TEAM_FIELDS = [
   'establishedDate',
   'socialMedia',
   'hidePlayerAges',
+  // `staff` is deliberately not here. It travels — names and photographs the
+  // club publishes anyway, and the organiser running the competition is who
+  // prints a teamsheet with the coach's name at the bottom of it — but as a
+  // named list of its own, below, rather than as whatever the element holds.
 ] as const
 
 const VISITING_PLAYER_FIELDS = [
@@ -542,6 +556,12 @@ export function toVisitingTeam(team: Team): Team {
   for (const field of VISITING_TEAM_FIELDS) {
     if (team[field] !== undefined) out[field] = team[field]
   }
+
+  // The staff through their own whitelist, for the reason the players below go
+  // through theirs: a field added to a member of staff later must not reach
+  // every organiser this club visits on the day it is written.
+  const staff = toPublicStaff(team.staff)
+  if (staff !== undefined) out.staff = staff
 
   // A hole in the list. These come from the browser-side era and from a
   // tournament POST that passes its body through, and a null here is a null
@@ -1429,6 +1449,95 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       organizerId: team.organizerId,
     })
     return player
+  })
+
+  /* ---------------- coaching staff ---------------- */
+
+  /*
+   * The people at a club who are not players: the coach, an assistant, the
+   * physio. They are on the club record and nowhere else — no teamsheet names
+   * one, no entry registers one and no statistic counts one — which is the
+   * whole of what "this does not count as a player" means.
+   *
+   * `staff` is deliberately absent from `TEAM_FIELDS`, like `players` and
+   * `managerUserIds` before it: a list written back whole loses whatever a
+   * second author put there in between. These three routes touch one person at
+   * a time, under a condition, and they are the only way in.
+   *
+   * Guarded by `assertManagesTeam` rather than by the competition, because this
+   * is the club's own record: its managers keep it, and the organiser who owns
+   * the club keeps it only while nobody has taken the club on.
+   */
+  router.post('/admin/teams/:id/staff', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertManagesTeam(user, team)
+
+    const member = await teams.addStaff(params.id!, newStaff(ctx.body))
+    await record(user, {
+      action: 'staff.create',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Added ${staffName(member)} to the staff of ${team.name}`,
+      organizerId: team.organizerId,
+    })
+    return member
+  })
+
+  router.patch('/admin/teams/:id/staff/:staffId', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertManagesTeam(user, team)
+
+    const updates = staffUpdates(ctx.body)
+    // A write that changes nothing still rewrites the element from the copy
+    // read at the start of this request, which is how a save made a moment ago
+    // by somebody else disappears.
+    if (Object.keys(updates).length === 0) throw badRequest('Nothing to change')
+
+    // The name is asked of the record as it will be stored, not of the body.
+    // The two halves are sent separately, so emptying one in this request and
+    // the other in the next passes any check that only reads what arrived and
+    // leaves a row nothing on screen or in the log can identify.
+    const stored = findStaff(team, params.staffId!)
+    if (!stored) throw notFound('That person is not on this club\'s staff')
+    assertStaffName(
+      'firstName' in updates ? updates.firstName : stored.firstName,
+      'lastName' in updates ? updates.lastName : stored.lastName,
+    )
+
+    const member = await teams.updateStaff(params.id!, params.staffId!, updates)
+    await record(user, {
+      action: 'staff.update',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Edited ${staffName(member)} of ${team.name}: ${describeFields(updates)}`,
+      organizerId: team.organizerId,
+    })
+    return member
+  })
+
+  /*
+   * Deleting rather than archiving, which is the opposite of what the same
+   * button does to a player. A player's record is the only place their name
+   * lives and every goal, card and teamsheet points at them by id; nothing
+   * points at a member of staff, so there is no history a removal could make
+   * anonymous. `lib/staff.ts` says the same thing beside the code.
+   */
+  router.delete('/admin/teams/:id/staff/:staffId', async (ctx, params) => {
+    const user = await ctx.user()
+    const team = await teams.getOrThrow(params.id!)
+    assertManagesTeam(user, team)
+
+    const removed = await teams.removeStaff(params.id!, params.staffId!)
+    await record(user, {
+      action: 'staff.delete',
+      entity: 'team',
+      entityId: params.id!,
+      summary: `Removed ${staffName(removed)} from the staff of ${team.name}`,
+      organizerId: team.organizerId,
+    })
+    return { ok: true }
   })
 
   /* ---------------- tournaments ---------------- */

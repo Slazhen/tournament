@@ -55,7 +55,7 @@ export const AUDIT_GROUPS = {
   competitions: ['tournament.', 'playoffRound.', 'round.'],
   matches: ['match.', 'goal.', 'lineup.'],
   // `merge` is written by scripts/merge-teams.mjs, bare, on the club it kept.
-  clubs: ['team.', 'player.', 'club.', 'merge'],
+  clubs: ['team.', 'player.', 'staff.', 'club.', 'merge'],
   entries: ['entry.', 'squad.'],
   organizers: ['organizer.'],
   accounts: ['account.'],

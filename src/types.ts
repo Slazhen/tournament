@@ -76,6 +76,39 @@ export type PlayerUpdate = {
   [K in keyof Player]?: Player[K] | null
 }
 
+/**
+ * The roles a club's staff can be listed under.
+ *
+ * A role on each person rather than three fields on the club, because a club
+ * with two assistants is ordinary and a role somebody asks for next season is
+ * then a value rather than a change to the shape of every club record.
+ */
+export const STAFF_ROLES = ['coach', 'assistant_coach', 'physio'] as const
+
+export type StaffRole = (typeof STAFF_ROLES)[number]
+
+/**
+ * Somebody at the club who is not a player.
+ *
+ * Named in no teamsheet, registered in no competition entry and counted in no
+ * statistic: the club record is the only place they appear, which is the whole
+ * of what "this does not count as a player" means. Everything but the role and
+ * the name is optional, and a photograph is the usual reason to add one.
+ */
+export type StaffMember = {
+  id: string
+  role: StaffRole
+  firstName: string
+  lastName: string
+  photo?: string
+  createdAtISO: string
+}
+
+/** A change to one member of staff. `null` clears, as it does for a player. */
+export type StaffUpdate = {
+  [K in keyof StaffMember]?: StaffMember[K] | null
+}
+
 export type Team = {
   id: string
   name: string
@@ -103,6 +136,16 @@ export type Team = {
     youtube?: string
   }
   players: Player[]
+  /**
+   * The coaching staff: a coach, assistants, a physio. Absent on every club
+   * from before the field, which is why nothing reads it without checking —
+   * `clubStaff` in `utils/staff.ts` is the one place that does.
+   *
+   * Written one person at a time through its own routes, never through the
+   * club PATCH: it is a list, and a list written back whole loses whoever a
+   * second author added in the meantime.
+   */
+  staff?: StaffMember[]
   createdAtISO: string
   establishedDate?: string // ISO date string for when team was established
   /**
