@@ -483,8 +483,22 @@ export const tournamentService = {
   async setSquadMode(
     tournamentId: string,
     strict: boolean,
-  ): Promise<{ strict: boolean; entered: number }> {
+  ): Promise<{ strict: boolean; entered: number; limit: number | null }> {
     return api.put(`/admin/tournaments/${encodeURIComponent(tournamentId)}/squad-mode`, { strict })
+  },
+
+  /**
+   * How many players one club may register, or null for no limit.
+   *
+   * Its own call rather than part of `update` for the reason `setSquadMode` is:
+   * a limit only holds where the entries are a registration list, so setting
+   * one turns that on, which means entering every club as it stands first.
+   */
+  async setSquadLimit(
+    tournamentId: string,
+    limit: number | null,
+  ): Promise<{ limit: number | null; strict: boolean; entered: number }> {
+    return api.put(`/admin/tournaments/${encodeURIComponent(tournamentId)}/squad-limit`, { limit })
   },
 }
 

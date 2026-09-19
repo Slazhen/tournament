@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { chooseSquad, isStrict, squadPlayerIds } from '../src/lib/squads.js'
+import {
+  assertSquadLimitInBody,
+  assertWithinSquadLimit,
+  chooseSquad,
+  isStrict,
+  readSquadLimit,
+  squadLimitOf,
+  squadPlayerIds,
+} from '../src/lib/squads.js'
 import {
   nameableInMatch,
   pickLineup,
@@ -58,6 +66,62 @@ describe('what an entry is stored as', () => {
     // Not a truthiness test: a stray string in a schemaless record must not
     // silently turn a friendly league into one where nobody may play.
     expect(isStrict(tournament({ squadsStrict: 'yes' }))).toBe(false)
+  })
+})
+
+describe('how many players one club may register', () => {
+  it('is nobody in particular until a limit is set', () => {
+    expect(squadLimitOf(tournament())).toBeNull()
+    expect(squadLimitOf(tournament({ squadLimit: 18 }))).toBe(18)
+  })
+
+  // Read as defensively as `squadsStrict`: `POST /admin/tournaments` passes its
+  // body through, and a stray value here would refuse every entry in a season.
+  it('reads anything that is not a whole number in range as no limit', () => {
+    expect(squadLimitOf(tournament({ squadLimit: '18' }))).toBeNull()
+    expect(squadLimitOf(tournament({ squadLimit: 18.5 }))).toBeNull()
+    expect(squadLimitOf(tournament({ squadLimit: 0 }))).toBeNull()
+    expect(squadLimitOf(tournament({ squadLimit: 1000 }))).toBeNull()
+    expect(squadLimitOf(tournament({ squadLimit: null }))).toBeNull()
+  })
+
+  it('refuses an entry longer than the limit, and allows one that fits', () => {
+    const capped = tournament({ squadsStrict: true, squadLimit: 2 })
+    expect(() => assertWithinSquadLimit(3, capped)).toThrow(/at most 2/)
+    expect(() => assertWithinSquadLimit(2, capped)).not.toThrow()
+    expect(() => assertWithinSquadLimit(0, capped)).not.toThrow()
+    // No limit, nothing to refuse — every competition before this field.
+    expect(() => assertWithinSquadLimit(40, tournament())).not.toThrow()
+  })
+
+  it('takes a number, nothing, or a refusal — never a silent drop', () => {
+    expect(readSquadLimit(18)).toBe(18)
+    expect(readSquadLimit(null)).toBeNull()
+    expect(readSquadLimit(undefined)).toBeNull()
+    expect(() => readSquadLimit(0)).toThrow()
+    expect(() => readSquadLimit(18.5)).toThrow()
+    expect(() => readSquadLimit('18')).toThrow()
+    expect(() => readSquadLimit(100)).toThrow()
+  })
+
+  // The create passes its body through, so this is the only place a season can
+  // be written carrying a limit — and a limit without the registration list is
+  // a cap on nothing, since a club with no entry fields its whole squad.
+  it('refuses a limit on a body that does not register its players', () => {
+    expect(() => assertSquadLimitInBody({ squadLimit: 18 })).toThrow(/squadsStrict/)
+    const body: Record<string, unknown> = { squadLimit: 18, squadsStrict: true }
+    assertSquadLimitInBody(body)
+    expect(body.squadLimit).toBe(18)
+  })
+
+  it('leaves a body with no limit alone, and drops an empty one', () => {
+    const none: Record<string, unknown> = { name: 'League' }
+    assertSquadLimitInBody(none)
+    expect('squadLimit' in none).toBe(false)
+
+    const cleared: Record<string, unknown> = { squadLimit: null }
+    assertSquadLimitInBody(cleared)
+    expect('squadLimit' in cleared).toBe(false)
   })
 })
 

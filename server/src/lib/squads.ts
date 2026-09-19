@@ -1,3 +1,4 @@
+import { badRequest } from './http.js'
 import { activePlayerIds } from './players.js'
 import type { Tournament } from './types.js'
 
@@ -67,3 +68,101 @@ export function chooseSquad(
 
 /** Whether this competition's rules are the strict ones. Written once, read from route and client alike. */
 export const isStrict = (tournament: Tournament): boolean => tournament.squadsStrict === true
+
+/**
+ * The largest squad limit a competition may set.
+ *
+ * A ceiling on the field rather than a recommendation: ninety-nine is the
+ * highest shirt number this application accepts, so a limit above it is a limit
+ * on nothing, and a number with no ceiling at all is a field somebody types a
+ * date into.
+ */
+export const MAX_SQUAD_LIMIT = 99
+
+/**
+ * How many players this competition lets one club register, or null for no cap.
+ *
+ * Read the way `isStrict` is, and for the same reason: `POST
+ * /admin/tournaments` passes its body through, so anything at all can be
+ * sitting under this key, and a stray value must not become a rule that refuses
+ * every entry in the season. Anything that is not a whole number in range reads
+ * as no limit, which is what every competition meant before the field existed.
+ */
+export function squadLimitOf(tournament: Tournament): number | null {
+  const limit = tournament.squadLimit
+  if (typeof limit !== 'number' || !Number.isInteger(limit)) return null
+  return limit >= 1 && limit <= MAX_SQUAD_LIMIT ? limit : null
+}
+
+/**
+ * The limit an organiser asked for, read off a request body.
+ *
+ * Null is how it is taken off again, the same convention as every other
+ * clearable field here. A bad shape is refused rather than ignored: this one
+ * arrives from a form with a number in it, and silently storing nothing would
+ * leave the organiser looking at a competition they believe they have capped.
+ */
+export function readSquadLimit(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > MAX_SQUAD_LIMIT
+  ) {
+    throw badRequest(`A squad limit is a whole number between 1 and ${MAX_SQUAD_LIMIT}`)
+  }
+  return value
+}
+
+/**
+ * Refuses an entry longer than the competition allows.
+ *
+ * It binds both people who may write an entry, the club's manager and the
+ * organiser, which is the one way it differs from `squadsLocked`. That is a
+ * deadline the organiser sets for the managers and keeps a key to; this is a
+ * rule of the competition, and an organiser who needs a nineteenth player
+ * raises the number rather than working round it — otherwise "eighteen players
+ * per club" means eighteen for everybody except the person who wrote it down.
+ *
+ * A club already over the limit when it was set keeps its entry: nothing here
+ * rewrites what a club registered, and the screens mark it. What it cannot do
+ * is save again without coming down to the limit, which is the only moment this
+ * rule can be applied without deciding for somebody else who gets cut.
+ */
+export function assertWithinSquadLimit(count: number, tournament: Tournament): void {
+  const limit = squadLimitOf(tournament)
+  if (limit === null || count <= limit) return
+  throw badRequest(
+    `This competition registers at most ${limit} players per club, and that entry names ${count}`,
+  )
+}
+
+/**
+ * The same, on a body that carries the field itself.
+ *
+ * `POST /admin/tournaments` passes its body through and the `PATCH` refuses the
+ * field outright, so this is the only way a season can be created carrying one
+ * — the same arrangement as `assertDeductionsInBody`, and written because a
+ * validation that runs on the update and not on the create has not been done.
+ *
+ * A limit under the open rule is a rule that does not hold: a club absent from
+ * `squads` plays its whole squad whatever number is stored beside it. So a
+ * season created with a limit has to be created with the registration list on,
+ * rather than with a cap that quietly means nothing.
+ */
+export function assertSquadLimitInBody(body: Record<string, unknown>): void {
+  if (!Object.prototype.hasOwnProperty.call(body, 'squadLimit')) return
+
+  const limit = readSquadLimit(body.squadLimit)
+  if (limit === null) {
+    delete body.squadLimit
+    return
+  }
+  if (body.squadsStrict !== true) {
+    throw badRequest(
+      'A squad limit only holds where the competition registers its players — set squadsStrict as well',
+    )
+  }
+  body.squadLimit = limit
+}

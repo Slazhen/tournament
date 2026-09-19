@@ -47,7 +47,15 @@ import {
 } from '../lib/goals.js'
 import { locateMatch } from '../lib/matches.js'
 import { allPlayerIds, isArchivedPlayer } from '../lib/players.js'
-import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
+import {
+  assertSquadLimitInBody,
+  assertWithinSquadLimit,
+  chooseSquad,
+  isStrict,
+  readSquadLimit,
+  squadLimitOf,
+  squadPlayerIds,
+} from '../lib/squads.js'
 import { emailIsTaken, findUserByCredential } from './auth.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
@@ -1439,6 +1447,9 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // And the punishments, for the same reason: the PATCH refuses the field
     // outright, so this is the only way a season can be written carrying one.
     assertDeductionsInBody(ctx.body)
+    // And the squad limit, which the PATCH also refuses: a cap stored on a
+    // season that does not register its players is a rule nothing can enforce.
+    assertSquadLimitInBody(ctx.body)
     // Nothing has agreed to anything yet, so a club this organiser does not own
     // cannot be in a competition on the day it is created.
     await assertEnterableTeams(organizerId, ctx.body.teamIds, [])
@@ -1477,7 +1488,16 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
   // `pointDeductions` joins it for the same reason, and one of its own: the
   // list is what a public table subtracts from, so a save from a stale copy of
   // this screen would put a punishment back or take one away unnoticed.
-  const TOURNAMENT_PATCH_FORBIDDEN = ['squads', 'squadsStrict', 'hiddenRounds', 'pointDeductions']
+  // `squadLimit` joins `squadsStrict`, because it cannot be written without it:
+  // a cap only means anything where an entry is the thing that lets a player
+  // play, and `squad-limit` turns the registration list on with it.
+  const TOURNAMENT_PATCH_FORBIDDEN = [
+    'squads',
+    'squadsStrict',
+    'squadLimit',
+    'hiddenRounds',
+    'pointDeductions',
+  ]
 
   router.patch('/admin/tournaments/:id', async (ctx, params) => {
     const user = await ctx.user()
@@ -1974,7 +1994,9 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
    *
    * `squadsLocked` is not consulted here. It is the deadline the organiser
    * themselves set for the managers; somebody has to be able to fix a mistake
-   * after it, and that somebody is the person who set it.
+   * after it, and that somebody is the person who set it. `squadLimit` is,
+   * which is the difference between a deadline and a rule: see
+   * `assertWithinSquadLimit`.
    */
   router.put('/admin/tournaments/:tournamentId/squads/:teamId', async (ctx, params) => {
     const user = await ctx.user()
@@ -1992,6 +2014,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const team = await teams.getOrThrow(teamId)
     const known = squadPlayerIds(team as Team)
     const { playerIds, store, all } = chooseSquad(ctx.body.playerIds, known, isStrict(tournament))
+    assertWithinSquadLimit(playerIds.length, tournament)
 
     await tournaments.setSquad(params.tournamentId!, teamId, store)
 
@@ -2007,6 +2030,43 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
 
     return { playerIds, all }
   })
+
+  /**
+   * Enters every club of a competition that has no entry, as it stands.
+   *
+   * Reads the competition again rather than trusting the copy a handler opened
+   * with, and each write is conditional on the club still having no entry, so a
+   * manager who saved a squad in the meantime keeps it. Both matter: the list
+   * of who is missing is a snapshot the moment it is taken.
+   *
+   * It is called by the two routes that can turn the registration list on —
+   * `squad-mode` and `squad-limit` — because what has to happen first is the
+   * same in both: under the strict rule a club with no entry has nobody
+   * registered, so writing the flag on a season already being played would
+   * empty every teamsheet picker in the competition at once.
+   *
+   * Returns how many clubs it actually entered, which is what the audit line
+   * and the reply say.
+   */
+  const enterEveryoneMissing = async (tournamentId: string): Promise<number> => {
+    const current = await tournaments.getOrThrow(tournamentId)
+    const existing =
+      current.squads && typeof current.squads === 'object'
+        ? (current.squads as Record<string, unknown>)
+        : {}
+    const missing = (current.teamIds ?? []).filter((id) => !Array.isArray(existing[id]))
+    if (missing.length === 0) return 0
+
+    await tournaments.ensureSquads(tournamentId)
+    let entered = 0
+    for (const team of await teams.getMany(missing)) {
+      const wrote = await tournaments.enterSquadIfAbsent(tournamentId, team.id, [
+        ...squadPlayerIds(team as Team),
+      ])
+      if (wrote) entered += 1
+    }
+    return entered
+  }
 
   /**
    * Turning strict entry on and off.
@@ -2031,7 +2091,10 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
    *
    * Turning it off leaves those entries alone. They are what the clubs actually
    * registered, and the open rule reads them the same way; it only changes what
-   * an absent one means.
+   * an absent one means. It does take the squad limit off, because that one is
+   * not an entry but a rule about entries, and under the open rule it holds for
+   * nobody: a club that never opens the screen plays its whole squad whatever
+   * number is stored beside it.
    */
   router.put('/admin/tournaments/:tournamentId/squad-mode', async (ctx, params) => {
     const user = await ctx.user()
@@ -2039,39 +2102,23 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertCanAccessOrganizer(user, tournament.organizerId)
 
     const strict = ctx.body.strict === true
+    const turningStrict = strict && !isStrict(tournament)
+    const hadLimit = squadLimitOf(tournament) !== null
     let entered = 0
 
-    /**
-     * Enters every club of this competition that has no entry, as it stands.
-     *
-     * Reads the competition again rather than trusting the copy the handler
-     * opened with, and each write is conditional on the club still having no
-     * entry, so a manager who saved a squad in the meantime keeps it. Both
-     * matter: the list of who is missing is a snapshot the moment it is taken.
-     */
-    const enterEveryoneMissing = async (): Promise<void> => {
-      const current = await tournaments.getOrThrow(params.tournamentId!)
-      const existing =
-        current.squads && typeof current.squads === 'object'
-          ? (current.squads as Record<string, unknown>)
-          : {}
-      const missing = (current.teamIds ?? []).filter((id) => !Array.isArray(existing[id]))
-      if (missing.length === 0) return
+    if (turningStrict) entered += await enterEveryoneMissing(params.tournamentId!)
 
-      await tournaments.ensureSquads(params.tournamentId!)
-      for (const team of await teams.getMany(missing)) {
-        const wrote = await tournaments.enterSquadIfAbsent(params.tournamentId!, team.id, [
-          ...squadPlayerIds(team as Team),
-        ])
-        if (wrote) entered += 1
-      }
-    }
+    // Opening the entries takes the limit off in the same expression, whether
+    // or not the copy read at the top of this request had one. Deciding that
+    // from the read is how a limit set in another tab a second ago survives
+    // into an open competition, where it binds only the clubs that open the
+    // screen — and there is nothing to pay for doing it unconditionally.
+    await tournaments.setSquadRules(
+      params.tournamentId!,
+      strict ? { strict: true } : { strict: false, limit: null },
+    )
 
-    if (strict && !isStrict(tournament)) await enterEveryoneMissing()
-
-    await tournaments.update(params.tournamentId!, { squadsStrict: strict })
-
-    if (strict && !isStrict(tournament)) await enterEveryoneMissing()
+    if (turningStrict) entered += await enterEveryoneMissing(params.tournamentId!)
 
     await record(user, {
       action: 'tournament.update',
@@ -2079,11 +2126,83 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       entityId: params.tournamentId!,
       summary: strict
         ? `Made squads strict in ${tournament.name}${entered > 0 ? `, entering ${entered} clubs as they stand` : ''}`
-        : `Made squads open in ${tournament.name}`,
+        : `Made squads open in ${tournament.name}${hadLimit ? ', and dropped the squad limit with it' : ''}`,
       organizerId: tournament.organizerId,
     })
 
-    return { strict, entered }
+    return { strict, entered, limit: strict ? squadLimitOf(tournament) : null }
+  })
+
+  /**
+   * How many players one club may register here.
+   *
+   * Its own route for the two reasons `squad-mode` has one, and they are the
+   * same two. It is not only a field: a limit means nothing unless an entry is
+   * what lets a player play, so setting one turns the registration list on, and
+   * that cannot be a plain write — every club with no entry is entered as it
+   * stands first, by the two passes described above, or a season already being
+   * played loses every teamsheet picker to a number typed into a box.
+   *
+   * Clubs already over the new limit keep what they registered. The alternative
+   * is cutting a list somebody else made down to size, and the order of the ids
+   * in a stored entry is not a decision about who matters least — it is the
+   * order the boxes happened to be ticked in. So the limit binds the next save
+   * instead: those clubs are marked on both screens and refused until they come
+   * down to it, which is the only moment the club itself chooses who goes.
+   *
+   * The clubs entered by the passes above are among them where their squads are
+   * bigger than the limit — a competition can therefore hold entries over its
+   * own limit from the moment it has one. That is the same choice again, seen
+   * from the other end, and it is why this is a rule about saves and not a fact
+   * about the record.
+   */
+  router.put('/admin/tournaments/:tournamentId/squad-limit', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.tournamentId!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    // Asked for by name rather than read off a body that may not carry it. A
+    // missing key reads as null everywhere else here, and this is the one route
+    // where that would quietly undo a rule the organiser had already set: a
+    // client sending the wrong key would be answered with "the limit is off"
+    // and an audit line saying they asked for it.
+    if (!Object.prototype.hasOwnProperty.call(ctx.body, 'limit')) {
+      throw badRequest('Say what the limit is — send null to take it off')
+    }
+
+    const limit = readSquadLimit(ctx.body.limit)
+    const turningStrict = limit !== null && !isStrict(tournament)
+    let entered = 0
+
+    if (turningStrict) entered += await enterEveryoneMissing(params.tournamentId!)
+
+    // Both fields in one write whenever there is a limit, whatever the copy
+    // this request opened with said about the rule: a limit is only a rule
+    // where the entries are a registration list, and deciding that from a read
+    // is how the pair ends up disagreeing with itself.
+    await tournaments.setSquadRules(
+      params.tournamentId!,
+      limit === null ? { limit: null } : { limit, strict: true },
+    )
+
+    if (turningStrict) entered += await enterEveryoneMissing(params.tournamentId!)
+
+    await record(user, {
+      action: 'tournament.update',
+      entity: 'tournament',
+      entityId: params.tournamentId!,
+      summary:
+        limit === null
+          ? `Removed the squad limit in ${tournament.name}`
+          : `Limited squads to ${limit} players per club in ${tournament.name}${
+              turningStrict
+                ? `, which made the entries a registration list${entered > 0 ? ` and entered ${entered} clubs as they stand` : ''}`
+                : ''
+            }`,
+      organizerId: tournament.organizerId,
+    })
+
+    return { limit, strict: limit !== null || isStrict(tournament), entered }
   })
 
   /* ---------------- accounts (super admin only) ---------------- */

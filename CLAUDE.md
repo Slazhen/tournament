@@ -82,6 +82,51 @@ overwritten, and does it again after the flag is written — a manager pressing
 rule reads as nobody. `squads` and `squadsStrict` are both refused by the
 tournament `PATCH` for this reason.
 
+**A squad limit is a rule about entries, so it cannot exist without them.**
+`squadLimit` on the season is how many players one club may register, and it is
+written by `PUT /admin/tournaments/:id/squad-limit` — never by the `PATCH`,
+which refuses it beside `squadsStrict`. Setting one turns the registration list
+on, by the same two passes `squad-mode` makes and for the same reason: a cap on
+entries counts nothing while a club absent from `squads` fields its whole squad,
+so the limit and the rule that gives it meaning are written together. Turning
+the registration list off takes the limit off with it.
+
+It binds both people who may write an entry, and that is the one way it differs
+from `squadsLocked`. The deadline is the organiser's to set and theirs to work
+past; the limit is the competition's rule, and an organiser who needs a
+nineteenth player raises the number — otherwise "eighteen per club" means
+eighteen for everybody but the person who wrote it down. `assertWithinSquadLimit`
+in `server/src/lib/squads.ts` is the one place that refuses, called from both
+squad routes; `squadLimitOf` is the same defensive read as `isStrict`, on the
+server and in `src/utils/squads.ts`, and the limit is in
+`CARRIED_TOURNAMENT_FIELDS` because a manager counting against a limit nobody
+showed them is a save refused by a rule their screen never had.
+
+A club already over a limit when it is set keeps what it registered. Cutting
+somebody else's list down to size means deciding who goes, and the order of the
+ids in a stored entry is the order the boxes happened to be ticked in — so the
+limit binds the next save of that entry instead. Both screens mark such a club
+and refuse to save until it comes down, and the "Everyone" button is not drawn
+at all where the squad is bigger than the limit: a tick that saves into a
+refusal is worse than no tick, which is the same rule `enterable` follows.
+
+That includes the clubs the same request has just entered. Setting a limit on an
+open competition enters every club as it stands, squads bigger than the new
+limit included, so a season can hold entries over its own limit from the
+millisecond it has one. It is the deliberate half of the rule above — the
+alternative is the server choosing who is cut — but it means the limit is a
+rule about future saves and never a fact about the record.
+
+Both fields are written in one expression, `tournaments.setSquadRules`, and
+which to write is never decided from the copy the request read: opening the
+entries always clears the limit, and setting a limit always writes the flag.
+Deciding it from the read is how two controls pressed in two tabs left a limit
+sitting on an open competition, where it binds only the clubs that open the
+screen. Clearing REMOVEs the attribute rather than storing a null, so "no limit"
+has one shape in the record. `PUT .../squad-limit` also refuses a body with no
+`limit` key: everywhere else here a missing key means "unchanged", and read as
+null it would answer a wrong request by taking a live rule off.
+
 **A player's date of birth is never public.** `toPublicTeam` in
 `routes/public.ts` strips it and puts an `age` in its place, worked out on the
 server, so no public page ever holds the date and none of them has to do the

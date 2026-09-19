@@ -12,7 +12,7 @@ import type { TournamentFormat } from '../utils/fixtures'
 import { clubService, tournamentService } from '../lib/data'
 import type { ClubManager, Entry } from '../lib/data'
 import type { Team, Tournament } from '../types'
-import { activeSquad, hasSquadEntry, registeredPlayers } from '../utils/squads'
+import { activeSquad, hasSquadEntry, registeredPlayers, squadLimitOf } from '../utils/squads'
 import { playoffTiers } from '../utils/standings'
 import { competitionColor } from '../utils/crest'
 import Trophy from '../components/Trophy'
@@ -1204,11 +1204,17 @@ function SquadsSection({
           <span className="block">Registration list</span>
           <span className="block text-sm opacity-70">
             {strict
-              ? 'A club plays only the players entered here, and a player signed later does not join until somebody enters them.'
+              ? `A club plays only the players entered here, and a player signed later does not join until somebody enters them.${
+                  squadLimitOf(tournament) !== null
+                    ? ' Turning this off takes the squad limit off with it — a cap on entries holds for nobody once a club with no entry plays its whole squad.'
+                    : ''
+                }`
               : 'Off, a club that has entered nobody in particular plays its whole squad, and anyone it signs joins automatically. Turning this on enters every club as it stands today, so nothing already arranged is lost.'}
           </span>
         </span>
       </label>
+
+      <SquadLimit tournament={tournament} onReload={onReload} />
 
       <label className="flex items-start gap-3 cursor-pointer">
         <input
@@ -1239,6 +1245,99 @@ function SquadsSection({
   )
 }
 
+/**
+ * How many players one club may register here.
+ *
+ * Two controls would be two ways of saying the same thing, so this one carries
+ * the rule with it: switching it on turns the entries into a registration list,
+ * because a limit on entries means nothing while a club with no entry fields
+ * everybody it has. Switching the registration list off takes the limit away
+ * again, which is why that checkbox says so.
+ *
+ * The number is saved deliberately rather than as it is typed: a field that
+ * writes on every keystroke sends 1, then 18, and a competition briefly capped
+ * at one player is a competition that refuses every entry in it.
+ */
+function SquadLimit({
+  tournament,
+  onReload,
+}: {
+  tournament: Tournament
+  onReload: () => Promise<void>
+}) {
+  const limit = squadLimitOf(tournament)
+  const [draft, setDraft] = useState(String(limit ?? 18))
+  const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDraft(String(limit ?? 18))
+  }, [limit])
+
+  const typed = Number(draft)
+  const valid = draft.trim() !== '' && Number.isInteger(typed) && typed >= 1 && typed <= 99
+
+  const save = async (next: number | null) => {
+    setSaving(true)
+    setFailed(null)
+    try {
+      await tournamentService.setSquadLimit(tournament.id, next)
+      await onReload()
+    } catch (error) {
+      setFailed(error instanceof Error ? error.message : 'That limit could not be saved.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={limit !== null}
+          disabled={saving}
+          onChange={(event) => void save(event.target.checked ? (valid ? typed : 18) : null)}
+          className="mt-1"
+        />
+        <span>
+          <span className="block">Maximum players per club</span>
+          <span className="block text-sm opacity-70">
+            {limit === null
+              ? 'A cap on how many players each club may register here. Setting one also turns the registration list on, because until entries are a list there is nothing to count.'
+              : `Each club may register ${limit} players. A club that was already over it keeps what it registered and cannot save again until it comes down to ${limit} — including when you enter it yourself.`}
+          </span>
+        </span>
+      </label>
+
+      {limit !== null && (
+        <div className="flex items-center gap-2 pl-7">
+          <input
+            type="number"
+            min={1}
+            max={99}
+            value={draft}
+            disabled={saving}
+            onChange={(event) => setDraft(event.target.value)}
+            className="w-20 px-3 py-1.5 rounded-lg bg-transparent border border-white/20 focus:border-white/40 focus:outline-none text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => void save(typed)}
+            disabled={saving || !valid || typed === limit}
+            className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 disabled:opacity-40 transition-colors text-sm"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+          <span className="text-sm opacity-60">players</span>
+        </div>
+      )}
+
+      {failed && <p className="text-sm text-red-300 pl-7">{failed}</p>}
+    </div>
+  )
+}
+
 /** One club, and the players it has entered. */
 function SquadRow({
   tournament,
@@ -1255,6 +1354,7 @@ function SquadRow({
   const entered = registeredPlayers(tournament, team)
   const submitted = hasSquadEntry(tournament, team.id)
   const strict = tournament.squadsStrict === true
+  const limit = squadLimitOf(tournament)
 
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<string[]>(entered.map((player) => player.id))
@@ -1293,6 +1393,15 @@ function SquadRow({
               not entered
             </span>
           )}
+          {/* A club that registered more than the limit now allows. It keeps
+              what it registered — nothing here cuts somebody else's list — and
+              the mark is how the organiser finds the clubs that have to come
+              down before either of them can save this entry again. */}
+          {limit !== null && entered.length > limit && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300">
+              over the limit
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setOpen(!open)}
@@ -1312,6 +1421,18 @@ function SquadRow({
             </p>
           ) : (
             <>
+              {limit !== null && (
+                <p
+                  className={`text-xs mb-3 ${
+                    selected.length > limit ? 'text-red-300' : 'opacity-70'
+                  }`}
+                >
+                  {selected.length > limit
+                    ? `This competition registers at most ${limit} players per club. ${selected.length} are ticked, so ${selected.length - limit} have to come off before this can be saved.`
+                    : `${selected.length} of ${limit} places used.`}
+                </p>
+              )}
+
               <ul className="grid gap-1 sm:grid-cols-2">
                 {players.map((player) => {
                   const on = selected.includes(player.id)
@@ -1349,18 +1470,24 @@ function SquadRow({
                 <button
                   type="button"
                   onClick={save}
-                  disabled={saving}
+                  disabled={saving || (limit !== null && selected.length > limit)}
                   className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm"
                 >
                   {saving ? 'Saving...' : 'Save'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSelected(players.map((player) => player.id))}
-                  className="text-sm opacity-70 hover:opacity-100 transition-opacity"
-                >
-                  Everyone
-                </button>
+                {/* Not offered where the squad is bigger than the limit: it
+                    would tick a selection the API refuses, and picking the
+                    first eighteen on the club's behalf is a decision this
+                    screen has no business making. */}
+                {(limit === null || players.length <= limit) && (
+                  <button
+                    type="button"
+                    onClick={() => setSelected(players.map((player) => player.id))}
+                    className="text-sm opacity-70 hover:opacity-100 transition-opacity"
+                  >
+                    Everyone
+                  </button>
+                )}
                 {failed && <span className="text-sm text-red-300">{failed}</span>}
               </div>
             </>

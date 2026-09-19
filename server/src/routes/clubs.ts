@@ -61,7 +61,7 @@ import {
 import { locateMatch } from '../lib/matches.js'
 import { activePlayerIds, allPlayerIds } from '../lib/players.js'
 import { isInClubPool } from '../lib/pool.js'
-import { chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
+import { assertWithinSquadLimit, chooseSquad, isStrict, squadPlayerIds } from '../lib/squads.js'
 import { toPublicUser, type AuthUser, type Team, type Tournament } from '../lib/types.js'
 import type { Router } from '../lib/router.js'
 import type { RequestContext } from '../context.js'
@@ -142,6 +142,10 @@ const CARRIED_TOURNAMENT_FIELDS = [
   // squad screen under the ordinary rules, and told everybody was registered
   // when in fact nobody was.
   'squadsStrict',
+  // And without this the manager counts up to a limit nobody has told them
+  // about: the save would be refused by a rule their screen never showed, which
+  // is the same thing as no rule at all with a worse error message.
+  'squadLimit',
   // The table a club reads on its own page is worked out in the browser from
   // this answer, so a punishment missing from it is a table that disagrees with
   // the public one — and the club it was handed to is the one person who must
@@ -1407,6 +1411,9 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
 
     const known = squadPlayerIds(team as Team)
     const { playerIds, store, all } = chooseSquad(ctx.body.playerIds, known, isStrict(tournament))
+    // The competition's own rule, and the one the organiser is bound by too —
+    // unlike the deadline above, which is theirs to set and theirs to work past.
+    assertWithinSquadLimit(playerIds.length, tournament)
 
     await tournaments.setSquad(params.tournamentId!, teamId, store)
 

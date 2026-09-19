@@ -568,6 +568,77 @@ export const tournaments = {
   },
 
   /**
+   * The rules the entries are read under: whether they are a registration list,
+   * and how many players one club may register.
+   *
+   * Its own method rather than `update` for two reasons, and both of them are
+   * about the pair rather than either field.
+   *
+   * They are one statement, so they are written in one expression. A limit
+   * stored on a competition where an absent entry means the whole squad is a
+   * rule that counts nobody, and two writes are two chances to leave exactly
+   * that behind — which is what a second tab pressing the other control at the
+   * same moment used to do, since each route decided what to write from a read
+   * taken before the other one landed.
+   *
+   * And taking the limit off REMOVEs the attribute rather than storing a null.
+   * `buildUpdate` writes what it is given, and "no limit" living in the record
+   * in two shapes is the sort of thing a later `'squadLimit' in tournament`
+   * reads as a limit somebody took off.
+   *
+   * A field left undefined is not touched: turning the registration list on
+   * says nothing about the limit, and clearing the limit says nothing about the
+   * list.
+   */
+  async setSquadRules(
+    tournamentId: string,
+    rules: { strict?: boolean; limit?: number | null },
+  ): Promise<void> {
+    const names: Record<string, string> = {}
+    const values: Record<string, unknown> = {}
+    const set: string[] = []
+    const remove: string[] = []
+
+    if (rules.strict !== undefined) {
+      names['#strict'] = 'squadsStrict'
+      values[':strict'] = rules.strict
+      set.push('#strict = :strict')
+    }
+
+    if (rules.limit !== undefined) {
+      names['#limit'] = 'squadLimit'
+      if (rules.limit === null) {
+        remove.push('#limit')
+      } else {
+        values[':limit'] = rules.limit
+        set.push('#limit = :limit')
+      }
+    }
+
+    if (set.length === 0 && remove.length === 0) return
+
+    const expression = [
+      set.length > 0 ? `SET ${set.join(', ')}` : '',
+      remove.length > 0 ? `REMOVE ${remove.join(', ')}` : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLES.TOURNAMENTS,
+        Key: { id: tournamentId },
+        ConditionExpression: 'attribute_exists(id)',
+        UpdateExpression: expression,
+        ExpressionAttributeNames: names,
+        ...(Object.keys(values).length > 0 ? { ExpressionAttributeValues: values } : {}),
+      }),
+    )
+
+    invalidate('tournaments:')
+  },
+
+  /**
    * Makes sure the `squads` map exists, so nested writes into it have somewhere
    * to land. Its own call so that a run of them can pay for it once instead of
    * once per club — switching a competition with two dozen clubs to a

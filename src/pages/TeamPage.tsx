@@ -7,7 +7,7 @@ import YoutubeIcon from '../components/YoutubeIcon'
 import CustomDatePicker from '../components/CustomDatePicker'
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, publicSeasonUrl } from '../utils/seasons'
-import { activeSquad, archivedSquad, registeredPlayers } from '../utils/squads'
+import { activeSquad, archivedSquad, registeredPlayers, squadLimitOf } from '../utils/squads'
 import { formatOptionFor } from '../utils/formats'
 import { clubService, type ClubManager } from '../lib/data'
 import { useAuth } from '../contexts/AuthContext'
@@ -296,8 +296,15 @@ export default function TeamPage() {
         team.id,
         squad.filter((player) => next.has(player.id)).map((player) => player.id),
       )
-    } catch {
-      setEntryFailed('That could not be saved, so nothing was changed. Try again.')
+    } catch (error) {
+      // The API's own sentence where there is one: the commonest refusal here
+      // is a squad limit, and "try again" is the wrong instruction for a tick
+      // that will be refused every time until somebody else is taken off.
+      setEntryFailed(
+        error instanceof Error && error.message
+          ? error.message
+          : 'That could not be saved, so nothing was changed. Try again.',
+      )
     } finally {
       setSavingEntry(null)
     }
@@ -953,6 +960,22 @@ export default function TeamPage() {
                         {enteredByTournament.get(tournament.id)?.size ?? 0} of {squad.length}{' '}
                         entered
                       </span>
+                      {/* The competition's cap, where it has one, said above
+                          the column rather than only in the refusal: a tick
+                          that cannot be saved should be explained before it is
+                          pressed. */}
+                      {squadLimitOf(tournament) !== null && (
+                        <span
+                          className={`block text-xs font-normal ${
+                            (enteredByTournament.get(tournament.id)?.size ?? 0) >
+                            (squadLimitOf(tournament) ?? 0)
+                              ? 'text-red-300'
+                              : 'opacity-60'
+                          }`}
+                        >
+                          maximum {squadLimitOf(tournament)}
+                        </span>
+                      )}
                     </th>
                   ))}
                   <th className="py-3 px-4 text-left">Joined</th>
@@ -1019,20 +1042,34 @@ export default function TeamPage() {
                         <span className="opacity-80">{player.number ?? '\u2014'}</span>
                       )}
                     </td>
-                    {teamTournaments.map((tournament) => (
-                      <td key={tournament.id} className="py-3 px-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={
-                            enteredByTournament.get(tournament.id)?.has(player.id) ?? false
-                          }
-                          disabled={savingEntry === `${tournament.id}:${player.id}`}
-                          onChange={() => void toggleEntry(tournament.id, player.id)}
-                          className="w-4 h-4 rounded border border-white/20 cursor-pointer disabled:opacity-40 disabled:cursor-wait"
-                          title={`Entered in ${tournament.name}`}
-                        />
-                      </td>
-                    ))}
+                    {teamTournaments.map((tournament) => {
+                      const on = enteredByTournament.get(tournament.id)?.has(player.id) ?? false
+                      const limit = squadLimitOf(tournament)
+                      // A box that would take the club past the limit is not
+                      // offered: the API refuses it, and a tick that saves into
+                      // a refusal is worse than no tick. Taking somebody off is
+                      // always allowed, including for a club that is over.
+                      const full =
+                        !on &&
+                        limit !== null &&
+                        (enteredByTournament.get(tournament.id)?.size ?? 0) >= limit
+                      return (
+                        <td key={tournament.id} className="py-3 px-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={savingEntry === `${tournament.id}:${player.id}` || full}
+                            onChange={() => void toggleEntry(tournament.id, player.id)}
+                            className="w-4 h-4 rounded border border-white/20 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={
+                              full
+                                ? `${tournament.name} registers at most ${limit} players per club`
+                                : `Entered in ${tournament.name}`
+                            }
+                          />
+                        </td>
+                      )
+                    })}
                     <td className="py-3 px-4 text-sm opacity-70">
                       {new Date(player.createdAtISO).toLocaleDateString()}
                     </td>

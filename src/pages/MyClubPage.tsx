@@ -21,6 +21,7 @@ import {
   playersForPicking,
   playersNamedInMatch,
   registeredPlayers,
+  squadLimitOf,
 } from '../utils/squads'
 import { byMinute, unattributedGoals } from '../utils/matches'
 import { numberInMatch, playerLabel } from '../utils/players'
@@ -1224,6 +1225,7 @@ function CompetitionRow({
   const locked = tournament.squadsLocked === true
   const strict = tournament.squadsStrict === true
   const submitted = hasSquadEntry(tournament, team.id)
+  const limit = squadLimitOf(tournament)
 
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<string[]>(entered)
@@ -1259,7 +1261,15 @@ function CompetitionRow({
           {/* A competition that registers its players says so, and says loudest
               to the club that has not registered any: under that rule nobody it
               names can play, and the row would otherwise look like every other. */}
-          {strict && !submitted ? (
+          {limit !== null && entered.length > limit ? (
+            // The competition was capped after this club registered more than
+            // it now allows. What it registered stands; what it cannot do is
+            // save this entry again without coming down to the limit, and this
+            // is the only warning of that before the box is ticked.
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-300">
+              over the limit
+            </span>
+          ) : strict && !submitted ? (
             <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">
               squad needed
             </span>
@@ -1299,6 +1309,18 @@ function CompetitionRow({
                   'Everyone ticked is registered here. Leave them all ticked and anyone you sign later joins automatically.'
                 )}
               </p>
+
+              {limit !== null && (
+                <p
+                  className={`text-xs mb-3 ${
+                    selected.length > limit ? 'text-red-300' : 'opacity-70'
+                  }`}
+                >
+                  {selected.length > limit
+                    ? `The organiser allows ${limit} players per club here. You have ${selected.length} ticked, so ${selected.length - limit} have to come off before this can be saved.`
+                    : `The organiser allows ${limit} players per club here — ${selected.length} ticked.`}
+                </p>
+              )}
 
               <ul className="grid gap-1 sm:grid-cols-2">
                 {players.map((player) => {
@@ -1340,17 +1362,23 @@ function CompetitionRow({
                 <div className="flex items-center gap-2 mt-3">
                   <button
                     onClick={save}
-                    disabled={saving}
+                    disabled={saving || (limit !== null && selected.length > limit)}
                     className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm"
                   >
                     {saving ? 'Saving…' : 'Save squad'}
                   </button>
-                  <button
-                    onClick={() => setSelected(players.map((player) => player.id))}
-                    className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm"
-                  >
-                    Everyone
-                  </button>
+                  {/* Not offered where the squad is bigger than the limit: it
+                      would tick a selection the API refuses, and which of them
+                      to leave out is the question the manager is here to
+                      answer. */}
+                  {(limit === null || players.length <= limit) && (
+                    <button
+                      onClick={() => setSelected(players.map((player) => player.id))}
+                      className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm"
+                    >
+                      Everyone
+                    </button>
+                  )}
                   <button
                     onClick={() => setSelected([])}
                     className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm text-gray-300"

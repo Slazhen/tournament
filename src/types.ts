@@ -599,6 +599,20 @@ export type Tournament = {
    */
   squadsStrict?: boolean
   /**
+   * How many players one club may register here, or absent for no limit.
+   *
+   * It only exists alongside `squadsStrict`, and the two are written together:
+   * where an absent entry means the whole squad, a number capping the entries
+   * caps nothing — a club that never opens the screen fields everybody it has.
+   * So setting a limit turns the registration list on, and turning the
+   * registration list off takes the limit away with it.
+   *
+   * A club that was over the limit when it was set keeps what it registered.
+   * Nothing cuts a list somebody else made down to size; what the limit binds is
+   * the next save of that entry, by the club and by the organiser alike.
+   */
+  squadLimit?: number | null
+  /**
    * The league rounds whose fixtures the public may not read yet, by round
    * number as the matches store it — from zero.
    *

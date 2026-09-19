@@ -5,6 +5,23 @@ import { byShirtNumber, numberInMatch } from './players'
 type SquadRules = Pick<Tournament, 'squads' | 'squadsStrict'>
 
 /**
+ * How many players this competition lets one club register, or null for no cap.
+ *
+ * The same rule as `squadLimitOf` on the server and read as defensively, since
+ * these records are schemaless and reach the browser as they were stored: a
+ * stray value under this key must draw no limit rather than an impossible one.
+ * The screens count against it, and the API refuses a save that exceeds it —
+ * both halves matter, the way they do for every other rule here.
+ */
+export function squadLimitOf(
+  tournament: Pick<Tournament, 'squadLimit'> | null | undefined,
+): number | null {
+  const limit = tournament?.squadLimit
+  if (typeof limit !== 'number' || !Number.isInteger(limit)) return null
+  return limit >= 1 && limit <= 99 ? limit : null
+}
+
+/**
  * Whether this player has been taken off the club's books.
  *
  * Two shapes, one fact: an admin screen holds the stored record and its
