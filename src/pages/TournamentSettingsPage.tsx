@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAppStore } from '../store'
 import LogoUploader from '../components/LogoUploader'
 import TeamPicker from '../components/TeamPicker'
 import VisibilityToggle from '../components/VisibilityToggle'
-import InlineInput from '../components/InlineInput'
 import FormatPicker from '../components/FormatPicker'
 import { findFormat, formatOptionFor } from '../utils/formats'
 import { planTeamChange, teamEditMode, planFormatChange, planPlayoffSeeding } from '../utils/fixtures'
@@ -27,6 +26,85 @@ import {
   groupIntoSeries,
 } from '../utils/seasons'
 
+/* ================================================================== *
+ * The plain fields, held as a draft until the organiser saves them
+ * ================================================================== */
+
+/**
+ * Everything on this screen that is a value rather than an action.
+ *
+ * These used to save themselves the moment a field lost focus, which is what
+ * was reported as "there is no save button": a name typed and then clicked away
+ * from had already been written, a name typed and then abandoned had been
+ * written too, and nothing on the screen ever said which. They are edited into
+ * this draft now and written when the organiser says so.
+ *
+ * What is deliberately *not* here is everything whose consequence is not a
+ * value: the format and the team list each keep their own button, because both
+ * show what the change would cost the fixtures before it happens, and a switch
+ * (public or private, squads open or closed) reads as done the moment it moves.
+ */
+type Details = {
+  name: string
+  seriesName: string
+  seasonLabel: string
+  championTeamId: string
+  venueName: string
+  venueLink: string
+  facebook: string
+  instagram: string
+  /** Null is the organiser's own colour taken off again, not "unchanged". */
+  themeColor: string | null
+}
+
+/** What the save bar calls each of them. */
+const DETAIL_LABELS: Record<keyof Details, string> = {
+  name: 'Tournament name',
+  seriesName: 'Competition',
+  seasonLabel: 'Season',
+  championTeamId: 'Champion',
+  venueName: 'Venue',
+  venueLink: 'Map link',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  themeColor: 'Header colour',
+}
+
+function detailsOf(tournament: Tournament): Details {
+  return {
+    name: tournament.name,
+    // The competition's name falls back to the season's, so an untouched field
+    // shows what the public page shows rather than an empty box.
+    seriesName: seriesName(tournament),
+    seasonLabel: tournament.seasonLabel ?? '',
+    championTeamId: tournament.championTeamId ?? '',
+    venueName: tournament.location?.name ?? '',
+    venueLink: tournament.location?.link ?? '',
+    facebook: tournament.socialMedia?.facebook ?? '',
+    instagram: tournament.socialMedia?.instagram ?? '',
+    themeColor: tournament.themeColor ?? null,
+  }
+}
+
+const changedDetails = (saved: Details, draft: Details): (keyof Details)[] =>
+  (Object.keys(saved) as (keyof Details)[]).filter((key) => saved[key] !== draft[key])
+
+/* ================================================================== *
+ * Tabs
+ * ================================================================== */
+
+type TabId = 'general' | 'format' | 'clubs' | 'squads'
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'general', label: 'General' },
+  { id: 'format', label: 'Format' },
+  { id: 'clubs', label: 'Clubs' },
+  { id: 'squads', label: 'Squads' },
+]
+
+const isTab = (value: string | null): value is TabId =>
+  TABS.some((entry) => entry.id === value)
+
 /**
  * Editing a tournament that already exists.
  *
@@ -35,10 +113,18 @@ import {
  * club dropping out in week three, meant deleting the whole season and starting
  * again. Everything editable lives here, and changing the teams shows what it
  * will do to the fixtures before anything is saved.
+ *
+ * It is four tabs rather than one column of twelve sections. The column was
+ * long enough that the controls at the bottom — who runs each club, the squad
+ * rules, deleting the season — were found by scrolling past everything else,
+ * and half of them are only relevant while a season is being set up. The tab is
+ * in the address (`?tab=clubs`), so a link to this screen opens where it was
+ * sent and the browser's back button steps through the tabs.
  */
 export default function TournamentSettingsPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const {
     getCurrentOrganizer,
@@ -96,6 +182,10 @@ export default function TournamentSettingsPage() {
   const [entries, setEntries] = useState<Entry[]>([])
   const [deciding, setDeciding] = useState<string | null>(null)
 
+  const [draftDetails, setDraftDetails] = useState<Details | null>(null)
+  const [isSavingDetails, setIsSavingDetails] = useState(false)
+  const [detailsError, setDetailsError] = useState<string | null>(null)
+
   // Clubs asking to join. The organiser decides; nothing enters a competition
   // on its own.
   useEffect(() => {
@@ -121,6 +211,26 @@ export default function TournamentSettingsPage() {
     [tournament, selectedTeamIds],
   )
 
+  // Anything typed and not yet written. Worked out here, above the early return
+  // below, because the warning that leaving would lose it is an effect and a
+  // hook cannot be written under a return.
+  const unsavedDetails =
+    tournament && draftDetails ? changedDetails(detailsOf(tournament), draftDetails) : []
+  const unsaved =
+    unsavedDetails.length > 0 ||
+    Boolean(plan && (plan.added.length > 0 || plan.removed.length > 0)) ||
+    draftFormatId !== null ||
+    draftQualifiers !== null ||
+    draftGroups !== null
+
+  useEffect(() => {
+    if (!unsaved) return
+    // The browser decides the wording; all a page may do is ask to be asked.
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [unsaved])
+
   if (!tournament) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
@@ -133,6 +243,33 @@ export default function TournamentSettingsPage() {
       </div>
     )
   }
+
+  const requestedTab = searchParams.get('tab')
+  const tab: TabId = isTab(requestedTab) ? requestedTab : 'general'
+  const openTab = (next: TabId) => {
+    // Replaced rather than pushed: stepping back through every tab somebody
+    // clicked on the way to the one they wanted is not a history anybody wants.
+    const params = new URLSearchParams(searchParams)
+    if (next === 'general') params.delete('tab')
+    else params.set('tab', next)
+    setSearchParams(params, { replace: true })
+  }
+
+  const savedDetails = detailsOf(tournament)
+  const details = draftDetails ?? savedDetails
+  const editDetails = (patch: Partial<Details>) => {
+    setDetailsError(null)
+    setDraftDetails({ ...details, ...patch })
+  }
+
+  // Both names are required: the season's own is its public address, and the
+  // competition's is what every season of it is listed under.
+  const detailsProblem =
+    details.name.trim() === ''
+      ? 'A tournament needs a name.'
+      : details.seriesName.trim() === ''
+        ? 'A competition needs a name — by default it is the tournament’s own.'
+        : null
 
   const editMode = teamEditMode(tournament)
   const formatTitle = formatOptionFor(tournament.format).title
@@ -255,6 +392,73 @@ export default function TournamentSettingsPage() {
     }
   }
 
+  /**
+   * Write the draft.
+   *
+   * Straight through `tournamentService` rather than the store's
+   * `updateTournament`, which logs a failure to the console and resolves as
+   * though it had worked — the whole point of a save button is that it says
+   * whether the save happened. `loadTournaments` afterwards puts the store back
+   * in step with what the API actually stored, and the draft is only dropped
+   * once that has succeeded.
+   *
+   * A field the organiser emptied is sent as `null`, not omitted: `undefined`
+   * does not survive `JSON.stringify`, so a key left out of the body means
+   * "unchanged" and clearing the champion or the season's name used to do
+   * nothing at all while the screen showed it gone.
+   */
+  const saveDetails = async () => {
+    if (!draftDetails || detailsProblem || unsavedDetails.length === 0) return
+
+    const updates: Partial<Tournament> = {}
+    if (unsavedDetails.includes('name')) updates.name = details.name.trim()
+    if (unsavedDetails.includes('seasonLabel'))
+      updates.seasonLabel = details.seasonLabel.trim() || null
+    if (unsavedDetails.includes('championTeamId'))
+      updates.championTeamId = details.championTeamId || null
+    if (unsavedDetails.includes('themeColor')) updates.themeColor = details.themeColor
+    // Folded into this record's own write rather than looped over below, so the
+    // season being edited is not PATCHed twice in a row for one save.
+    if (unsavedDetails.includes('seriesName')) updates.seriesName = details.seriesName.trim()
+    if (unsavedDetails.includes('venueName') || unsavedDetails.includes('venueLink')) {
+      // The whole object is replaced, so an emptied field disappears from the
+      // record rather than needing a null of its own.
+      updates.location = {
+        ...tournament.location,
+        name: details.venueName.trim() || undefined,
+        link: details.venueLink.trim() || undefined,
+      }
+    }
+    if (unsavedDetails.includes('facebook') || unsavedDetails.includes('instagram')) {
+      updates.socialMedia = {
+        ...tournament.socialMedia,
+        facebook: details.facebook.trim() || undefined,
+        instagram: details.instagram.trim() || undefined,
+      }
+    }
+
+    setIsSavingDetails(true)
+    setDetailsError(null)
+    try {
+      if (Object.keys(updates).length > 0) await tournamentService.update(tournament.id, updates)
+      // Every season of a competition carries its name, so renaming it means
+      // renaming them all — there are only ever a handful.
+      if (unsavedDetails.includes('seriesName')) {
+        const renamed = details.seriesName.trim()
+        for (const season of siblings) {
+          if (season.id === tournament.id) continue
+          await tournamentService.update(season.id, { seriesName: renamed })
+        }
+      }
+      await loadTournaments()
+      setDraftDetails(null)
+    } catch (error) {
+      setDetailsError(error instanceof Error ? error.message : 'Those changes could not be saved.')
+    } finally {
+      setIsSavingDetails(false)
+    }
+  }
+
   const resetFormatDraft = () => {
     setDraftFormatId(null)
     setDraftQualifiers(null)
@@ -327,11 +531,19 @@ export default function TournamentSettingsPage() {
     }
   }
 
+  const field =
+    'mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none'
+
   return (
     <div className="min-h-[80vh] flex flex-col items-center gap-6 w-full">
       <div className="w-full max-w-3xl">
         <Link
           to={adminSeasonUrl(tournament, organizer)}
+          onClick={(event) => {
+            // The sticky bar below is the only thing saying there is unsaved
+            // work, and it is at the other end of the page from this link.
+            if (unsaved && !confirm('Leave without saving your changes?')) event.preventDefault()
+          }}
           className="text-sm opacity-70 hover:opacity-100 transition-opacity"
         >
           ← Back to {tournament.name}
@@ -345,560 +557,419 @@ export default function TournamentSettingsPage() {
         </p>
       </div>
 
-      {/* ---------- Identity ---------- */}
-      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-5">
-        <h2 className="font-semibold">Name and logo</h2>
-
-        <label className="block">
-          <span className="text-sm opacity-70">Tournament name</span>
-          <InlineInput
-            type="text"
-            value={tournament.name}
-            onCommit={(value) => {
-              const name = value.trim()
-              if (name && name !== tournament.name) updateTournament(tournament.id, { name })
-            }}
-            className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
-          />
-          <span className="text-xs opacity-50">
-            The public address of the tournament follows its name, so old links stop working after a rename.
-          </span>
-        </label>
-
-        <div>
-          <span className="text-sm opacity-70">Logo</span>
-          <div className="mt-2">
-            <LogoUploader
-              onLogoUpload={(file) => uploadTournamentLogo(tournament.id, file)}
-              currentLogo={tournament.logo}
-              size={120}
-              compressionType="tournament"
-            />
-          </div>
+      {/* ---------- Tabs ---------- */}
+      <nav className="w-full max-w-3xl" aria-label="Settings sections">
+        <div className="glass rounded-xl p-1 flex gap-1 overflow-x-auto">
+          {TABS.map((entry) => {
+            const active = entry.id === tab
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => openTab(entry.id)}
+                aria-current={active ? 'page' : undefined}
+                title={
+                  entry.id === 'format' && canDrawBracket
+                    ? 'The playoff bracket can be drawn'
+                    : undefined
+                }
+                className={`flex-1 whitespace-nowrap px-4 py-2 rounded-lg text-sm transition-colors inline-flex items-center justify-center gap-2 ${
+                  active ? 'bg-white/15 font-medium' : 'opacity-70 hover:opacity-100 hover:bg-white/5'
+                }`}
+              >
+                {entry.label}
+                {/* Two marks, both of them something waiting on the organiser:
+                    clubs that have asked to join, and a bracket the league is
+                    now finished enough to draw. Neither was findable before
+                    without scrolling the whole page. */}
+                {entry.id === 'clubs' && pendingEntries.length > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-200">
+                    {pendingEntries.length}
+                  </span>
+                )}
+                {entry.id === 'format' && canDrawBracket && (
+                  <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-amber-300" />
+                )}
+              </button>
+            )
+          })}
         </div>
+      </nav>
 
-        <HeaderColour tournament={tournament} onChange={updateTournament} />
-      </section>
+      {/* ================= General ================= */}
 
-      {/* ---------- Visibility ---------- */}
-      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-3">
-        <h2 className="font-semibold">Who can see it</h2>
-        <VisibilityToggle
-          isPublic={tournament.visibility !== 'private'}
-          onToggle={(isPublic) =>
-            updateTournament(tournament.id, { visibility: isPublic ? 'public' : 'private' })
-          }
-        />
-      </section>
+      {tab === 'general' && (
+        <>
+          {/* ---------- Identity ---------- */}
+          <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-5">
+            <h2 className="font-semibold">Name and logo</h2>
 
-      {/* ---------- Format ---------- */}
-      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 className="font-semibold">How it is played</h2>
-          <span className="text-xs opacity-60">Currently: {formatTitle}</span>
-        </div>
+            <label className="block">
+              <span className="text-sm opacity-70">Tournament name</span>
+              <input
+                type="text"
+                value={details.name}
+                onChange={(event) => editDetails({ name: event.target.value })}
+                className={field}
+              />
+              <span className="text-xs opacity-50">
+                The public address of the tournament follows its name, so old links stop working
+                after a rename.
+              </span>
+            </label>
 
-        <FormatPicker
-          value={draftFormatId ?? currentFormatId}
-          onChange={setDraftFormatId}
-          teamCount={selectedTeamIds.length}
-          qualifiers={qualifiers}
-          groups={groupsConfig}
-        />
+            <div>
+              <span className="text-sm opacity-70">Logo</span>
+              <div className="mt-2">
+                <LogoUploader
+                  onLogoUpload={(file) => uploadTournamentLogo(tournament.id, file)}
+                  currentLogo={tournament.logo}
+                  size={120}
+                  compressionType="tournament"
+                />
+              </div>
+              <span className="text-xs opacity-50">
+                A logo is uploaded as soon as you choose it — it is a file, not a field.
+              </span>
+            </div>
 
-        {(selectedFormat.mode === 'league_playoff' ||
-          selectedFormat.mode === 'league_custom_playoff') && (
-          <label className="block text-sm">
-            <span className="opacity-70">Teams in the playoffs</span>
-            <input
-              type="number"
-              min={2}
-              max={Math.max(2, selectedTeamIds.length)}
-              value={qualifiers}
-              onChange={(event) => setDraftQualifiers(Number(event.target.value) || 2)}
-              className="mt-1 w-24 px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+            <HeaderColour
+              tournament={tournament}
+              value={details.themeColor}
+              onChange={(themeColor) => editDetails({ themeColor })}
             />
-          </label>
-        )}
+          </section>
 
-        {selectedFormat.mode === 'groups_with_divisions' && (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {(
-              [
-                { key: 'numberOfGroups', label: 'Groups', min: 2, max: 8 },
-                { key: 'teamsPerGroup', label: 'Teams per group', min: 2, max: 8 },
-                { key: 'groupRounds', label: 'Legs in the group', min: 1, max: 2 },
-                {
-                  key: 'qualifiersPerGroup',
-                  // Named for the bracket it fills, which is only called the
-                  // gold playoffs once there is a second one to rank it against.
-                  label: `Per group, to the ${(draftTiers[0]?.name ?? 'Playoffs').toLowerCase()}`,
-                  min: 1,
-                  // A cut cannot reach past the last place in a group.
-                  max: groupsConfig.teamsPerGroup,
-                },
-                {
-                  key: 'secondDivisionPerGroup',
-                  label: 'Then to the silver playoffs',
-                  // Zero is how an organiser says there is no second bracket.
-                  min: 0,
-                  max: Math.max(0, groupsConfig.teamsPerGroup - groupsConfig.qualifiersPerGroup),
-                },
-                {
-                  key: 'thirdDivisionPerGroup',
-                  label: 'Then to the bronze playoffs',
-                  min: 0,
-                  max: Math.max(
-                    0,
-                    groupsConfig.teamsPerGroup -
-                      groupsConfig.qualifiersPerGroup -
-                      groupsConfig.secondDivisionPerGroup,
-                  ),
-                },
-              ] as const
-            ).map(({ key, label, min, max }) => (
-              <label key={key} className="text-sm">
-                <span className="opacity-70">{label}</span>
+          {/* ---------- Visibility ---------- */}
+          <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-3">
+            <h2 className="font-semibold">Who can see it</h2>
+            <VisibilityToggle
+              isPublic={tournament.visibility !== 'private'}
+              onToggle={(isPublic) =>
+                updateTournament(tournament.id, { visibility: isPublic ? 'public' : 'private' })
+              }
+            />
+            <p className="text-xs opacity-50">This one takes effect as you switch it.</p>
+          </section>
+
+          {/* ---------- Season ---------- */}
+          <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-5">
+            <div className="flex items-baseline justify-between gap-4">
+              <h2 className="font-semibold">Competition and season</h2>
+              <span className="text-xs opacity-60">
+                {status === 'finished'
+                  ? 'Finished'
+                  : status === 'running'
+                    ? 'In progress'
+                    : 'Not started'}
+              </span>
+            </div>
+
+            <p className="text-sm opacity-70">
+              Running the same league again next year is a new season of this competition, not a new
+              competition. Seasons share a page and a switcher, so the year no longer has to be
+              typed into the name.
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                <span className="opacity-70">Competition</span>
                 <input
-                  type="number"
-                  min={min}
-                  max={max}
-                  value={groupsConfig[key]}
-                  onChange={(event) => {
-                    const value = Math.min(max, Math.max(min, Number(event.target.value) || min))
-                    const next = { ...groupsConfig, [key]: value }
-                    // Shrinking a group, or taking more of it into a bracket
-                    // above, has to shrink what is left for the ones below.
-                    next.qualifiersPerGroup = Math.min(next.qualifiersPerGroup, next.teamsPerGroup)
-                    next.secondDivisionPerGroup = Math.min(
-                      next.secondDivisionPerGroup,
-                      Math.max(0, next.teamsPerGroup - next.qualifiersPerGroup),
-                    )
-                    next.thirdDivisionPerGroup = Math.min(
-                      next.thirdDivisionPerGroup,
-                      Math.max(
-                        0,
-                        next.teamsPerGroup - next.qualifiersPerGroup - next.secondDivisionPerGroup,
-                      ),
-                    )
-                    setDraftGroups(next)
-                  }}
-                  className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+                  type="text"
+                  value={details.seriesName}
+                  onChange={(event) => editDetails({ seriesName: event.target.value })}
+                  placeholder="Homebush Futsal Premier League"
+                  className={field}
+                />
+                {siblings.length > 1 && (
+                  <span className="text-xs opacity-50">
+                    Renaming it renames all {siblings.length} seasons.
+                  </span>
+                )}
+              </label>
+              <label className="text-sm">
+                <span className="opacity-70">This season</span>
+                <input
+                  type="text"
+                  value={details.seasonLabel}
+                  onChange={(event) => editDetails({ seasonLabel: event.target.value })}
+                  placeholder={seasonLabel(tournament)}
+                  className={field}
                 />
               </label>
-            ))}
-            <p className="sm:col-span-3 text-xs opacity-60">
-              {draftTiers.length === 1
-                ? 'One bracket, so the clubs through it are simply qualified.'
-                : `${draftTiers.length} brackets: ${draftTiers.map((tier) => tier.name.toLowerCase()).join(', ')}. A bracket set to nobody ends the list.`}
-            </p>
-          </div>
-        )}
-
-        {/* What the switch would actually do, before anything is written. */}
-        {formatPlan.kind !== 'unchanged' && (
-          <div
-            className={`rounded-lg border p-3 text-sm space-y-1 ${
-              formatPlan.kind === 'destructive'
-                ? 'border-red-400/30 bg-red-400/5'
-                : formatPlan.kind === 'blocked'
-                  ? 'border-white/15 bg-white/[0.03]'
-                  : 'border-amber-400/30 bg-amber-400/5'
-            }`}
-          >
-            <div className="font-medium">
-              {formatPlan.kind === 'blocked' ? 'Not yet' : 'What this will do'}
             </div>
-            {formatPlan.notes.map((note) => (
-              <p key={note} className="opacity-80">
-                {note}
-              </p>
-            ))}
-          </div>
-        )}
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={saveFormat}
-            disabled={
-              formatPlan.kind === 'unchanged' || formatPlan.kind === 'blocked' || isSavingFormat
-            }
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {isSavingFormat
-              ? 'Saving...'
-              : formatPlan.kind === 'rebuild_playoffs'
-                ? 'Save playoff settings'
-                : 'Change format'}
-          </button>
-          {formatPlan.kind !== 'unchanged' && (
+            {siblings.length > 1 && (
+              <p className="text-sm opacity-70">
+                {siblings.length} seasons: {siblings.map((season) => seasonLabel(season)).join(', ')}
+                .
+              </p>
+            )}
+
+            {/* Champion: worked out from the results, overridable when the pitch
+                did not have the last word. */}
+            <div>
+              <span className="text-sm opacity-70">Champion</span>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                {championTeam && <Trophy size={30} />}
+                <select
+                  value={details.championTeamId}
+                  onChange={(event) => editDetails({ championTeamId: event.target.value })}
+                  className="px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none text-sm"
+                >
+                  <option value="">
+                    {derivedChampion
+                      ? `From the results: ${teams.find((team) => team.id === derivedChampion)?.name ?? 'unknown'}`
+                      : 'Decided when the season finishes'}
+                  </option>
+                  {teams
+                    .filter((team) => selectedTeamIds.includes(team.id))
+                    .map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Joining up a season that was created as its own tournament — which
+                is how anyone would have done it before this existed. A move, not
+                a field, so it happens when it is chosen. */}
+            {otherCompetitions.length > 0 && (
+              <label className="block text-sm">
+                <span className="opacity-70">Move this into another competition</span>
+                <select
+                  value=""
+                  disabled={isLinking}
+                  onChange={async (event) => {
+                    const target = otherCompetitions.find(
+                      (entry) => entry.key === event.target.value,
+                    )
+                    if (!target) return
+                    setIsLinking(true)
+                    try {
+                      await updateTournament(tournament.id, {
+                        seriesId: target.key,
+                        seriesName: target.name,
+                      })
+                    } finally {
+                      setIsLinking(false)
+                    }
+                  }}
+                  className={field}
+                >
+                  <option value="">Keep it on its own</option>
+                  {otherCompetitions.map((entry) => (
+                    <option key={entry.key} value={entry.key}>
+                      {entry.name} ({entry.seasons.length}{' '}
+                      {entry.seasons.length === 1 ? 'season' : 'seasons'})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs opacity-50">
+                  This one moves the season as soon as you choose it.
+                </span>
+              </label>
+            )}
+          </section>
+
+          {/* ---------- Where ---------- */}
+          <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
+            <h2 className="font-semibold">Venue and links</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                <span className="opacity-70">Venue name</span>
+                <input
+                  type="text"
+                  value={details.venueName}
+                  onChange={(event) => editDetails({ venueName: event.target.value })}
+                  placeholder="Homebush Futsal Centre"
+                  className={field}
+                />
+              </label>
+              <label className="text-sm">
+                <span className="opacity-70">Map link</span>
+                <input
+                  type="url"
+                  value={details.venueLink}
+                  onChange={(event) => editDetails({ venueLink: event.target.value })}
+                  placeholder="https://maps.app.goo.gl/..."
+                  className={field}
+                />
+              </label>
+              <label className="text-sm">
+                <span className="opacity-70">Facebook</span>
+                <input
+                  type="url"
+                  value={details.facebook}
+                  onChange={(event) => editDetails({ facebook: event.target.value })}
+                  placeholder="https://facebook.com/..."
+                  className={field}
+                />
+              </label>
+              <label className="text-sm">
+                <span className="opacity-70">Instagram</span>
+                <input
+                  type="url"
+                  value={details.instagram}
+                  onChange={(event) => editDetails({ instagram: event.target.value })}
+                  placeholder="https://instagram.com/..."
+                  className={field}
+                />
+              </label>
+            </div>
+          </section>
+
+          {/* ---------- Deleting ---------- */}
+          <section className="rounded-xl p-6 w-full max-w-3xl border border-red-500/20 bg-red-500/[0.03] space-y-3">
+            <h2 className="font-semibold text-red-300">Delete this tournament</h2>
+            <p className="text-sm opacity-70">
+              Removes the fixtures, the results, the table and the public page. There is no undo.
+            </p>
             <button
               type="button"
-              onClick={resetFormatDraft}
-              className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+              onClick={async () => {
+                const typed = prompt(`Type the tournament name to delete it:\n\n${tournament.name}`)
+                if (typed?.trim() !== tournament.name) return
+                await deleteTournament(tournament.id)
+                navigate('/tournaments')
+              }}
+              className="px-4 py-2 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors text-sm"
             >
-              Cancel
+              Delete tournament
             </button>
-          )}
-        </div>
-      </section>
-
-      {/* ---------- Drawing the bracket ---------- */}
-      {hasSeedableBracket && (
-        <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-3">
-          <h2 className="font-semibold">Playoffs</h2>
-          {canDrawBracket ? (
-            <>
-              <p className="text-sm opacity-70">
-                The league is finished. The top {seeding.qualifiers} go into the bracket, seeded by
-                the final table — {seeding.matches.length} matches.
-              </p>
-              <button
-                type="button"
-                onClick={drawBracket}
-                disabled={isDrawing}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 transition-colors"
-              >
-                {isDrawing ? 'Drawing...' : 'Draw the bracket'}
-              </button>
-            </>
-          ) : (
-            <p className="text-sm opacity-70">
-              {seeding.reason ?? 'The bracket cannot be drawn yet.'}
-            </p>
-          )}
-        </section>
+          </section>
+        </>
       )}
 
-      {/* ---------- Applications ---------- */}
-      {pendingEntries.length > 0 && (
-        <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4 border border-amber-400/25">
-          <h2 className="font-semibold">
-            Clubs asking to join ({pendingEntries.length})
-          </h2>
-          <p className="text-sm opacity-70">
-            Accepting adds the club to the tournament. It does not touch the fixture list — do that
-            below, where you can see what it would cost first.
-          </p>
+      {/* ================= Format ================= */}
 
-          <ul className="space-y-2">
-            {pendingEntries.map((entry) => {
-              const club = teams.find((candidate) => candidate.id === entry.teamId)
-              return (
-                <li
-                  key={entry.teamId}
-                  className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
-                >
-                  <span>
-                    {club?.name ?? entry.teamName ?? 'A club'}
-                    <span className="opacity-50 text-xs ml-2">
-                      {new Date(entry.createdAt).toLocaleDateString()}
-                    </span>
-                    {/* A club may ask again after a refusal. Saying so, with the
-                        reason given last time, is what keeps that from reading
-                        as a first request the organiser has never seen. */}
-                    {entry.previousDecidedAt && (
-                      <span className="block text-xs text-amber-300/80 mt-0.5">
-                        Asked before and was turned down
-                        {entry.previousNote ? ` — ${entry.previousNote}` : ''}
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={deciding === entry.teamId}
-                      onClick={() => decide(entry.teamId, 'accepted')}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 text-emerald-300 text-sm transition-colors disabled:opacity-50"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      disabled={deciding === entry.teamId}
-                      onClick={() => decide(entry.teamId, 'declined')}
-                      className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm transition-all disabled:opacity-50"
-                    >
-                      Not this time
-                    </button>
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
+      {tab === 'format' && (
+        <>
+          <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <h2 className="font-semibold">How it is played</h2>
+              <span className="text-xs opacity-60">Currently: {formatTitle}</span>
+            </div>
 
-      {/* ---------- Invitations this organiser has issued ---------- */}
-      {invitedEntries.length > 0 && (
-        <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4 border border-emerald-400/25">
-          <h2 className="font-semibold">Clubs you have invited ({invitedEntries.length})</h2>
-          <p className="text-sm opacity-70">
-            Waiting on the club. A place is offered, not taken — the club joins when its manager
-            accepts, and nothing changes here until then.
-          </p>
-
-          <ul className="space-y-2">
-            {invitedEntries.map((entry) => {
-              const club = teams.find((candidate) => candidate.id === entry.teamId)
-              return (
-                <li
-                  key={entry.teamId}
-                  className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
-                >
-                  <span>
-                    {club?.name ?? entry.teamName ?? 'A club'}
-                    <span className="opacity-50 text-xs ml-2">
-                      invited {new Date(entry.createdAt).toLocaleDateString()}
-                    </span>
-                    {/* A club that has answered before, whichever way. Without
-                        it a second invitation reads as a first one. */}
-                    {entry.previousDecidedAt && (
-                      <span className="block text-xs text-amber-300/80 mt-0.5">
-                        Asked before and turned it down
-                        {entry.previousNote ? ` — ${entry.previousNote}` : ''}
-                      </span>
-                    )}
-                  </span>
-                  {/* Taking back what was offered. Accepting is deliberately not
-                      here: the club has not answered, and the API refuses it. */}
-                  <button
-                    type="button"
-                    disabled={deciding === entry.teamId}
-                    onClick={() => decide(entry.teamId, 'declined')}
-                    className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm transition-all disabled:opacity-50"
-                  >
-                    Withdraw
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* ---------- Squads ---------- */}
-      <SquadsSection
-        tournament={tournament}
-        teams={teams.filter((team) => tournament.teamIds.includes(team.id))}
-        onLock={(locked) => updateTournament(tournament.id, { squadsLocked: locked })}
-        onReload={loadTournaments}
-      />
-
-      {/* ---------- Season ---------- */}
-      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-5">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 className="font-semibold">Competition and season</h2>
-          <span className="text-xs opacity-60">
-            {status === 'finished'
-              ? 'Finished'
-              : status === 'running'
-                ? 'In progress'
-                : 'Not started'}
-          </span>
-        </div>
-
-        <p className="text-sm opacity-70">
-          Running the same league again next year is a new season of this competition, not a new
-          competition. Seasons share a page and a switcher, so the year no longer has to be typed
-          into the name.
-        </p>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="opacity-70">Competition</span>
-            <InlineInput
-              type="text"
-              value={seriesName(tournament)}
-              onCommit={(value) => {
-                const name = value.trim()
-                if (!name) return
-                // Every season of a competition carries its name, so renaming it
-                // means renaming them all — there are only ever a handful.
-                for (const season of siblings) {
-                  updateTournament(season.id, { seriesName: name })
-                }
-              }}
-              placeholder="Homebush Futsal Premier League"
-              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+            <FormatPicker
+              value={draftFormatId ?? currentFormatId}
+              onChange={setDraftFormatId}
+              teamCount={selectedTeamIds.length}
+              qualifiers={qualifiers}
+              groups={groupsConfig}
             />
-          </label>
-          <label className="text-sm">
-            <span className="opacity-70">This season</span>
-            <InlineInput
-              type="text"
-              value={tournament.seasonLabel || ''}
-              onCommit={(value) =>
-                updateTournament(tournament.id, { seasonLabel: value.trim() || undefined })
-              }
-              placeholder={seasonLabel(tournament)}
-              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
-            />
-          </label>
-        </div>
 
-        {siblings.length > 1 && (
-          <p className="text-sm opacity-70">
-            {siblings.length} seasons: {siblings.map((season) => seasonLabel(season)).join(', ')}.
-          </p>
-        )}
+            {(selectedFormat.mode === 'league_playoff' ||
+              selectedFormat.mode === 'league_custom_playoff') && (
+              <label className="block text-sm">
+                <span className="opacity-70">Teams in the playoffs</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={Math.max(2, selectedTeamIds.length)}
+                  value={qualifiers}
+                  onChange={(event) => setDraftQualifiers(Number(event.target.value) || 2)}
+                  className="mt-1 w-24 px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
+                />
+              </label>
+            )}
 
-        {/* Champion: worked out from the results, overridable when the pitch did
-            not have the last word. */}
-        <div>
-          <span className="text-sm opacity-70">Champion</span>
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            {championTeam && <Trophy size={30} />}
-            <select
-              value={tournament.championTeamId || ''}
-              onChange={(event) =>
-                updateTournament(tournament.id, {
-                  championTeamId: event.target.value || undefined,
-                })
-              }
-              className="px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none text-sm"
-            >
-              <option value="">
-                {derivedChampion
-                  ? `From the results: ${teams.find((team) => team.id === derivedChampion)?.name ?? 'unknown'}`
-                  : 'Decided when the season finishes'}
-              </option>
-              {teams
-                .filter((team) => selectedTeamIds.includes(team.id))
-                .map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name}
-                  </option>
+            {selectedFormat.mode === 'groups_with_divisions' && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(
+                  [
+                    { key: 'numberOfGroups', label: 'Groups', min: 2, max: 8 },
+                    { key: 'teamsPerGroup', label: 'Teams per group', min: 2, max: 8 },
+                    { key: 'groupRounds', label: 'Legs in the group', min: 1, max: 2 },
+                    {
+                      key: 'qualifiersPerGroup',
+                      // Named for the bracket it fills, which is only called the
+                      // gold playoffs once there is a second one to rank it against.
+                      label: `Per group, to the ${(draftTiers[0]?.name ?? 'Playoffs').toLowerCase()}`,
+                      min: 1,
+                      // A cut cannot reach past the last place in a group.
+                      max: groupsConfig.teamsPerGroup,
+                    },
+                    {
+                      key: 'secondDivisionPerGroup',
+                      label: 'Then to the silver playoffs',
+                      // Zero is how an organiser says there is no second bracket.
+                      min: 0,
+                      max: Math.max(0, groupsConfig.teamsPerGroup - groupsConfig.qualifiersPerGroup),
+                    },
+                    {
+                      key: 'thirdDivisionPerGroup',
+                      label: 'Then to the bronze playoffs',
+                      min: 0,
+                      max: Math.max(
+                        0,
+                        groupsConfig.teamsPerGroup -
+                          groupsConfig.qualifiersPerGroup -
+                          groupsConfig.secondDivisionPerGroup,
+                      ),
+                    },
+                  ] as const
+                ).map(({ key, label, min, max }) => (
+                  <label key={key} className="text-sm">
+                    <span className="opacity-70">{label}</span>
+                    <input
+                      type="number"
+                      min={min}
+                      max={max}
+                      value={groupsConfig[key]}
+                      onChange={(event) => {
+                        const value = Math.min(max, Math.max(min, Number(event.target.value) || min))
+                        const next = { ...groupsConfig, [key]: value }
+                        // Shrinking a group, or taking more of it into a bracket
+                        // above, has to shrink what is left for the ones below.
+                        next.qualifiersPerGroup = Math.min(
+                          next.qualifiersPerGroup,
+                          next.teamsPerGroup,
+                        )
+                        next.secondDivisionPerGroup = Math.min(
+                          next.secondDivisionPerGroup,
+                          Math.max(0, next.teamsPerGroup - next.qualifiersPerGroup),
+                        )
+                        next.thirdDivisionPerGroup = Math.min(
+                          next.thirdDivisionPerGroup,
+                          Math.max(
+                            0,
+                            next.teamsPerGroup -
+                              next.qualifiersPerGroup -
+                              next.secondDivisionPerGroup,
+                          ),
+                        )
+                        setDraftGroups(next)
+                      }}
+                      className={field}
+                    />
+                  </label>
                 ))}
-            </select>
-          </div>
-        </div>
+                <p className="sm:col-span-3 text-xs opacity-60">
+                  {draftTiers.length === 1
+                    ? 'One bracket, so the clubs through it are simply qualified.'
+                    : `${draftTiers.length} brackets: ${draftTiers.map((tier) => tier.name.toLowerCase()).join(', ')}. A bracket set to nobody ends the list.`}
+                </p>
+              </div>
+            )}
 
-        {/* Joining up a season that was created as its own tournament — which is
-            how anyone would have done it before this existed. */}
-        {otherCompetitions.length > 0 && (
-          <label className="block text-sm">
-            <span className="opacity-70">Move this into another competition</span>
-            <select
-              value=""
-              disabled={isLinking}
-              onChange={async (event) => {
-                const target = otherCompetitions.find((entry) => entry.key === event.target.value)
-                if (!target) return
-                setIsLinking(true)
-                try {
-                  await updateTournament(tournament.id, {
-                    seriesId: target.key,
-                    seriesName: target.name,
-                  })
-                } finally {
-                  setIsLinking(false)
-                }
-              }}
-              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
-            >
-              <option value="">Keep it on its own</option>
-              {otherCompetitions.map((entry) => (
-                <option key={entry.key} value={entry.key}>
-                  {entry.name} ({entry.seasons.length}{' '}
-                  {entry.seasons.length === 1 ? 'season' : 'seasons'})
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </section>
-
-      {/* ---------- Where ---------- */}
-      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
-        <h2 className="font-semibold">Venue and links</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="opacity-70">Venue name</span>
-            <InlineInput
-              type="text"
-              value={tournament.location?.name || ''}
-              onCommit={(value) =>
-                updateTournament(tournament.id, {
-                  location: { ...tournament.location, name: value || undefined },
-                })
-              }
-              placeholder="Homebush Futsal Centre"
-              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="opacity-70">Map link</span>
-            <InlineInput
-              type="url"
-              value={tournament.location?.link || ''}
-              onCommit={(value) =>
-                updateTournament(tournament.id, {
-                  location: { ...tournament.location, link: value || undefined },
-                })
-              }
-              placeholder="https://maps.app.goo.gl/..."
-              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="opacity-70">Facebook</span>
-            <InlineInput
-              type="url"
-              value={tournament.socialMedia?.facebook || ''}
-              onCommit={(value) =>
-                updateTournament(tournament.id, {
-                  socialMedia: { ...tournament.socialMedia, facebook: value || undefined },
-                })
-              }
-              placeholder="https://facebook.com/..."
-              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="opacity-70">Instagram</span>
-            <InlineInput
-              type="url"
-              value={tournament.socialMedia?.instagram || ''}
-              onCommit={(value) =>
-                updateTournament(tournament.id, {
-                  socialMedia: { ...tournament.socialMedia, instagram: value || undefined },
-                })
-              }
-              placeholder="https://instagram.com/..."
-              className="mt-1 w-full px-3 py-2 rounded-md bg-white/5 border border-white/20 focus:border-white/40 focus:outline-none"
-            />
-          </label>
-        </div>
-      </section>
-
-      {/* ---------- Teams ---------- */}
-      <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-semibold">Teams ({selectedTeamIds.length})</h2>
-          {editMode === 'regenerate' && (
-            <span className="text-xs opacity-60">Nothing played yet — the draw can be redone</span>
-          )}
-        </div>
-
-        {editMode === 'locked' ? (
-          <p className="text-sm opacity-70">
-            Results have already been entered and this format's draw is fixed once it starts. Add or
-            remove teams by creating a new tournament — the fixtures here would no longer make sense.
-          </p>
-        ) : (
-          <>
-            <TeamPicker teams={pickableTeams} selectedIds={selectedTeamIds} onChange={setDraftTeamIds} />
-
-            {teamsChanged && plan && (
-              <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-sm space-y-1">
-                <div className="font-medium">What this will do</div>
-                {plan.added.length > 0 && <p className="opacity-80">Adding {plan.added.length} team(s).</p>}
-                {plan.removed.length > 0 && (
-                  <p className="opacity-80">Removing {plan.removed.length} team(s).</p>
-                )}
-                {plan.notes.map((note) => (
+            {/* What the switch would actually do, before anything is written. */}
+            {formatPlan.kind !== 'unchanged' && (
+              <div
+                className={`rounded-lg border p-3 text-sm space-y-1 ${
+                  formatPlan.kind === 'destructive'
+                    ? 'border-red-400/30 bg-red-400/5'
+                    : formatPlan.kind === 'blocked'
+                      ? 'border-white/15 bg-white/[0.03]'
+                      : 'border-amber-400/30 bg-amber-400/5'
+                }`}
+              >
+                <div className="font-medium">
+                  {formatPlan.kind === 'blocked' ? 'Not yet' : 'What this will do'}
+                </div>
+                {formatPlan.notes.map((note) => (
                   <p key={note} className="opacity-80">
                     {note}
                   </p>
@@ -909,52 +980,296 @@ export default function TournamentSettingsPage() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={saveTeams}
-                disabled={!teamsChanged || isSaving}
+                onClick={saveFormat}
+                disabled={
+                  formatPlan.kind === 'unchanged' || formatPlan.kind === 'blocked' || isSavingFormat
+                }
                 className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                {isSaving ? 'Saving...' : 'Save teams and fixtures'}
+                {isSavingFormat
+                  ? 'Saving...'
+                  : formatPlan.kind === 'rebuild_playoffs'
+                    ? 'Save playoff settings'
+                    : 'Change format'}
               </button>
-              {teamsChanged && (
+              {formatPlan.kind !== 'unchanged' && (
                 <button
                   type="button"
-                  onClick={() => setDraftTeamIds(null)}
+                  onClick={resetFormatDraft}
                   className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
                 >
                   Cancel
                 </button>
               )}
             </div>
-          </>
-        )}
-      </section>
+          </section>
 
-      {/* ---------- Who runs the clubs ---------- */}
-      <ClubManagers
-        tournamentId={tournament.id}
-        tournamentName={tournament.name}
-        teams={teams.filter((team) => tournament.teamIds.includes(team.id))}
-      />
+          {/* ---------- Drawing the bracket ---------- */}
+          {hasSeedableBracket && (
+            <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-3">
+              <h2 className="font-semibold">Playoffs</h2>
+              {canDrawBracket ? (
+                <>
+                  <p className="text-sm opacity-70">
+                    The league is finished. The top {seeding.qualifiers} go into the bracket, seeded
+                    by the final table — {seeding.matches.length} matches.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={drawBracket}
+                    disabled={isDrawing}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 transition-colors"
+                  >
+                    {isDrawing ? 'Drawing...' : 'Draw the bracket'}
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm opacity-70">
+                  {seeding.reason ?? 'The bracket cannot be drawn yet.'}
+                </p>
+              )}
+            </section>
+          )}
+        </>
+      )}
 
-      {/* ---------- Deleting ---------- */}
-      <section className="rounded-xl p-6 w-full max-w-3xl border border-red-500/20 bg-red-500/[0.03] space-y-3">
-        <h2 className="font-semibold text-red-300">Delete this tournament</h2>
-        <p className="text-sm opacity-70">
-          Removes the fixtures, the results, the table and the public page. There is no undo.
-        </p>
-        <button
-          type="button"
-          onClick={async () => {
-            const typed = prompt(`Type the tournament name to delete it:\n\n${tournament.name}`)
-            if (typed?.trim() !== tournament.name) return
-            await deleteTournament(tournament.id)
-            navigate('/tournaments')
-          }}
-          className="px-4 py-2 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors text-sm"
-        >
-          Delete tournament
-        </button>
-      </section>
+      {/* ================= Clubs ================= */}
+
+      {tab === 'clubs' && (
+        <>
+          {/* ---------- Applications ---------- */}
+          {pendingEntries.length > 0 && (
+            <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4 border border-amber-400/25">
+              <h2 className="font-semibold">Clubs asking to join ({pendingEntries.length})</h2>
+              <p className="text-sm opacity-70">
+                Accepting adds the club to the tournament. It does not touch the fixture list — do
+                that below, where you can see what it would cost first.
+              </p>
+
+              <ul className="space-y-2">
+                {pendingEntries.map((entry) => {
+                  const club = teams.find((candidate) => candidate.id === entry.teamId)
+                  return (
+                    <li
+                      key={entry.teamId}
+                      className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
+                    >
+                      <span>
+                        {club?.name ?? entry.teamName ?? 'A club'}
+                        <span className="opacity-50 text-xs ml-2">
+                          {new Date(entry.createdAt).toLocaleDateString()}
+                        </span>
+                        {/* A club may ask again after a refusal. Saying so, with the
+                            reason given last time, is what keeps that from reading
+                            as a first request the organiser has never seen. */}
+                        {entry.previousDecidedAt && (
+                          <span className="block text-xs text-amber-300/80 mt-0.5">
+                            Asked before and was turned down
+                            {entry.previousNote ? ` — ${entry.previousNote}` : ''}
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={deciding === entry.teamId}
+                          onClick={() => decide(entry.teamId, 'accepted')}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 text-emerald-300 text-sm transition-colors disabled:opacity-50"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deciding === entry.teamId}
+                          onClick={() => decide(entry.teamId, 'declined')}
+                          className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm transition-all disabled:opacity-50"
+                        >
+                          Not this time
+                        </button>
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
+
+          {/* ---------- Invitations this organiser has issued ---------- */}
+          {invitedEntries.length > 0 && (
+            <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4 border border-emerald-400/25">
+              <h2 className="font-semibold">Clubs you have invited ({invitedEntries.length})</h2>
+              <p className="text-sm opacity-70">
+                Waiting on the club. A place is offered, not taken — the club joins when its manager
+                accepts, and nothing changes here until then.
+              </p>
+
+              <ul className="space-y-2">
+                {invitedEntries.map((entry) => {
+                  const club = teams.find((candidate) => candidate.id === entry.teamId)
+                  return (
+                    <li
+                      key={entry.teamId}
+                      className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white/[0.03]"
+                    >
+                      <span>
+                        {club?.name ?? entry.teamName ?? 'A club'}
+                        <span className="opacity-50 text-xs ml-2">
+                          invited {new Date(entry.createdAt).toLocaleDateString()}
+                        </span>
+                        {/* A club that has answered before, whichever way. Without
+                            it a second invitation reads as a first one. */}
+                        {entry.previousDecidedAt && (
+                          <span className="block text-xs text-amber-300/80 mt-0.5">
+                            Asked before and turned it down
+                            {entry.previousNote ? ` — ${entry.previousNote}` : ''}
+                          </span>
+                        )}
+                      </span>
+                      {/* Taking back what was offered. Accepting is deliberately not
+                          here: the club has not answered, and the API refuses it. */}
+                      <button
+                        type="button"
+                        disabled={deciding === entry.teamId}
+                        onClick={() => decide(entry.teamId, 'declined')}
+                        className="px-3 py-1.5 rounded-lg glass hover:bg-white/10 text-sm transition-all disabled:opacity-50"
+                      >
+                        Withdraw
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
+
+          {/* ---------- Teams ---------- */}
+          <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="font-semibold">Teams ({selectedTeamIds.length})</h2>
+              {editMode === 'regenerate' && (
+                <span className="text-xs opacity-60">
+                  Nothing played yet — the draw can be redone
+                </span>
+              )}
+            </div>
+
+            {editMode === 'locked' ? (
+              <p className="text-sm opacity-70">
+                Results have already been entered and this format's draw is fixed once it starts.
+                Add or remove teams by creating a new tournament — the fixtures here would no longer
+                make sense.
+              </p>
+            ) : (
+              <>
+                <TeamPicker
+                  teams={pickableTeams}
+                  selectedIds={selectedTeamIds}
+                  onChange={setDraftTeamIds}
+                />
+
+                {teamsChanged && plan && (
+                  <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-sm space-y-1">
+                    <div className="font-medium">What this will do</div>
+                    {plan.added.length > 0 && (
+                      <p className="opacity-80">Adding {plan.added.length} team(s).</p>
+                    )}
+                    {plan.removed.length > 0 && (
+                      <p className="opacity-80">Removing {plan.removed.length} team(s).</p>
+                    )}
+                    {plan.notes.map((note) => (
+                      <p key={note} className="opacity-80">
+                        {note}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={saveTeams}
+                    disabled={!teamsChanged || isSaving}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isSaving ? 'Saving...' : 'Save teams and fixtures'}
+                  </button>
+                  {teamsChanged && (
+                    <button
+                      type="button"
+                      onClick={() => setDraftTeamIds(null)}
+                      className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+
+          {/* ---------- Who runs the clubs ---------- */}
+          <ClubManagers
+            tournamentId={tournament.id}
+            tournamentName={tournament.name}
+            teams={teams.filter((team) => tournament.teamIds.includes(team.id))}
+          />
+        </>
+      )}
+
+      {/* ================= Squads ================= */}
+
+      {tab === 'squads' && (
+        <SquadsSection
+          tournament={tournament}
+          teams={teams.filter((team) => tournament.teamIds.includes(team.id))}
+          onLock={(locked) => updateTournament(tournament.id, { squadsLocked: locked })}
+          onReload={loadTournaments}
+        />
+      )}
+
+      {/* ---------- The draft, and what to do with it ----------
+          Last in the document so that it sticks to the bottom of the viewport
+          while the sections above it scroll, and shown on every tab: the fields
+          it covers are all on General, and somebody who typed a name and then
+          went looking at the format should not have to find their way back to
+          discover it was never saved. */}
+      {unsavedDetails.length > 0 && (
+        <div className="sticky bottom-4 z-20 w-full max-w-3xl">
+          <div className="glass rounded-xl border border-amber-400/30 bg-amber-400/[0.06] shadow-lg shadow-black/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm min-w-0">
+              <div className="font-medium">
+                {unsavedDetails.length} unsaved change{unsavedDetails.length === 1 ? '' : 's'}
+              </div>
+              <div className="opacity-70">
+                {unsavedDetails.map((key) => DETAIL_LABELS[key]).join(', ')}
+              </div>
+              {detailsProblem && <div className="text-amber-200 mt-1">{detailsProblem}</div>}
+              {detailsError && <div className="text-red-300 mt-1">{detailsError}</div>}
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftDetails(null)
+                  setDetailsError(null)
+                }}
+                disabled={isSavingDetails}
+                className="px-4 py-2 rounded-lg glass hover:bg-white/10 disabled:opacity-40 transition-all"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={saveDetails}
+                disabled={isSavingDetails || detailsProblem !== null}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSavingDetails ? 'Saving...' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1508,32 +1823,30 @@ function SquadRow({
  * Clearing the override is therefore a real action and not the same as picking
  * the colour the logo happens to have today — which is also why every season
  * that predates this reads as "no colour" rather than as a chosen grey.
+ *
+ * The value is held by the page along with the rest of the fields rather than
+ * here. React maps `onChange` on a colour input to the DOM `input` event, which
+ * fires all the way through a drag across the picker, so this used to debounce
+ * its own writes and send one a fraction of a second after the hand stopped —
+ * the same "did that save?" question as every other field on the screen, with a
+ * timer in place of an answer. Now the swatch follows the drag, nothing is
+ * written, and the save bar says what is waiting.
  */
 function HeaderColour({
   tournament,
+  value,
   onChange,
 }: {
   tournament: Tournament
-  onChange: (id: string, updates: Partial<Tournament>) => void
+  /** The override as the organiser has it now; null is "use the logo's". */
+  value: string | null
+  onChange: (next: string | null) => void
 }) {
   const automatic = tournament.logoColor ?? null
-  const chosen = tournament.themeColor ?? null
-  const stored = competitionColor(tournament)
-  // React maps `onChange` on a colour input to the DOM `input` event, which
-  // fires all the way through a drag across the picker. Saving from it would
-  // send a request per pixel of travel, each one rewriting the season record.
-  // The value is held here and written once the hand has stopped moving —
-  // waiting for a blur alone would lose a colour picked and then navigated
-  // away from, since the picker keeps focus while it is open.
-  const [draft, setDraft] = useState<string | null>(null)
-  const shown = draft ?? stored
-
-  useEffect(() => {
-    if (draft === null) return
-    if (draft.toLowerCase() === stored.toLowerCase()) return
-    const timer = setTimeout(() => onChange(tournament.id, { themeColor: draft }), 600)
-    return () => clearTimeout(timer)
-  }, [draft, stored, tournament.id, onChange])
+  // What the header would look like if this draft were saved: the override
+  // where there is one, and otherwise the colour the logo gave — never the
+  // override stored on the record, which is the thing being cleared.
+  const shown = competitionColor({ themeColor: value, logoColor: automatic })
 
   return (
     <div>
@@ -1548,16 +1861,13 @@ function HeaderColour({
           type="color"
           aria-label="Header colour"
           value={shown}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           className="w-16 h-10 rounded-lg bg-white/5 border border-white/20 cursor-pointer"
         />
-        {chosen && (
+        {value && (
           <button
             type="button"
-            onClick={() => {
-              setDraft(null)
-              onChange(tournament.id, { themeColor: null })
-            }}
+            onClick={() => onChange(null)}
             className="text-sm opacity-70 hover:opacity-100 transition-opacity underline underline-offset-4"
           >
             {automatic ? 'Use the logo’s colour' : 'Clear'}
@@ -1565,7 +1875,7 @@ function HeaderColour({
         )}
       </div>
       <span className="text-xs opacity-50">
-        {chosen
+        {value
           ? 'Chosen by hand. Uploading a new logo will not change it.'
           : automatic
             ? 'Read from the logo. Pick a colour to override it.'

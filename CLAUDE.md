@@ -243,6 +243,35 @@ it finishes. `FORMAT_OPTIONS` stays for now because it is what names a stored
 format in the Format column of the club and player pages, and what the settings
 screen still picks from; that screen is the next one to move.
 
+**The settings screen is four tabs, and a value is not saved until it is
+saved.** `TournamentSettingsPage` was one column of twelve sections, and the
+plain fields in it wrote themselves on blur through `InlineInput` — which was
+reported as "there is no save button", and fairly: a name typed and clicked away
+from had already been written, a name typed and abandoned had been written too,
+and nothing on screen ever said which. The fields that are *values* (the two
+names, the season label, the champion, the venue, the two links, the header
+colour) are now one `Details` draft with a sticky bar naming what is unsaved;
+`?tab=` carries which of General, Format, Clubs and Squads is open, so a link to
+this screen opens where it was sent.
+
+What deliberately stays outside the draft is everything whose consequence is not
+a value. The format and the team list keep their own buttons because each shows
+what the change would cost the fixtures first, and folding them into one Save
+would take that confirmation off a rebuild that deletes played matches. A switch
+— public or private, squads open or closed — reads as done the moment it moves,
+and moving the season into another competition happens when it is chosen. Each
+of those says so in a line under it, because a screen with a Save button on it
+implies everything on it waits for that button.
+
+Clearing a field had never worked here. `seasonLabel` and `championTeamId` were
+sent as `undefined`, which `JSON.stringify` drops, so the PATCH body read as
+"unchanged" while the screen showed the value gone — the convention below was
+written for players and never applied to the season. Both are `| null` now and
+the null is sent. The draft is written through `tournamentService` rather than
+the store's `updateTournament`, which logs a failure and resolves as though it
+had worked: a save button that cannot say whether the save happened is the
+problem it was added to fix.
+
 `swiss_elimination` is off the create screen. Its generator never was a Swiss
 system: it played a round robin and then built a bracket from the order the
 clubs were entered rather than from the table, with a placeholder comment saying

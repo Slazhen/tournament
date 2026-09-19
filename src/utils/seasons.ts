@@ -21,7 +21,7 @@ type SeasonLike = {
   createdAtISO?: string
   seriesId?: string
   seriesName?: string
-  seasonLabel?: string
+  seasonLabel?: string | null
 }
 
 /** The key seasons of one competition share. A lone tournament is its own series. */

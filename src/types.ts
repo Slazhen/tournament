@@ -572,13 +572,22 @@ export type Tournament = {
   seriesId?: string
   /** The competition's name, the same on every season of it. */
   seriesName?: string
-  /** What this season is called: "2025", "Autumn 2026". */
-  seasonLabel?: string
+  /**
+   * What this season is called: "2025", "Autumn 2026".
+   *
+   * Null is the organiser clearing it. `undefined` cannot travel through JSON,
+   * so a key left out of a PATCH body means "unchanged" — emptying this field
+   * on screen used to leave the old label in the record.
+   */
+  seasonLabel?: string | null
   /**
    * Set by hand when the winner is not the one the results imply — a walkover,
    * a withdrawal, a title decided off the pitch.
+   *
+   * Null puts it back to whatever the results say, for the same reason
+   * `seasonLabel` takes one.
    */
-  championTeamId?: string
+  championTeamId?: string | null
   logo?: string
   /**
    * The logo's own dominant colour, read from the file when it was uploaded.
