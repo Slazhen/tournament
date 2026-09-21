@@ -11,6 +11,8 @@ import {
   IconUser,
   IconGlobe,
   IconClose,
+  IconArrowUp,
+  IconArrowDown,
 } from '../components/icons'
 import PublicHeader from '../components/PublicHeader'
 import MiniTable from '../components/MiniTable'
@@ -27,6 +29,11 @@ export default function PublicTeamPage() {
   const { teamId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const [showPhotoModal, setShowPhotoModal] = useState(false)
+  // How the squad table is ordered. It opens on goals plus assists rather than
+  // on the club's own order, because a visitor arriving at a squad list is
+  // usually asking who in it has done something; every heading is a button that
+  // changes this, and the order survives a change of tab.
+  const [squadSort, setSquadSort] = useState<SquadSort>({ key: 'ga', direction: 'desc' })
   const [isLoading, setIsLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
   // Exactly this team, its tournaments and the teams it has played — nothing else.
@@ -137,6 +144,58 @@ export default function PublicTeamPage() {
   const squad = selectedTournament
     ? squadInTournament(selectedTournament, team, appeared)
     : activeSquad(team)
+
+  // What the table prints for one player, with an absent record read as nought
+  // rather than as missing: a player who has not turned out yet has played no
+  // matches, which is a figure and sorts like one.
+  const statsOf = (playerId: string) => {
+    const record = records.get(playerId)
+    const goals = record?.goals ?? 0
+    const assists = record?.assists ?? 0
+    return { played: record?.played ?? 0, goals, assists, ga: goals + assists }
+  }
+
+  const nameOf = (player: { firstName: string; lastName: string }) =>
+    `${player.firstName} ${player.lastName}`.trim()
+
+  // The squad in the order the visitor asked for. Copied rather than sorted in
+  // place: `squad` comes out of the club record and out of the competition's
+  // entry, and neither is this page's to reorder.
+  const sortedSquad = [...squad].sort((a, b) => {
+    const { key, direction } = squadSort
+    const left = statsOf(a.id)
+    const right = statsOf(b.id)
+
+    let ordered = 0
+    if (key === 'name') ordered = compareText(nameOf(a), nameOf(b), direction)
+    else if (key === 'position') ordered = compareText(a.position ?? '', b.position ?? '', direction)
+    else if (key === 'number') ordered = compareNumbers(a.number, b.number, direction)
+    else if (key === 'age') ordered = compareNumbers(a.age, b.age, direction)
+    else ordered = compareNumbers(left[key], right[key], direction)
+
+    if (ordered !== 0) return ordered
+
+    // A column of equal figures is still a list somebody has to read. Goals
+    // separate two players level on the pair, and the name settles whatever is
+    // left, so the same squad drawn twice comes out in the same order instead
+    // of in whichever one the browser's sort happened to produce.
+    if (key === 'ga') {
+      const byGoals = compareNumbers(left.goals, right.goals, direction)
+      if (byGoals !== 0) return byGoals
+    }
+    return nameOf(a).localeCompare(nameOf(b))
+  })
+
+  // A heading clicked again reverses the column it already sorts by; a new one
+  // starts the way that column is normally asked about, which is best-first for
+  // a statistic and in order for a name, a shirt number or an age.
+  const sortSquadBy = (key: SquadSortKey) => {
+    setSquadSort((current) =>
+      current.key === key
+        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: FIRST_DIRECTION[key] },
+    )
+  }
 
   // Absent is not empty. In an ordinary competition a club that never opened
   // the squad screen has its whole squad registered, and a list that looks
@@ -391,7 +450,7 @@ export default function PublicTeamPage() {
               ? `Registered for ${selectedTournament.name}, with what each of them did in it. `
               : 'Everyone at the club, with what each of them has done across its competitions. '}
             Appearances come from the lineup recorded for each match; goals and assists
-            from the goals recorded in it.
+            from the goals recorded in it. Click any heading to sort by that column.
             {everyoneRegistered
               ? ' This club did not submit a separate squad here, so every player is registered for it.'
               : ''}
@@ -401,24 +460,32 @@ export default function PublicTeamPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/10">
-                  <th className="py-3 px-4 text-left">Player</th>
-                  <th className="py-3 px-4 text-left">Position</th>
-                  <th className="py-3 px-4 text-left">Number</th>
-                  <th className="py-3 px-4 text-left">Age</th>
-                  <th className="py-3 px-4 text-center">Played</th>
-                  <th className="py-3 px-4 text-center">Goals</th>
-                  <th className="py-3 px-4 text-center">Assists</th>
+                  <SortableTh label="Player" sortKey="name" sort={squadSort} onSort={sortSquadBy} />
+                  <SortableTh label="Position" sortKey="position" sort={squadSort} onSort={sortSquadBy} />
+                  <SortableTh label="Number" sortKey="number" sort={squadSort} onSort={sortSquadBy} />
+                  <SortableTh label="Age" sortKey="age" sort={squadSort} onSort={sortSquadBy} />
+                  <SortableTh label="Played" sortKey="played" sort={squadSort} onSort={sortSquadBy} align="center" />
+                  <SortableTh label="Goals" sortKey="goals" sort={squadSort} onSort={sortSquadBy} align="center" />
+                  <SortableTh label="Assists" sortKey="assists" sort={squadSort} onSort={sortSquadBy} align="center" />
+                  <SortableTh
+                    label="G+A"
+                    title="Goals plus assists"
+                    sortKey="ga"
+                    sort={squadSort}
+                    onSort={sortSquadBy}
+                    align="center"
+                  />
                 </tr>
               </thead>
               <tbody>
                 {squad.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-6 text-center opacity-70 text-sm">
+                    <td colSpan={8} className="py-6 text-center opacity-70 text-sm">
                       Nobody from this club is registered for this competition.
                     </td>
                   </tr>
                 )}
-                {squad.map((player) => {
+                {sortedSquad.map((player) => {
                   const record = records.get(player.id)
                   return (
                   <tr key={player.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
@@ -470,6 +537,9 @@ export default function PublicTeamPage() {
                       {record?.goals ?? 0}
                     </td>
                     <td className="py-3 px-4 text-center text-sm">{record?.assists ?? 0}</td>
+                    <td className="py-3 px-4 text-center text-sm font-semibold">
+                      {(record?.goals ?? 0) + (record?.assists ?? 0)}
+                    </td>
                   </tr>
                   )
                 })}
@@ -846,5 +916,104 @@ function SquadTab({
     >
       {children}
     </button>
+  )
+}
+
+/** Which column the squad table is ordered by, and which way round. */
+type SquadSortKey = 'name' | 'position' | 'number' | 'age' | 'played' | 'goals' | 'assists' | 'ga'
+type SortDirection = 'asc' | 'desc'
+type SquadSort = { key: SquadSortKey; direction: SortDirection }
+
+/**
+ * Where each column starts when it is first clicked.
+ *
+ * A statistic is asked about best-first — nobody opens a scorer column to find
+ * out who has scored the fewest — while a name, a shirt number and an age are
+ * asked about in order.
+ */
+const FIRST_DIRECTION: Record<SquadSortKey, SortDirection> = {
+  name: 'asc',
+  position: 'asc',
+  number: 'asc',
+  age: 'asc',
+  played: 'desc',
+  goals: 'desc',
+  assists: 'desc',
+  ga: 'desc',
+}
+
+/**
+ * Two figures, one of which may be missing.
+ *
+ * A player with no shirt number, and an age a club has turned off, are absent
+ * rather than nought: they sort to the bottom whichever way the column points,
+ * so that clicking a heading never fills the top of the table with dashes.
+ */
+function compareNumbers(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  direction: SortDirection,
+): number {
+  const left = typeof a === 'number' ? a : null
+  const right = typeof b === 'number' ? b : null
+  if (left === null && right === null) return 0
+  if (left === null) return 1
+  if (right === null) return -1
+  return direction === 'asc' ? left - right : right - left
+}
+
+/** The same rule for text: an unrecorded position sorts last, not first. */
+function compareText(a: string, b: string, direction: SortDirection): number {
+  if (a === '' && b === '') return 0
+  if (a === '') return 1
+  if (b === '') return -1
+  return direction === 'asc' ? a.localeCompare(b) : b.localeCompare(a)
+}
+
+/**
+ * One sortable column heading.
+ *
+ * The arrow is drawn on the column actually in force and on no other: an arrow
+ * against every heading says nothing about which one the table is following.
+ * The heading is a button so it can be reached from the keyboard, and the
+ * `aria-sort` on the cell is what a screen reader announces, since the arrow
+ * beside it is decoration and is hidden from one.
+ */
+function SortableTh({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  align = 'left',
+  title,
+}: {
+  label: string
+  sortKey: SquadSortKey
+  sort: SquadSort
+  onSort: (key: SquadSortKey) => void
+  align?: 'left' | 'center'
+  title?: string
+}) {
+  const active = sort.key === sortKey
+  return (
+    <th
+      className={`py-3 px-4 ${align === 'center' ? 'text-center' : 'text-left'}`}
+      aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        title={title}
+        className={`inline-flex items-center gap-1 transition-opacity hover:opacity-100 ${
+          active ? '' : 'opacity-70'
+        }`}
+      >
+        <span>{label}</span>
+        <span className="inline-flex w-3 justify-center">
+          {active &&
+            (sort.direction === 'asc' ? <IconArrowUp size={12} /> : <IconArrowDown size={12} />)}
+        </span>
+      </button>
+    </th>
   )
 }
