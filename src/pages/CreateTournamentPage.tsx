@@ -5,6 +5,7 @@ import LogoUploader from "../components/LogoUploader"
 import SchemePicker from "../components/SchemePicker"
 import SchemeSettings from "../components/SchemeSettings"
 import TableRulesEditor from "../components/TableRulesEditor"
+import DisciplineRulesEditor from "../components/DisciplineRulesEditor"
 import TeamPicker from "../components/TeamPicker"
 import { SCHEMES, defaultSchemeSettings, formatFor, planFor, schemeOf } from "../utils/formats"
 import type { SchemeId, SchemeSettings as Settings } from "../utils/formats"
@@ -370,6 +371,13 @@ export default function CreateTournamentPage() {
             onScoringChange={(scoring) => setSettings({ ...settings, scoring })}
             tiebreakers={settings.tiebreakers}
             onTiebreakersChange={(tiebreakers) => setSettings({ ...settings, tiebreakers })}
+          />
+        </Step>
+
+        <Step number={7} title="Cards and suspensions">
+          <DisciplineRulesEditor
+            rules={settings.discipline}
+            onChange={(discipline) => setSettings({ ...settings, discipline })}
           />
         </Step>
 

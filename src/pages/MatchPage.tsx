@@ -15,6 +15,7 @@ import {
   IconClipboard,
 } from '../components/icons'
 import { playersForPicking } from '../utils/squads'
+import { SuspendedNote } from '../components/Discipline'
 import { numberInMatch } from '../utils/players'
 import { youtubeEmbedUrl } from '../utils/video'
 import { byMinute, cardTotals, findMatch, roundLabel, scorerSide, statValue } from '../utils/matches'
@@ -384,6 +385,12 @@ export default function MatchPage() {
                     { label: 'Fouls', home: statValue(match.statistics?.home.fouls), away: statValue(match.statistics?.away.fouls) },
                     { label: 'Yellow Cards', home: cardsShown.home.yellow, away: cardsShown.away.yellow },
                     { label: 'Red Cards', home: cardsShown.home.red, away: cardsShown.away.red },
+                    // Only where one has been shown: most competitions do not
+                    // use the colour, and a row of noughts on every match of
+                    // theirs is a fact about nothing.
+                    ...(cardsShown.home.blue + cardsShown.away.blue > 0
+                      ? [{ label: 'Blue Cards', home: cardsShown.home.blue, away: cardsShown.away.blue }]
+                      : []),
                     // The percent sign is attached here rather than in the cell,
                     // so a possession nobody entered reads as a dash and not "-%".
                     {
@@ -504,6 +511,9 @@ export default function MatchPage() {
                   {[
                     { label: 'Yellow Cards', home: cardsShown.home.yellow, away: cardsShown.away.yellow },
                     { label: 'Red Cards', home: cardsShown.home.red, away: cardsShown.away.red },
+                    ...(cardsShown.home.blue + cardsShown.away.blue > 0
+                      ? [{ label: 'Blue Cards', home: cardsShown.home.blue, away: cardsShown.away.blue }]
+                      : []),
                   ].map(stat => (
                     <tr key={stat.label} className="border-b border-white/10">
                       <td className="py-3 px-4 font-medium">{stat.label}</td>
@@ -535,6 +545,12 @@ export default function MatchPage() {
                 the club's own unless it is changed here, and then it applies to this match alone.
               </p>
             </div>
+
+            {/* Said above the pickers rather than enforced on them: a teamsheet
+                is a record of what happened, and a competition that let a
+                suspended player on has to be recordable too. */}
+            <SuspendedNote tournament={tournament} teams={[homeTeam, awayTeam]} matchId={match.id} />
+
             <div className="grid md:grid-cols-2 gap-6">
               <LineupPicker
                 name={homeTeam.name}

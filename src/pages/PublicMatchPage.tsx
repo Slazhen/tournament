@@ -919,6 +919,11 @@ function StatsPanel({
       { label: 'Yellow cards', home: cards.home.yellow, away: cards.away.yellow },
       { label: 'Red cards', home: cards.home.red, away: cards.away.red },
     )
+    // Only where one has been shown. Most competitions do not use the colour at
+    // all, and a row of noughts on every one of their matches says nothing.
+    if (cards.home.blue + cards.away.blue > 0) {
+      rows.push({ label: 'Blue cards', home: cards.home.blue, away: cards.away.blue })
+    }
   }
 
   return (

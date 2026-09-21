@@ -6,6 +6,7 @@ import {
   type PlayoffScoring,
   type TiebreakerKey,
 } from './standings'
+import { DEFAULT_DISCIPLINE, type DisciplineRules } from './discipline'
 
 /** Which drawing goes on the card. Emoji rendered differently on every device. */
 export type FormatIconName =
@@ -246,6 +247,8 @@ export type SchemeSettings = {
   knockout: { legs: number; thirdPlace: boolean }
   scoring: { win: number; draw: number; loss: number }
   tiebreakers: TiebreakerKey[]
+  /** What a card costs a player. Written into the season the same way the table's rules are. */
+  discipline: DisciplineRules
 }
 
 export const defaultSchemeSettings = (): SchemeSettings => ({
@@ -263,6 +266,7 @@ export const defaultSchemeSettings = (): SchemeSettings => ({
   knockout: { legs: 1, thirdPlace: false },
   scoring: { win: DEFAULT_SCORING.win, draw: DEFAULT_SCORING.draw, loss: DEFAULT_SCORING.loss },
   tiebreakers: [...DEFAULT_TIEBREAKERS],
+  discipline: { ...DEFAULT_DISCIPLINE },
 })
 
 /**
@@ -293,6 +297,7 @@ export function formatFor(
   const rules = {
     scoring: { ...settings.scoring, playoffMatches: playoffScoringFor(scheme, settings.finals) },
     tiebreakers: [...settings.tiebreakers],
+    discipline: { ...settings.discipline },
   }
 
   if (scheme === 'knockout') {

@@ -13,6 +13,8 @@ import type { ClubManager, Entry } from '../lib/data'
 import type { Team, Tournament } from '../types'
 import { activeSquad, hasSquadEntry, registeredPlayers, squadLimitOf } from '../utils/squads'
 import { playoffTiers } from '../utils/standings'
+import { disciplineRules, type DisciplineRules } from '../utils/discipline'
+import DisciplineRulesEditor from '../components/DisciplineRulesEditor'
 import { competitionColor } from '../utils/crest'
 import Trophy from '../components/Trophy'
 import { IconLink, IconUser, IconUsers } from '../components/icons'
@@ -186,6 +188,10 @@ export default function TournamentSettingsPage() {
   const [isSavingDetails, setIsSavingDetails] = useState(false)
   const [detailsError, setDetailsError] = useState<string | null>(null)
 
+  const [draftDiscipline, setDraftDiscipline] = useState<DisciplineRules | null>(null)
+  const [isSavingDiscipline, setIsSavingDiscipline] = useState(false)
+  const [disciplineError, setDisciplineError] = useState<string | null>(null)
+
   // Clubs asking to join. The organiser decides; nothing enters a competition
   // on its own.
   useEffect(() => {
@@ -338,6 +344,9 @@ export default function TournamentSettingsPage() {
     // match counted, no head-to-head.
     scoring: tournament.format?.scoring,
     tiebreakers: tournament.format?.tiebreakers,
+    // And what a card costs, for exactly the same reason: it is a rule of the
+    // season and not of the scheme, and this object replaces `format` whole.
+    discipline: tournament.format?.discipline,
   }
 
   const formatPlan = planFormatChange(tournament, nextFormat)
@@ -528,6 +537,36 @@ export default function TournamentSettingsPage() {
       setDraftTeamIds(null)
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  // What a card costs. Its own draft and its own save, because it is written by
+  // a route of its own rather than through the tournament PATCH — `format` also
+  // holds the scheme and the hand-built playoff rounds, and sending it back
+  // whole to change a suspension length would undo whatever had landed in it
+  // since this page was loaded.
+  const storedDiscipline = disciplineRules(tournament)
+  const discipline = draftDiscipline ?? storedDiscipline
+  const disciplineChanged = (Object.keys(storedDiscipline) as Array<keyof DisciplineRules>).some(
+    (key) => discipline[key] !== storedDiscipline[key],
+  )
+
+  const saveDiscipline = async () => {
+    if (!disciplineChanged) return
+    setIsSavingDiscipline(true)
+    setDisciplineError(null)
+    try {
+      await tournamentService.setDiscipline(tournament.id, discipline)
+      // The store holds the season this page reads, and the rules are not part
+      // of what `updateTournament` would have refreshed.
+      await loadTournaments()
+      setDraftDiscipline(null)
+    } catch (caught) {
+      setDisciplineError(
+        caught instanceof Error && caught.message ? caught.message : 'That could not be saved.',
+      )
+    } finally {
+      setIsSavingDiscipline(false)
     }
   }
 
@@ -847,6 +886,46 @@ export default function TournamentSettingsPage() {
 
       {tab === 'format' && (
         <>
+          <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <h2 className="font-semibold">Cards and suspensions</h2>
+              <span className="text-xs opacity-60">This competition only</span>
+            </div>
+
+            <DisciplineRulesEditor rules={discipline} onChange={setDraftDiscipline} />
+
+            {disciplineError && (
+              <p className="text-sm text-red-400" role="alert">
+                {disciplineError}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={saveDiscipline}
+                disabled={!disciplineChanged || isSavingDiscipline}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSavingDiscipline ? 'Saving...' : 'Save card rules'}
+              </button>
+              {disciplineChanged && (
+                <button
+                  type="button"
+                  onClick={() => setDraftDiscipline(null)}
+                  className="px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs opacity-60">
+              Changing these re-reads every card already entered in this competition, so a
+              suspension can appear or disappear on matches that have already been played.
+            </p>
+          </section>
+
           <section className="glass rounded-xl p-6 w-full max-w-3xl space-y-4">
             <div className="flex items-baseline justify-between gap-4">
               <h2 className="font-semibold">How it is played</h2>

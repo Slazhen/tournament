@@ -1085,6 +1085,68 @@ columns, because the player was booked and the side finished a man down.
 Bookings feed nothing else: `playerRecords` does not read them, so a card cannot
 move an appearance or a table position.
 
+**There are four colours, and the fourth one ends with the match.** `blue` is a
+dismissal the player takes no further part in the match after and is available
+for the next one. It is a type of its own rather than a red with a flag on it,
+because every screen that draws a card and every total that counts one has to
+tell the two apart — and it is counted in a row of its own rather than among the
+reds, which are named after what the referee held up. The row only appears where
+somebody has been shown one: most competitions never use the colour, and a line
+of noughts on every match of theirs is a fact about nothing.
+
+**What a card costs is the season's rule, and it is derived, never stored.**
+`format.discipline` is eight numbers — what a red, a pair of bookings and a blue
+each cost in matches, and two accumulating counts with a threshold apiece — and
+`src/utils/discipline.ts` is the one place that reads them and the one place
+that turns them into "who is out of which match". There is no ban counter
+anywhere in the database: a card corrected on the match screen moves the answer
+the same second, and a rule changed on the settings screen re-reads every card
+already entered.
+
+Absence means something different here from what it means beside it, and
+deliberately. An absent `scoring` has to go on meaning three points for a win,
+because a published table is a record people have already read. Nothing has ever
+been published about suspensions, so there is no old answer to preserve: a season
+carrying no rules is read at the defaults — a red and a pair of bookings each
+cost the next match, a blue costs nothing beyond the dismissal it already is, and
+yellows do not accumulate. That is why no season is migrated into carrying the
+field and why the create screen writes it into the ones it creates.
+
+The walk is one rule and the rest follows from it: a club's matches are taken in
+the order that club plays them, anybody carrying a ban misses the next one, and
+only then are that match's cards added. **A card therefore never costs the match
+it was shown in** — which is the whole of what makes a blue card a blue card, and
+the first thing a tidy-up of that loop would break. The order is the date, and
+the round where a fixture has no date yet, so a season drawn but not scheduled
+still has one; a bye and a cancelled fixture serve nothing, because nobody played
+them. An accumulated threshold repeats and resets rather than firing once, and a
+second yellow adds to the running count only where the season says so — the
+dismissal is already the punishment.
+
+**Nothing refuses a suspended player.** The teamsheet screens say who should not
+be playing and save whatever is ticked. A teamsheet is filled in after the
+whistle as often as before it, and a competition that let a suspended player on
+is one this application still has to be able to record; a refusal there would
+cost the record to enforce a rule the match had already broken.
+
+The rules have a route of their own, `PUT /admin/tournaments/:id/discipline`,
+for the reason the match `PATCH` has one: `format` also holds the scheme, the
+groups and the hand-built playoff rounds, and a screen sending the whole object
+back to change a suspension length would undo whatever had landed in it since
+the page loaded. `tournaments.setDiscipline` writes the one key with a nested
+`SET`, refuses a `format` stored as anything but a map rather than replacing it,
+and writes the attribute whole only where there is none — which reads exactly as
+an absent one everywhere else.
+
+`format` cannot be in `TOURNAMENT_PATCH_FORBIDDEN`, so the other half of that is
+`keepDiscipline` on the tournament `PATCH`: a body carrying a `format` that does
+not name the rules is a screen that was not editing them, and the stored ones are
+carried onto the write. Without it a tab loaded before the rules were saved — or
+`persistReconstructedGroups`, which posts `format` by itself on a timer with
+nobody pressing anything — would take a season's suspensions off in silence, and
+the pages would go back to counting cards by the defaults. That is a change to
+who is allowed to play, made by a screen that was not editing the subject.
+
 **A goal the score already counts does not move it.** Most results here are
 entered as a score on the season page and nothing else, so the difference
 between the score and the goals recorded for a side is the goals nobody has

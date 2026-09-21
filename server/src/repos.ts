@@ -1036,6 +1036,85 @@ export const tournaments = {
   },
 
   /**
+   * The season's card rules, written without rewriting `format`.
+   *
+   * They live in `format` because they are rules about how the season is
+   * played, next to the ones about its table. But `format` also holds the
+   * scheme, the group configuration and the hand-built playoff rounds, and
+   * sending it back whole to change a suspension length would undo whatever
+   * somebody else had just saved into it — which is the mistake the match
+   * `PATCH` exists to stop and the reason every list here is appended to
+   * rather than replaced. A nested `SET` touches the one key.
+   *
+   * `format` is a DynamoDB reserved word, hence the alias; an unaliased one
+   * here has answered 500 to every request that reached it before.
+   *
+   * Two branches, because a season created in the browser-side era may carry
+   * no `format` at all and `SET #format.#discipline` on a record without one
+   * is a ValidationException. Writing the whole attribute in that case stores
+   * a format holding nothing but these rules, which reads exactly as an absent
+   * one everywhere else: `formatOptionFor` answers the same for both. Which
+   * branch is right is decided from a read, so each is written under the
+   * condition that made it right.
+   *
+   * A `format` stored as something else — a string, a list — is refused rather
+   * than replaced. `NOT attribute_type(#format, :map)` is true of those too,
+   * and the branch below would have written over whatever was in there on the
+   * strength of a shape nobody has looked at.
+   *
+   * The two expressions are template literals so that
+   * `tests/expressions.test.ts` can see them: it reads the source rather than
+   * running it, and a ternary at the key hides an expression from the only
+   * check in the pipeline that looks inside these strings.
+   */
+  async setDiscipline(tournamentId: string, rules: Record<string, number>): Promise<void> {
+    let stored = ((await this.getOrThrow(tournamentId)) as { format?: unknown }).format
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const nested = Boolean(stored) && typeof stored === 'object' && !Array.isArray(stored)
+      if (!nested && stored !== undefined && stored !== null) {
+        throw badRequest("This competition's format is stored in a shape these rules cannot go in")
+      }
+
+      const update = nested
+        ? `SET #format.#discipline = :rules`
+        : `SET #format = :whole`
+      const condition = nested
+        ? `attribute_exists(id) AND attribute_type(#format, :map)`
+        : `attribute_exists(id) AND (attribute_not_exists(#format) OR attribute_type(#format, :null))`
+
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.TOURNAMENTS,
+            Key: { id: tournamentId },
+            UpdateExpression: update,
+            ConditionExpression: condition,
+            ExpressionAttributeNames: nested
+              ? { '#format': 'format', '#discipline': 'discipline' }
+              : { '#format': 'format' },
+            ExpressionAttributeValues: nested
+              ? { ':rules': rules, ':map': 'M' }
+              : { ':whole': { discipline: rules }, ':null': 'NULL' },
+          }),
+        )
+        invalidate('tournaments:')
+        return
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+
+        // Either the season is gone or its `format` changed shape under this
+        // write. A consistent read is what tells the two apart.
+        const current = await this.readConsistently(tournamentId)
+        if (!current) throw notFound('Tournament not found')
+        stored = (current as { format?: unknown }).format
+      }
+    }
+
+    throw badRequest('Somebody else is editing this competition. Try that again.')
+  },
+
+  /**
    * One tournament, read straight from the leader.
    *
    * `get` is eventually consistent, which is right for every ordinary read and

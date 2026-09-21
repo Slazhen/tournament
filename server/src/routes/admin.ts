@@ -37,6 +37,7 @@ import {
 import { assertCompetitionColours, assertTeamColours } from '../lib/colours.js'
 import { assertShootout, assertShootoutsInBody } from '../lib/shootout.js'
 import { assertDeductionsInBody, composeDeduction } from '../lib/deductions.js'
+import { assertDisciplineInBody, keepDiscipline, readDisciplineRules } from '../lib/discipline.js'
 import { assertStaffName, newStaff, staffName, staffUpdates, toPublicStaff } from '../lib/staff.js'
 import {
   assertScorerOrCounted,
@@ -1556,6 +1557,8 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // And the punishments, for the same reason: the PATCH refuses the field
     // outright, so this is the only way a season can be written carrying one.
     assertDeductionsInBody(ctx.body)
+    // And what a card costs, which the create screen writes into `format`.
+    assertDisciplineInBody(ctx.body)
     // And the squad limit, which the PATCH also refuses: a cap stored on a
     // season that does not register its players is a rule nothing can enforce.
     assertSquadLimitInBody(ctx.body)
@@ -1624,18 +1627,25 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // `matches` whole through this route.
     assertCompetitionColours(ctx.body)
     assertShootoutsInBody(ctx.body)
+    assertDisciplineInBody(ctx.body)
     await assertEnterableTeams(
       tournament.organizerId,
       ctx.body.teamIds,
       (tournament.teamIds ?? []) as string[],
     )
 
-    await tournaments.update(params.id!, ctx.body)
+    // The card rules live inside `format`, which this route writes whole from
+    // the browser's copy. A body that does not name them is a screen that was
+    // not editing them, and it must not take them off — they are changed at
+    // `PUT /admin/tournaments/:id/discipline` and nowhere else.
+    const updates = keepDiscipline(ctx.body, tournament.format)
+
+    await tournaments.update(params.id!, updates)
     await record(user, {
       action: 'tournament.update',
       entity: 'tournament',
       entityId: params.id!,
-      summary: `Edited ${tournament.name}: ${describeFields(ctx.body)}`,
+      summary: `Edited ${tournament.name}: ${describeFields(updates)}`,
       organizerId: tournament.organizerId,
     })
     return { ok: true }
@@ -1821,6 +1831,36 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     }
 
     return { round, hidden, changed }
+  })
+
+  /**
+   * What a card costs a player in this season.
+   *
+   * Its own route rather than a `format` write, for the reason the match
+   * `PATCH` exists: `format` also holds the scheme, the groups and the
+   * hand-built playoff rounds, and a screen that sent the whole object back to
+   * change a suspension length would undo whatever had been saved into it since
+   * the page was loaded. The eight numbers are checked here and again in the
+   * body of whatever writes `format` whole, because the create screen writes
+   * them by that road.
+   */
+  router.put('/admin/tournaments/:id/discipline', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.id!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const rules = readDisciplineRules(ctx.body)
+    await tournaments.setDiscipline(params.id!, rules)
+
+    await record(user, {
+      action: 'tournament.update',
+      entity: 'tournament',
+      entityId: params.id!,
+      summary: `Changed what a card costs in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+
+    return rules
   })
 
   /**

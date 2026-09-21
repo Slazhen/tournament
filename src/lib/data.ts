@@ -1,5 +1,6 @@
 import { api, isSignedIn } from './api'
 import type { Team, Tournament, Organizer, Match, Player, PlayerUpdate, StaffMember, StaffUpdate, CustomPlayoffRoundConfig, PointDeduction } from '../types'
+import type { DisciplineRules } from '../utils/discipline'
 
 /**
  * Data access for the whole app.
@@ -473,6 +474,21 @@ export const tournamentService = {
   async removePointDeduction(tournamentId: string, deductionId: string): Promise<void> {
     await api.delete(
       `/admin/tournaments/${encodeURIComponent(tournamentId)}/point-deductions/${encodeURIComponent(deductionId)}`,
+    )
+  },
+
+  /**
+   * What a card costs a player in this season.
+   *
+   * Not part of `update` for the reason the deductions above are not: that
+   * PATCH writes `format` whole from this page's copy, and `format` also holds
+   * the scheme, the groups and the hand-built playoff rounds. The API writes
+   * the one key.
+   */
+  async setDiscipline(tournamentId: string, rules: DisciplineRules): Promise<DisciplineRules> {
+    return api.put<DisciplineRules>(
+      `/admin/tournaments/${encodeURIComponent(tournamentId)}/discipline`,
+      rules,
     )
   },
 

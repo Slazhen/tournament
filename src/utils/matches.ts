@@ -269,7 +269,13 @@ export type CardType = MatchCard['type']
 
 /** What a booking is called, in the one place both match screens read it from. */
 export const cardLabel = (type: CardType): string =>
-  type === 'red' ? 'Red card' : type === 'second_yellow' ? 'Second yellow' : 'Yellow card'
+  type === 'red'
+    ? 'Red card'
+    : type === 'second_yellow'
+      ? 'Second yellow'
+      : type === 'blue'
+        ? 'Blue card'
+        : 'Yellow card'
 
 /**
  * How many of each colour each side was shown.
@@ -281,20 +287,27 @@ export const cardLabel = (type: CardType): string =>
  * A second yellow counts in both columns. The player was booked, and the side
  * played the rest of the match a man short; a table that showed it in only one
  * of the two would be wrong about the other.
+ *
+ * A blue is counted on its own and not among the reds, although both are
+ * dismissals. The rows are named after the colours the referee held up, and a
+ * reader comparing the page with the scoresheet counts colours; what the two
+ * dismissals cost the player is a different question, and `utils/discipline.ts`
+ * is where it is answered.
  */
 export function cardTotals(match: Pick<Match, 'cards'>): {
-  home: { yellow: number; red: number }
-  away: { yellow: number; red: number }
+  home: { yellow: number; red: number; blue: number }
+  away: { yellow: number; red: number; blue: number }
 } {
   const totals = {
-    home: { yellow: 0, red: 0 },
-    away: { yellow: 0, red: 0 },
+    home: { yellow: 0, red: 0, blue: 0 },
+    away: { yellow: 0, red: 0, blue: 0 },
   }
 
   for (const card of match.cards ?? []) {
     const side = totals[card.team === 'away' ? 'away' : 'home']
     if (card.type === 'yellow' || card.type === 'second_yellow') side.yellow++
     if (card.type === 'red' || card.type === 'second_yellow') side.red++
+    if (card.type === 'blue') side.blue++
   }
 
   return totals

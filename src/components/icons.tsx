@@ -286,9 +286,10 @@ export function IconCard({
   size = 15,
   variant = 'yellow',
   ...rest
-}: Omit<IconProps, 'variant'> & { variant?: 'yellow' | 'second_yellow' | 'red' }) {
+}: Omit<IconProps, 'variant'> & { variant?: 'yellow' | 'second_yellow' | 'red' | 'blue' }) {
   const yellow = '#FACC15'
   const red = '#EF4444'
+  const blue = '#3B82F6'
 
   return (
     <svg
@@ -306,7 +307,14 @@ export function IconCard({
           <rect x="9" y="5" width="11" height="16" rx="2" fill={red} stroke="rgba(0,0,0,0.35)" />
         </>
       ) : (
-        <rect x="6" y="3" width="12" height="18" rx="2" fill={variant === 'red' ? red : yellow} />
+        <rect
+          x="6"
+          y="3"
+          width="12"
+          height="18"
+          rx="2"
+          fill={variant === 'red' ? red : variant === 'blue' ? blue : yellow}
+        />
       )}
     </svg>
   )

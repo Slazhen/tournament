@@ -354,13 +354,20 @@ export type Match = {
    * `second_yellow` is its own type because a sending-off for two bookings is
    * not a straight red, and the totals need it to be both — it is a yellow the
    * player was shown and a dismissal the team played out.
+   *
+   * `blue` is a dismissal that ends with the match. The player takes no further
+   * part in it and is available for the next one, which is the whole of what
+   * the colour means; whether it costs anything beyond that is the season's to
+   * say, in `format.discipline`. It is a fourth type rather than a red with a
+   * flag on it, because every screen that draws a card and every total that
+   * counts one has to be able to tell the two apart.
    */
   cards?: Array<{
     id: string
     team: 'home' | 'away'
     playerId: string
     minute: number
-    type: 'yellow' | 'second_yellow' | 'red'
+    type: 'yellow' | 'second_yellow' | 'red' | 'blue'
   }>
   /**
    * Who played, one side at a time.
@@ -559,6 +566,34 @@ export type Tournament = {
       /** 1, or 2 for a tie played home and away and decided on the aggregate. */
       legs: number
       thirdPlace: boolean
+    }
+    /**
+     * What a card costs a player in this season.
+     *
+     * The rules belong to the season, like `scoring` beside it, and
+     * `utils/discipline.ts` is the one place that reads them. Absence means
+     * something different here, and deliberately: an absent `scoring` has to go
+     * on meaning three points for a win, because a published table is a record
+     * people have already read, while nothing has ever been published about
+     * suspensions. So a season carrying no rules is read at the defaults — a
+     * red card and a pair of bookings each cost the next match, a blue costs
+     * nothing beyond the dismissal it already is, and yellows do not
+     * accumulate.
+     *
+     * Every number is matches, and zero means the card suspends nobody.
+     */
+    discipline?: {
+      red: number
+      secondYellow: number
+      blue: number
+      /** Every this many yellows costs `yellowSuspension` matches. Zero: off. */
+      yellowEvery: number
+      yellowSuspension: number
+      /** How many yellows a second yellow adds to that count. */
+      secondYellowCounts: number
+      /** The same for blues. Zero: off. */
+      blueEvery: number
+      blueSuspension: number
     }
   }
   /**

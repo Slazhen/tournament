@@ -40,6 +40,7 @@ const CARD_TYPES: Array<{ value: CardType; label: string }> = [
   { value: 'yellow', label: 'Yellow card' },
   { value: 'second_yellow', label: 'Second yellow' },
   { value: 'red', label: 'Red card' },
+  { value: 'blue', label: 'Blue card' },
 ]
 
 const FIELD =

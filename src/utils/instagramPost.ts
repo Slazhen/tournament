@@ -101,7 +101,7 @@ export type PostEvent = {
   minute?: number
   /** The player, or "Unknown" for a goal the result counts and nobody has named. */
   label: string
-  kind: 'goal' | 'yellow' | 'second_yellow' | 'red'
+  kind: 'goal' | 'yellow' | 'second_yellow' | 'red' | 'blue'
 }
 
 export type MatchPost = PostChrome & {
@@ -830,7 +830,7 @@ function drawEventIcon(
     card(3, '#EF4444')
     return
   }
-  card(0, kind === 'red' ? '#EF4444' : '#EAB308')
+  card(0, kind === 'red' ? '#EF4444' : kind === 'blue' ? '#3B82F6' : '#EAB308')
 }
 
 /**

@@ -50,6 +50,7 @@ import { planNextProgressiveRound, PROGRESSIVE_PRESET, teamsNotPlaying, survivor
 import InlineInput from '../components/InlineInput'
 import { adminSeasonUrl, getSeasonUrl, publicSeasonUrl } from '../utils/seasons'
 import { cdnUrl } from '../utils/images'
+import DisciplinePanel from '../components/Discipline'
 import PointDeductionsEditor, {
   DeductionMark,
   DeductionNote,
@@ -1381,6 +1382,8 @@ export default function TournamentPage() {
             })}
           </div>
           <PointDeductionsEditor tournament={tournament} teams={teams} />
+
+          <DisciplinePanel tournament={tournament} teams={teams} />
         </section>
       ) : null}
       
@@ -1653,6 +1656,8 @@ export default function TournamentPage() {
             nameOf={clubName}
           />
           <PointDeductionsEditor tournament={tournament} teams={teams} />
+
+          <DisciplinePanel tournament={tournament} teams={teams} />
         </section>
       )}
 
