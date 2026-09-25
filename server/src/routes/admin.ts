@@ -48,6 +48,7 @@ import {
   scoreAfterMoving,
 } from '../lib/goals.js'
 import { locateMatch } from '../lib/matches.js'
+import { hasPlayedIn, isIn, withdrawClub } from '../lib/withdraw.js'
 import { allPlayerIds, isArchivedPlayer } from '../lib/players.js'
 import {
   assertSquadLimitInBody,
@@ -1306,6 +1307,70 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     if (!team) throw notFound('Team not found')
     assertCanAccessOrganizer(user, team.organizerId)
 
+    // Every season the club is in, in anyone's league: a club plays as a guest
+    // in competitions its owner does not run, and those name it just the same.
+    // A live read, because a season created a minute ago and missing from a
+    // cached copy is the one that would keep the dangling id.
+    const seasons = (await tournaments.listAll(liveRead)).filter((season) =>
+      isIn(season, params.id!),
+    )
+
+    // A club with a result somewhere stays. Its matches are part of the other
+    // clubs' records, and deleting it turns every one of them into "Unknown
+    // club" with no way to put the name back. What should happen instead — the
+    // club kept under its name and marked as a former club — is not built yet;
+    // until it is, the refusal is what keeps the name.
+    const played = seasons.filter((season) => hasPlayedIn(season, params.id!))
+    if (played.length > 0) {
+      const named = played.map((season) => {
+        let visible = true
+        try {
+          assertCanAccessOrganizer(user, season.organizerId)
+        } catch {
+          visible = false
+        }
+        // Another organiser's season may be private; its name is not ours to show.
+        return visible ? season.name : "another organiser's competition"
+      })
+      throw badRequest(
+        `${team.name} has played in ${[...new Set(named)].join(', ')}, so it cannot be deleted.`,
+      )
+    }
+
+    // Everywhere else it simply leaves. Before the club itself goes, so that a
+    // failure part-way leaves a club that still exists and can be deleted
+    // again, rather than a season naming one that does not.
+    let withdrawn = 0
+    for (const found of seasons) {
+      let season: typeof found | null = found
+      for (let attempt = 0; attempt < 3 && season; attempt++) {
+        const withdrawal = withdrawClub(season, params.id!)
+        if (!withdrawal) break
+        if (await tournaments.updateIfUnchanged(season.id, withdrawal.updates, season)) {
+          withdrawn++
+          await record(user, {
+            action: 'tournament.update',
+            entity: 'tournament',
+            entityId: season.id,
+            summary: withdrawal.redrawn
+              ? `Took the deleted club ${team.name} out of ${season.name} and drew the fixtures again`
+              : `Took the deleted club ${team.name} out of ${season.name} with its ${withdrawal.dropped} unplayed fixture(s)`,
+            organizerId: season.organizerId,
+          })
+          break
+        }
+        // The season changed under this write. Read it again, and look again
+        // at whether the club has played in it since.
+        season = await tournaments.get(season.id)
+        if (season && hasPlayedIn(season, params.id!)) {
+          throw badRequest(`${team.name} has just been given a result, so it cannot be deleted.`)
+        }
+        if (attempt === 2) {
+          throw badRequest('A competition this club is in keeps changing. Try again in a moment.')
+        }
+      }
+    }
+
     // The mirror of the tournament delete: an application or an invitation
     // naming a club that no longer exists shows on the organiser's screen as a
     // decision to make about nobody.
@@ -1328,7 +1393,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       summary: `Deleted the team ${team.name}`,
       organizerId: team.organizerId,
     })
-    return { ok: true }
+    return { ok: true, withdrawnFrom: withdrawn }
   })
 
   /* ---------------- players ---------------- */

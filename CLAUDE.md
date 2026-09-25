@@ -641,6 +641,24 @@ neither accept nor dismiss, or an application from a club whose name nothing can
 resolve. For the same reason the club's answer route reads the tournament
 *after* its decline branch: refusing a dead invitation has to work.
 
+**Deleting a club takes it out of its seasons, and is refused where it has
+played.** Until September 2026 `DELETE /admin/teams/:id` removed the record and
+nothing else, so every season it was in kept the id in `teamIds` and in its
+fixtures: "Unknown club" in the table and no control to remove it, because the
+settings screen lists only clubs that exist. `lib/withdraw.ts` now takes the
+club out of every season, in anyone's league, where it has no result: `teamIds`,
+`squads`, its group, its fixtures in `matches` and in hand-built rounds. A
+league season nobody has touched — no result, date, venue or teamsheet anywhere,
+no hand-built round — is drawn again for the clubs that remain, as the settings
+screen would; anything else only loses the club's fixtures. The writes are
+conditional on the attributes read (`tournaments.updateIfUnchanged`), because
+they rewrite `matches` whole. `roundRobin` there is a copy of
+`generateRoundRobinSchedule` — the server cannot import the site — and the two
+change together. A club with a result anywhere is refused, naming the seasons
+the caller may see. What was asked for instead is the club kept under its name
+and marked as a former club; that is not built, and the refusal holds the name
+until it is.
+
 **An organiser is invited the same way a club is, and the two tokens share a
 table.** An organiser's login used to exist only if the super admin typed a
 password into the create form and read it out: two people knowing it, and the

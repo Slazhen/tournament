@@ -460,17 +460,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+  // Throws rather than logging: the API refuses to delete a club that has
+  // played, and a refusal swallowed here was a button that did nothing.
   deleteTeam: async (teamId: string) => {
-    try {
-      const success = await teamService.delete(teamId)
-      if (success) {
-        set(state => ({
-          teams: state.teams.filter(team => team.id !== teamId)
-        }))
-      }
-    } catch (error) {
-      console.error('Error deleting team:', error)
-    }
+    await teamService.delete(teamId)
+    set(state => ({
+      teams: state.teams.filter(team => team.id !== teamId)
+    }))
+    // The API takes the club out of every season it had not played in, and
+    // may draw one again, so the copies held here are out of date.
+    await get().loadTournaments()
   },
 
   // Player actions.

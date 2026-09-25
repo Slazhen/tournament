@@ -644,6 +644,55 @@ export const tournaments = {
     invalidate('tournaments:')
   },
 
+  /**
+   * Writes whole attributes computed from a copy that was read, and only if
+   * each of them still holds what that copy held.
+   *
+   * For a write the server derives rather than one the organiser typed: taking
+   * a deleted club out of a season rewrites `matches` from the list it read,
+   * and a result entered in between would otherwise be written over without
+   * anyone having seen it go. False means the season moved; read and retry.
+   */
+  async updateIfUnchanged(
+    id: string,
+    updates: Record<string, unknown>,
+    previous: Tournament,
+  ): Promise<boolean> {
+    const expression = buildUpdate(updates, ['id', 'createdAtISO', 'organizerId'])
+    if (!expression) return true
+
+    const conditions = ['attribute_exists(id)']
+    const values: Record<string, unknown> = { ...expression.ExpressionAttributeValues }
+    for (const [alias, field] of Object.entries(expression.ExpressionAttributeNames)) {
+      const before = (previous as Record<string, unknown>)[field]
+      if (before === undefined) {
+        conditions.push(`attribute_not_exists(${alias})`)
+      } else {
+        const key = `:was${alias.slice(2)}`
+        values[key] = before
+        conditions.push(`${alias} = ${key}`)
+      }
+    }
+
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id },
+          UpdateExpression: expression.UpdateExpression,
+          ConditionExpression: conditions.join(' AND '),
+          ExpressionAttributeNames: expression.ExpressionAttributeNames,
+          ExpressionAttributeValues: values,
+        }),
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      return false
+    }
+    invalidate('tournaments:')
+    return true
+  },
+
   async remove(id: string): Promise<void> {
     await ddb.send(new DeleteCommand({ TableName: TABLES.TOURNAMENTS, Key: { id } }))
     invalidate('tournaments:')

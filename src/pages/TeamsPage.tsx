@@ -55,6 +55,11 @@ export default function TeamsPage() {
   // With thirty-odd teams in an unordered grid, finding one meant scrolling.
   const [teamSearch, setTeamSearch] = useState("")
   const [removeFailed, setRemoveFailed] = useState<{ id: string; message: string } | null>(null)
+  // Deleting is one press away from a club that looks exactly like the one
+  // meant — the September 2026 duplicate was deleted the wrong way round — so
+  // it asks once, on the card, before it goes.
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
   // Which organiser's clubs are being looked at, in the URL rather than in
   // state: the organizers page links straight here with one already chosen,
   // and a filtered list is worth being able to send to somebody.
@@ -181,6 +186,23 @@ export default function TeamsPage() {
     }
   }
   
+  const confirmDelete = async (teamId: string) => {
+    setRemoveFailed(null)
+    setDeleting(true)
+    try {
+      await deleteTeam(teamId)
+      setConfirmingDelete(null)
+    } catch (error) {
+      setRemoveFailed({
+        id: teamId,
+        message: error instanceof Error ? error.message : 'That club could not be deleted.',
+      })
+      setConfirmingDelete(null)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   // Removed unused functions and refs to fix TypeScript errors
 
   // Who owns the clubs on this page, in the order the picker lists them. Built
@@ -582,15 +604,42 @@ export default function TeamsPage() {
                   {/* Deleting a club another organiser owns is refused by the
                       API, and it is not something this organiser should be
                       offered: removing it from a season is on the season. */}
-                  {!team.visiting && (
+                  {!team.visiting && confirmingDelete !== team.id && (
                     <button
-                      onClick={() => deleteTeam(team.id)}
+                      onClick={() => {
+                        setRemoveFailed(null)
+                        setConfirmingDelete(team.id)
+                      }}
                       className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition-colors"
                     >
                       Delete
                     </button>
                   )}
                 </div>
+                {!team.visiting && confirmingDelete === team.id && (
+                  <div className="rounded-lg border border-red-500/40 p-3 space-y-2">
+                    <p className="text-sm">
+                      Delete {team.name} for good? It leaves every competition it has not
+                      played in, with its fixtures. A club that has played cannot be deleted.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => confirmDelete(team.id)}
+                        disabled={deleting}
+                        className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors"
+                      >
+                        {deleting ? 'Deleting...' : 'Delete club'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmingDelete(null)}
+                        disabled={deleting}
+                        className="px-3 py-2 rounded-lg glass hover:bg-white/10 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             )
