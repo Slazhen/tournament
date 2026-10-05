@@ -17,6 +17,7 @@ import { locateMatch, type MatchLocation } from './lib/matches.js'
 import type { MatchExpectation } from './lib/goals.js'
 import { MAX_DEDUCTIONS } from './lib/deductions.js'
 import { MAX_STAFF } from './lib/staff.js'
+import { MAX_REFEREES, refereesOf, type MatchReferees, type Referee, type RefereePosition } from './lib/referees.js'
 import type { Organizer, Team, Tournament } from './lib/types.js'
 
 /* ------------------------------------------------------------------ *
@@ -139,6 +140,195 @@ export const organizers = {
     // Three writers moved the list under this one. Answering true would have
     // the screen drop a row that is still stored.
     return false
+  },
+
+  /**
+   * One referee onto this organiser's list.
+   *
+   * Appended under a condition on the size rather than checked against a read:
+   * the cap is a ceiling on the record, and a read checked twice in parallel is
+   * two appends past it. The record has to exist, or an update is an upsert and
+   * writes an organiser that is nothing but a list of referees.
+   */
+  async addReferee(organizerId: string, referee: Referee): Promise<void> {
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.ORGANIZERS,
+          Key: { id: organizerId },
+          UpdateExpression: 'SET #referees = list_append(if_not_exists(#referees, :empty), :one)',
+          ConditionExpression:
+            'attribute_exists(#id) AND (attribute_not_exists(#referees) OR size(#referees) < :max)',
+          ExpressionAttributeNames: { '#referees': 'referees', '#id': 'id' },
+          ExpressionAttributeValues: { ':empty': [], ':one': [referee], ':max': MAX_REFEREES },
+        }),
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      throw badRequest('That is as many referees as one organiser can keep')
+    }
+    invalidate('organizers:')
+  },
+
+  /**
+   * One referee changed in place, addressed by id and written at the index
+   * the same request found it at, with that index checked in the write: the
+   * list is shared by every screen of this organiser, and a removal in another
+   * tab shifts everything after it up by one.
+   *
+   * `changes` names fields to set; a value of `undefined` removes that field.
+   * `onlyIf` adds conditions on the element as read - linking an account asserts
+   * that nobody else has been linked in the meantime.
+   */
+  async updateReferee(
+    organizerId: string,
+    refereeId: string,
+    changes: Partial<Record<'name' | 'email' | 'userId' | 'linkedAtISO', string | undefined>>,
+    onlyIf?: { unlinked?: boolean; userId?: string; email?: string },
+  ): Promise<Referee | null> {
+    let current = await organizers.readConsistently(organizerId)
+
+    for (let attempt = 0; attempt < 3 && current; attempt++) {
+      const list = refereesOf(current)
+      const index = (Array.isArray(current.referees) ? (current.referees as unknown[]) : []).findIndex(
+        (entry) => Boolean(entry) && typeof entry === 'object' && (entry as { id?: unknown }).id === refereeId,
+      )
+      if (index === -1) return null
+      const before = list.find((referee) => referee.id === refereeId) ?? null
+
+      const names: Record<string, string> = { '#referees': 'referees', '#id': 'id' }
+      const values: Record<string, unknown> = { ':refereeId': refereeId }
+      const sets: string[] = []
+      const removes: string[] = []
+      for (const [field, value] of Object.entries(changes)) {
+        const alias = `#f_${field}`
+        names[alias] = field
+        if (value === undefined) {
+          removes.push(`#referees[${index}].${alias}`)
+        } else {
+          sets.push(`#referees[${index}].${alias} = :v_${field}`)
+          values[`:v_${field}`] = value
+        }
+      }
+      if (sets.length === 0 && removes.length === 0) return before
+
+      const guards = [`#referees[${index}].#id = :refereeId`]
+      if (onlyIf?.unlinked) {
+        names['#userId'] = 'userId'
+        guards.push(`attribute_not_exists(#referees[${index}].#userId)`)
+      }
+      if (onlyIf?.userId) {
+        names['#userId'] = 'userId'
+        guards.push(`#referees[${index}].#userId = :expectedUser`)
+        values[':expectedUser'] = onlyIf.userId
+      }
+      if (onlyIf?.email) {
+        names['#email'] = 'email'
+        guards.push(`#referees[${index}].#email = :expectedEmail`)
+        values[':expectedEmail'] = onlyIf.email
+      }
+
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.ORGANIZERS,
+            Key: { id: organizerId },
+            UpdateExpression: [
+              sets.length > 0 ? `SET ${sets.join(', ')}` : '',
+              removes.length > 0 ? `REMOVE ${removes.join(', ')}` : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            ConditionExpression: guards.join(' AND '),
+            ExpressionAttributeNames: names,
+            ExpressionAttributeValues: values,
+          }),
+        )
+        invalidate('organizers:')
+        const after: Record<string, unknown> = { ...before }
+        for (const [field, value] of Object.entries(changes)) {
+          if (value === undefined) delete after[field]
+          else after[field] = value
+        }
+        return after as Referee
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+        // Somebody else took this record up first, or it changed hands or
+        // address: retrying would hand it to whoever asked second.
+        if (onlyIf?.unlinked || onlyIf?.userId || onlyIf?.email) return null
+        current = await organizers.readConsistently(organizerId)
+      }
+    }
+
+    return null
+  },
+
+  /**
+   * One referee taken off the list, returned so that the audit line can say
+   * who: once the element is gone, nothing else names them.
+   *
+   * The appointments that point at the record are left where they are. They
+   * name an id nothing resolves any more, which every reader treats as nobody
+   * appointed - the same answer as an empty position - and the events the
+   * referee entered keep their `enteredBy`, which says who wrote them and not
+   * who may.
+   */
+  async removeReferee(organizerId: string, refereeId: string): Promise<Referee | null> {
+    let current = await organizers.readConsistently(organizerId)
+
+    for (let attempt = 0; attempt < 3 && current; attempt++) {
+      const stored = Array.isArray(current.referees) ? (current.referees as unknown[]) : []
+      const index = stored.findIndex(
+        (entry) => Boolean(entry) && typeof entry === 'object' && (entry as { id?: unknown }).id === refereeId,
+      )
+      if (index === -1) return null
+      const removed = stored[index] as Referee
+
+      try {
+        await ddb.send(
+          new UpdateCommand({
+            TableName: TABLES.ORGANIZERS,
+            Key: { id: organizerId },
+            UpdateExpression: `REMOVE #referees[${index}]`,
+            ConditionExpression: `#referees[${index}].#id = :refereeId`,
+            ExpressionAttributeNames: { '#referees': 'referees', '#id': 'id' },
+            ExpressionAttributeValues: { ':refereeId': refereeId },
+          }),
+        )
+        invalidate('organizers:')
+        return removed
+      } catch (error) {
+        if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+        current = await organizers.readConsistently(organizerId)
+      }
+    }
+
+    return null
+  },
+
+  /**
+   * The record as it is now, not as an eventually consistent read remembers it.
+   *
+   * Every retry above re-reads after a failed condition, and an eventually
+   * consistent read can hand back the same stale list three times running.
+   */
+  async readConsistently(id: string): Promise<Organizer | null> {
+    const result = await ddb.send(
+      new GetCommand({ TableName: TABLES.ORGANIZERS, Key: { id }, ConsistentRead: true }),
+    )
+    return (result.Item as Organizer | undefined) ?? null
+  },
+
+  /**
+   * Every organiser with a referee record this account is linked to.
+   *
+   * A scan of a table that holds a handful of rows, read through the same cache
+   * the public routes use - and filtered here, because the link is an element
+   * of a nested list that no index can reach.
+   */
+  async linkedToReferee(userId: string, read?: ReadOptions): Promise<Organizer[]> {
+    const all = await organizers.list(read)
+    return all.filter((organizer) => refereesOf(organizer).some((referee) => referee.userId === userId))
   },
 }
 
@@ -1250,7 +1440,7 @@ export const tournaments = {
     goal: Record<string, unknown>,
     score: { homeGoals: number; awayGoals: number } | null,
     expected: MatchExpectation,
-    onSide?: { teamId: string; side: 'home' | 'away' },
+    guard: EventGuard = {},
   ): Promise<void> {
     const tournament = await this.getOrThrow(tournamentId)
     const located = locateMatch(tournament, matchId)
@@ -1279,13 +1469,7 @@ export const tournaments = {
       sets.push(`${located.path}.#goals = :one`)
     }
 
-    if (score) {
-      names['#homeGoals'] = 'homeGoals'
-      names['#awayGoals'] = 'awayGoals'
-      sets.push(`${located.path}.#homeGoals = :homeGoals`, `${located.path}.#awayGoals = :awayGoals`)
-      values[':homeGoals'] = score.homeGoals
-      values[':awayGoals'] = score.awayGoals
-    }
+    const removes = scoreWrite(located, score, guard, names, values, sets)
 
     // The condition asserts the match the *route* read, not the one this method
     // just read, because the decision being defended was made there: that this
@@ -1301,9 +1485,9 @@ export const tournaments = {
       values[':count'] = expected.goals
     }
     guards.push(...scoreGuard(located, expected, names, values))
-    guards.push(...sideGuard(located, onSide, names, values))
+    guards.push(...eventGuards(located, guard, names, values))
 
-    await this.writeMatchPart(tournamentId, `SET ${sets.join(', ')}`, guards.join(' AND '), names, values)
+    await this.writeMatchPart(tournamentId, setAndRemove(sets, removes), guards.join(' AND '), names, values)
   },
 
   /**
@@ -1321,8 +1505,7 @@ export const tournaments = {
     goal: Record<string, unknown>,
     score: { homeGoals: number; awayGoals: number } | null,
     expected: MatchExpectation,
-    author?: string,
-    onSide?: { teamId: string; side: 'home' | 'away' },
+    guard: EventGuard = {},
   ): Promise<void> {
     const { located, index } = await this.findGoal(tournamentId, matchId, goalId)
 
@@ -1333,31 +1516,20 @@ export const tournaments = {
       ':goalId': goalId,
     }
     const sets = [`${located.path}.#goals[${index}] = :goal`]
-
-    if (score) {
-      names['#homeGoals'] = 'homeGoals'
-      names['#awayGoals'] = 'awayGoals'
-      sets.push(`${located.path}.#homeGoals = :homeGoals`, `${located.path}.#awayGoals = :awayGoals`)
-      values[':homeGoals'] = score.homeGoals
-      values[':awayGoals'] = score.awayGoals
-    }
+    const removes = scoreWrite(located, score, guard, names, values, sets)
 
     const guards = [
       `${located.path}.#id = :matchId`,
       `${located.path}.#goals[${index}].#id = :goalId`,
     ]
     // Who wrote the goal is a permission, so a caller allowed to correct only
-    // their club's own entries asserts it in the write as well as reading it:
+    // some authors' entries asserts it in the write as well as reading it:
     // between the two, the organiser can have replaced that goal.
-    if (author) {
-      names['#enteredBy'] = 'enteredBy'
-      guards.push(`${located.path}.#goals[${index}].#enteredBy = :enteredBy`)
-      values[':enteredBy'] = author
-    }
+    guards.push(...authorGuard(`${located.path}.#goals[${index}]`, guard.authors, names, values))
     guards.push(...scoreGuard(located, expected, names, values))
-    guards.push(...sideGuard(located, onSide, names, values))
+    guards.push(...eventGuards(located, guard, names, values))
 
-    await this.writeMatchPart(tournamentId, `SET ${sets.join(', ')}`, guards.join(' AND '), names, values)
+    await this.writeMatchPart(tournamentId, setAndRemove(sets, removes), guards.join(' AND '), names, values)
   },
 
   /**
@@ -1369,8 +1541,7 @@ export const tournaments = {
     tournamentId: string,
     matchId: string,
     goalId: string,
-    author?: string,
-    onSide?: { teamId: string; side: 'home' | 'away' },
+    guard: EventGuard = {},
   ): Promise<void> {
     const { located, index } = await this.findGoal(tournamentId, matchId, goalId)
 
@@ -1380,12 +1551,8 @@ export const tournaments = {
       `${located.path}.#id = :matchId`,
       `${located.path}.#goals[${index}].#id = :goalId`,
     ]
-    if (author) {
-      names['#enteredBy'] = 'enteredBy'
-      guards.push(`${located.path}.#goals[${index}].#enteredBy = :enteredBy`)
-      values[':enteredBy'] = author
-    }
-    guards.push(...sideGuard(located, onSide, names, values))
+    guards.push(...authorGuard(`${located.path}.#goals[${index}]`, guard.authors, names, values))
+    guards.push(...eventGuards(located, guard, names, values))
 
     await this.writeMatchPart(
       tournamentId,
@@ -1419,6 +1586,265 @@ export const tournaments = {
     if (index < 0) throw notFound('That goal is not in this match')
 
     return { located, index, goal: list[index] as Record<string, unknown> }
+  },
+
+  /**
+   * One booking, appended.
+   *
+   * `cards` was written whole by the match `PATCH` for as long as it had one
+   * author. A referee writes it now as well, so it goes the way `goals` and
+   * `lineups` went: one event at a time, under a condition on the length the
+   * caller read, so that two people booking players in the same minute both
+   * keep their card.
+   */
+  async addCard(
+    tournamentId: string,
+    matchId: string,
+    card: Record<string, unknown>,
+    expectedCount: number,
+    guard: EventGuard = {},
+  ): Promise<void> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const located = locateMatch(tournament, matchId)
+    if (!located) throw notFound('Match not found in this tournament')
+
+    const stored = (located.match as { cards?: unknown }).cards
+    if (Array.isArray(stored) && stored.length >= 80) {
+      throw badRequest('That is as many cards as one match can hold')
+    }
+
+    const names: Record<string, string> = { ...located.names, '#cards': 'cards', '#id': 'id' }
+    const values: Record<string, unknown> = { ':one': [card], ':matchId': matchId }
+    const guards = [`${located.path}.#id = :matchId`]
+
+    // A `cards` that is not a list is replaced rather than appended to, for the
+    // reason `addGoal` gives: `list_append` onto anything else is a 500.
+    const appendable = stored === undefined || Array.isArray(stored)
+    let expression: string
+    if (appendable) {
+      expression = `SET ${located.path}.#cards = list_append(if_not_exists(${located.path}.#cards, :none), :one)`
+      values[':none'] = []
+      guards.push(
+        `(attribute_not_exists(${located.path}.#cards) OR size(${located.path}.#cards) = :count)`,
+      )
+      values[':count'] = expectedCount
+    } else {
+      expression = `SET ${located.path}.#cards = :one`
+    }
+    guards.push(...eventGuards(located, guard, names, values))
+
+    await this.writeMatchPart(tournamentId, expression, guards.join(' AND '), names, values)
+  },
+
+  /** One booking corrected in place, by id, at the index this request found it. */
+  async updateCard(
+    tournamentId: string,
+    matchId: string,
+    cardId: string,
+    card: Record<string, unknown>,
+    guard: EventGuard = {},
+  ): Promise<void> {
+    const { located, index } = await this.findCard(tournamentId, matchId, cardId)
+
+    const names: Record<string, string> = { ...located.names, '#cards': 'cards', '#id': 'id' }
+    const values: Record<string, unknown> = { ':card': card, ':matchId': matchId, ':cardId': cardId }
+    const guards = [
+      `${located.path}.#id = :matchId`,
+      `${located.path}.#cards[${index}].#id = :cardId`,
+    ]
+    guards.push(...authorGuard(`${located.path}.#cards[${index}]`, guard.authors, names, values))
+    guards.push(...eventGuards(located, guard, names, values))
+
+    await this.writeMatchPart(
+      tournamentId,
+      `SET ${located.path}.#cards[${index}] = :card`,
+      guards.join(' AND '),
+      names,
+      values,
+    )
+  },
+
+  async removeCard(
+    tournamentId: string,
+    matchId: string,
+    cardId: string,
+    guard: EventGuard = {},
+  ): Promise<void> {
+    const { located, index } = await this.findCard(tournamentId, matchId, cardId)
+
+    const names: Record<string, string> = { ...located.names, '#cards': 'cards', '#id': 'id' }
+    const values: Record<string, unknown> = { ':matchId': matchId, ':cardId': cardId }
+    const guards = [
+      `${located.path}.#id = :matchId`,
+      `${located.path}.#cards[${index}].#id = :cardId`,
+    ]
+    guards.push(...authorGuard(`${located.path}.#cards[${index}]`, guard.authors, names, values))
+    guards.push(...eventGuards(located, guard, names, values))
+
+    await this.writeMatchPart(
+      tournamentId,
+      `REMOVE ${located.path}.#cards[${index}]`,
+      guards.join(' AND '),
+      names,
+      values,
+    )
+  },
+
+  /** Where one booking sits, with the fixture it sits in. */
+  async findCard(
+    tournamentId: string,
+    matchId: string,
+    cardId: string,
+  ): Promise<{
+    located: NonNullable<ReturnType<typeof locateMatch>>
+    index: number
+    card: Record<string, unknown>
+  }> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const located = locateMatch(tournament, matchId)
+    if (!located) throw notFound('Match not found in this tournament')
+
+    const stored = (located.match as { cards?: unknown }).cards
+    const list = Array.isArray(stored) ? stored : []
+    const index = list.findIndex(
+      (card) => Boolean(card) && typeof card === 'object' && (card as { id?: unknown }).id === cardId,
+    )
+    if (index < 0) throw notFound('That card is not in this match')
+
+    return { located, index, card: list[index] as Record<string, unknown> }
+  },
+
+  /**
+   * Who referees one fixture, all three positions in one write.
+   *
+   * Its own route and its own write rather than a field of the match `PATCH`,
+   * because the appointment is a permission: whoever is named here may enter
+   * this match's result. The match `PATCH` writes the fixture from the copy the
+   * browser is holding, and a stale copy carried back over an appointment made a
+   * minute ago would hand the match to whoever was there before.
+   *
+   * An empty set of appointments REMOVEs the field, so "nobody" has one shape.
+   */
+  async setMatchReferees(
+    tournamentId: string,
+    matchId: string,
+    appointed: MatchReferees,
+  ): Promise<void> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const located = locateMatch(tournament, matchId)
+    if (!located) throw notFound('Match not found in this tournament')
+
+    const names: Record<string, string> = { ...located.names, '#referees': 'referees', '#id': 'id' }
+    const values: Record<string, unknown> = { ':matchId': matchId }
+    const empty = Object.keys(appointed).length === 0
+    if (!empty) values[':referees'] = appointed
+
+    await this.writeMatchPart(
+      tournamentId,
+      empty
+        ? `REMOVE ${located.path}.#referees`
+        : `SET ${located.path}.#referees = :referees`,
+      `${located.path}.#id = :matchId`,
+      names,
+      values,
+    )
+  },
+
+  /**
+   * The score, as a referee writes it.
+   *
+   * The organiser's own score goes through the match `PATCH`, which takes the
+   * author mark off. This sets it to `referee`, under three conditions the
+   * route decided from its read and the write repeats: the score is the one
+   * that was read, it is still empty or still the referee's, and the referee is
+   * still appointed. Any of the three moving underneath is somebody else's
+   * decision landing first, and the honest answer is to say so.
+   */
+  async setRefereeScore(
+    tournamentId: string,
+    matchId: string,
+    score: { homeGoals: number; awayGoals: number } | null,
+    expected: MatchExpectation,
+    guard: EventGuard,
+  ): Promise<void> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const located = locateMatch(tournament, matchId)
+    if (!located) throw notFound('Match not found in this tournament')
+
+    const names: Record<string, string> = {
+      ...located.names,
+      '#id': 'id',
+      '#homeGoals': 'homeGoals',
+      '#awayGoals': 'awayGoals',
+      '#scoreBy': 'scoreEnteredBy',
+    }
+    const values: Record<string, unknown> = { ':matchId': matchId }
+    const expression = score
+      ? `SET ${located.path}.#homeGoals = :homeGoals, ${located.path}.#awayGoals = :awayGoals, ${located.path}.#scoreBy = :referee`
+      : `REMOVE ${located.path}.#homeGoals, ${located.path}.#awayGoals, ${located.path}.#scoreBy`
+    if (score) {
+      values[':homeGoals'] = score.homeGoals
+      values[':awayGoals'] = score.awayGoals
+      values[':referee'] = 'referee'
+    }
+
+    // The goals the route counted, as well as the score it read: a score is
+    // refused below the goals already recorded, and a club naming a goal in
+    // the same second would otherwise leave more goals than the result counts.
+    names['#goals'] = 'goals'
+    const guards = [`${located.path}.#id = :matchId`]
+    if (expected.goals === 0) {
+      guards.push(`(attribute_not_exists(${located.path}.#goals) OR size(${located.path}.#goals) = :noGoals)`)
+      values[':noGoals'] = 0
+    } else {
+      guards.push(`size(${located.path}.#goals) = :goalCount`)
+      values[':goalCount'] = expected.goals
+    }
+    guards.push(...scoreGuard(located, expected, names, values))
+    guards.push(...eventGuards(located, guard, names, values))
+
+    await this.writeMatchPart(tournamentId, expression, guards.join(' AND '), names, values)
+  },
+
+  /**
+   * Takes one referee off one position of one fixture, if they still hold it.
+   *
+   * What removing a referee from the organiser's list does to their
+   * appointments, so that the permission ends on the fixture as well as on the
+   * list and the organiser's screen does not show a position held by somebody
+   * who no longer exists.
+   */
+  async clearAppointment(
+    tournamentId: string,
+    matchId: string,
+    position: RefereePosition,
+    refereeId: string,
+  ): Promise<boolean> {
+    const tournament = await this.getOrThrow(tournamentId)
+    const located = locateMatch(tournament, matchId)
+    if (!located) return false
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id: tournamentId },
+          UpdateExpression: `REMOVE ${located.path}.#appointed.#position`,
+          ConditionExpression: `${located.path}.#id = :matchId AND ${located.path}.#appointed.#position = :refereeId`,
+          ExpressionAttributeNames: {
+            ...located.names,
+            '#id': 'id',
+            '#appointed': 'referees',
+            '#position': position,
+          },
+          ExpressionAttributeValues: { ':matchId': matchId, ':refereeId': refereeId },
+        }),
+      )
+      invalidate('tournaments:')
+      return true
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      return false
+    }
   },
 
   /** The write those three share, and the one answer worth giving when it fails. */
@@ -1459,7 +1885,36 @@ export const tournaments = {
     const located = locateMatch(tournament, matchId)
     if (!located) throw notFound('Match not found in this tournament')
 
-    const updated = { ...located.match, ...updates, id: matchId }
+    // The fields being changed, and nothing else. This wrote the whole fixture
+    // from this request's own read, so a goal, a card, a teamsheet or an
+    // appointment landing between that read and this write was quietly undone -
+    // and an appointment is a permission. The body is already picked from
+    // `MATCH_FIELDS`, so every key here is one this route may write.
+    const names: Record<string, string> = { ...located.names, '#id': 'id' }
+    const values: Record<string, unknown> = { ':matchId': matchId }
+    const sets: string[] = []
+    Object.entries(updates).forEach(([field, value], index) => {
+      if (field === 'id') return
+      names[`#u${index}`] = field
+      values[`:u${index}`] = value
+      sets.push(`${located.path}.#u${index} = :u${index}`)
+    })
+    if (sets.length === 0) return
+
+    // The organiser changing the result takes it from the referee: from here on
+    // the score is theirs, and a referee may name the goals it counts but not
+    // move it. Only a score that actually changed - the season page and the
+    // match screen both send both halves, and a save of an unchanged result is
+    // not a decision about who owns it.
+    const stored = located.match as Record<string, unknown>
+    const scoreMoved = (['homeGoals', 'awayGoals'] as const).some(
+      (field) => field in updates && updates[field] !== stored[field],
+    )
+    const removes: string[] = []
+    if (scoreMoved) {
+      names['#scoreBy'] = 'scoreEnteredBy'
+      removes.push(`${located.path}.#scoreBy`)
+    }
 
     await ddb.send(
       new UpdateCommand({
@@ -1467,10 +1922,10 @@ export const tournaments = {
         Key: { id: tournamentId },
         // The path is assembled by `locateMatch`, which aliases every segment
         // of it: `matches` and `format` are both DynamoDB reserved words.
-        UpdateExpression: `SET ${located.path} = :match`,
+        UpdateExpression: setAndRemove(sets, removes),
         ConditionExpression: `${located.path}.#id = :matchId`,
-        ExpressionAttributeNames: { ...located.names, '#id': 'id' },
-        ExpressionAttributeValues: { ':match': updated, ':matchId': matchId },
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
       }),
     )
     invalidate('tournaments:')
@@ -1857,4 +2312,122 @@ function sideGuard(
   names['#sideTeam'] = onSide.side === 'home' ? 'homeTeamId' : 'awayTeamId'
   values[':sideTeamId'] = onSide.teamId
   return [`${located.path}.#sideTeam = :sideTeamId`]
+}
+
+/**
+ * What a write to one event of a match has to assert beyond the match itself,
+ * and what it does to the score's author.
+ *
+ * Every field is about a caller whose permission came from somewhere narrower
+ * than owning the competition, and every one is checked in the write as well as
+ * in the route, because the route decided from a read the record can have moved
+ * away from by the time the write lands.
+ */
+export type EventGuard = {
+  /** The event's `enteredBy` must be one of these. Absent reads as the organiser's. */
+  authors?: readonly string[]
+  /** A club manager: their club is still on that side of the fixture. */
+  onSide?: { teamId: string; side: 'home' | 'away' }
+  /** A referee: still appointed to that position on this fixture. */
+  referee?: { refereeId: string; position: RefereePosition }
+  /**
+   * Who is moving the score, when the write moves it. The organiser's hand
+   * takes the mark off - a score with no author is the organiser's, which is
+   * what every score written before the mark existed is - and a referee's puts
+   * `referee` on it.
+   */
+  scoreAuthor?: 'organizer' | 'referee'
+  /**
+   * The score's author as the caller read it, asserted: `referee`, or null for
+   * a score with no mark. Undefined asserts nothing.
+   */
+  scoreBy?: 'referee' | null
+}
+
+/**
+ * The score's half of an event write: the two numbers and the author mark,
+ * appended to `sets`, and what has to be REMOVEd returned.
+ */
+function scoreWrite(
+  located: MatchLocation,
+  score: { homeGoals: number; awayGoals: number } | null,
+  guard: EventGuard,
+  names: Record<string, string>,
+  values: Record<string, unknown>,
+  sets: string[],
+): string[] {
+  if (!score) return []
+  names['#homeGoals'] = 'homeGoals'
+  names['#awayGoals'] = 'awayGoals'
+  sets.push(`${located.path}.#homeGoals = :homeGoals`, `${located.path}.#awayGoals = :awayGoals`)
+  values[':homeGoals'] = score.homeGoals
+  values[':awayGoals'] = score.awayGoals
+
+  names['#scoreBy'] = 'scoreEnteredBy'
+  if (guard.scoreAuthor === 'referee') {
+    sets.push(`${located.path}.#scoreBy = :scoreByReferee`)
+    values[':scoreByReferee'] = 'referee'
+    return []
+  }
+  return [`${located.path}.#scoreBy`]
+}
+
+function setAndRemove(sets: string[], removes: string[]): string {
+  return [
+    sets.length > 0 ? `SET ${sets.join(', ')}` : '',
+    removes.length > 0 ? `REMOVE ${removes.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+/**
+ * The event's author is one of the ones this caller may correct.
+ *
+ * `IN` rather than one comparison because a referee corrects both their own
+ * entries and a club's; an event with no `enteredBy` is the organiser's and
+ * fails the condition, which is the point.
+ */
+function authorGuard(
+  elementPath: string,
+  authors: readonly string[] | undefined,
+  names: Record<string, string>,
+  values: Record<string, unknown>,
+): string[] {
+  if (!authors || authors.length === 0) return []
+  names['#enteredBy'] = 'enteredBy'
+  const placeholders = authors.map((author, index) => {
+    values[`:author${index}`] = author
+    return `:author${index}`
+  })
+  return [`${elementPath}.#enteredBy IN (${placeholders.join(', ')})`]
+}
+
+/** Everything in an `EventGuard` that is a condition on the fixture. */
+function eventGuards(
+  located: MatchLocation,
+  guard: EventGuard,
+  names: Record<string, string>,
+  values: Record<string, unknown>,
+): string[] {
+  const guards = sideGuard(located, guard.onSide, names, values)
+
+  if (guard.referee) {
+    names['#appointed'] = 'referees'
+    names['#position'] = guard.referee.position
+    values[':refereeId'] = guard.referee.refereeId
+    guards.push(`${located.path}.#appointed.#position = :refereeId`)
+  }
+
+  if (guard.scoreBy !== undefined) {
+    names['#expectedScoreBy'] = 'scoreEnteredBy'
+    if (guard.scoreBy === null) {
+      guards.push(`attribute_not_exists(${located.path}.#expectedScoreBy)`)
+    } else {
+      values[':expectedScoreBy'] = guard.scoreBy
+      guards.push(`${located.path}.#expectedScoreBy = :expectedScoreBy`)
+    }
+  }
+
+  return guards
 }

@@ -42,6 +42,181 @@ export type Goal = NonNullable<Match['goals']>[number]
  */
 export type GoalWritten = { goal: Goal; score: { homeGoals: number; awayGoals: number } | null }
 
+/** One booking as a screen describes it. The id and the author are the server's. */
+export type CardInput = {
+  team: 'home' | 'away'
+  type: 'yellow' | 'second_yellow' | 'red' | 'blue'
+  minute: number
+  playerId: string
+}
+
+export type Card = NonNullable<Match['cards']>[number]
+
+export type RefereePosition = 'main' | 'assistant1' | 'assistant2'
+
+export const REFEREE_POSITIONS: Array<{ value: RefereePosition; label: string }> = [
+  { value: 'main', label: 'Referee' },
+  { value: 'assistant1', label: 'Assistant referee 1' },
+  { value: 'assistant2', label: 'Assistant referee 2' },
+]
+
+/** A referee on the organiser's list, as the organiser's screens see it. */
+export type RefereeRecord = {
+  id: string
+  name: string
+  email?: string
+  /** Whether somebody has taken the invitation up and has an account. */
+  linked: boolean
+  linkedAtISO?: string
+  createdAtISO?: string
+  /** When the outstanding invitation stops working, if there is one. */
+  invitedUntil?: string
+}
+
+export type RefereeInviteIssued = {
+  link: string
+  expiresAt: string
+  emailed: boolean
+  email: string
+}
+
+export type RefereeInvitePreview = {
+  organizerName: string
+  refereeName: string
+  email: string
+  expiresAt: string
+  /** Whether an account already exists on that address, and so whether to sign in or sign up. */
+  hasAccount: boolean
+}
+
+/** One appointment of the signed-in referee, as their list shows it. */
+export type RefereeAssignment = {
+  tournamentId: string
+  tournamentName: string
+  organizerName: string
+  matchId: string
+  position: RefereePosition
+  roundName?: string
+  round?: number
+  isPlayoff?: boolean
+  dateISO?: string
+  time?: string
+  venue?: string
+  homeTeamId?: string
+  awayTeamId?: string
+  homeGoals?: number | null
+  awayGoals?: number | null
+}
+
+/** What the referee's match screen reads. */
+export type RefereeMatch = {
+  tournament: { id: string; name: string; organizerName: string }
+  match: Match
+  position: RefereePosition
+  officials: Partial<Record<RefereePosition, string>>
+  /** Whether the score is still the referee's to set. */
+  scoreIsMine: boolean
+  homeTeam: Team | null
+  awayTeam: Team | null
+  /** Who may be named on each side: the registration, plus that side's teamsheet. */
+  nameable: { home: string[]; away: string[] }
+}
+
+const matchPath = (prefix: string, tournamentId: string, matchId: string) =>
+  `${prefix}/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}`
+
+export const refereeService = {
+  /* The organiser's list. */
+  async list(organizerId: string): Promise<RefereeRecord[]> {
+    return api.get(`/admin/organizers/${encodeURIComponent(organizerId)}/referees`)
+  },
+  async add(organizerId: string, input: { name: string; email?: string }): Promise<RefereeRecord> {
+    return api.post(`/admin/organizers/${encodeURIComponent(organizerId)}/referees`, input)
+  },
+  async update(
+    organizerId: string,
+    refereeId: string,
+    input: { name?: string; email?: string | null },
+  ): Promise<RefereeRecord> {
+    return api.patch(
+      `/admin/organizers/${encodeURIComponent(organizerId)}/referees/${encodeURIComponent(refereeId)}`,
+      input,
+    )
+  },
+  async remove(organizerId: string, refereeId: string): Promise<void> {
+    await api.delete(
+      `/admin/organizers/${encodeURIComponent(organizerId)}/referees/${encodeURIComponent(refereeId)}`,
+    )
+  },
+  async invite(organizerId: string, refereeId: string): Promise<RefereeInviteIssued> {
+    return api.post(
+      `/admin/organizers/${encodeURIComponent(organizerId)}/referees/${encodeURIComponent(refereeId)}/invites`,
+    )
+  },
+  async cancelInvite(organizerId: string, refereeId: string): Promise<void> {
+    await api.delete(
+      `/admin/organizers/${encodeURIComponent(organizerId)}/referees/${encodeURIComponent(refereeId)}/invites`,
+    )
+  },
+
+  /* The invitation. */
+  async previewInvite(token: string): Promise<RefereeInvitePreview> {
+    return api.get(`/auth/referee-invites/${encodeURIComponent(token)}`)
+  },
+
+  /* The referee's own screens. */
+  async myMatches(): Promise<{
+    matches: RefereeAssignment[]
+    clubs: Array<{ id: string; name: string; logo?: string }>
+  }> {
+    return api.get('/referee/matches')
+  },
+  async match(tournamentId: string, matchId: string): Promise<RefereeMatch> {
+    return api.get(matchPath('/referee', tournamentId, matchId))
+  },
+  async setScore(
+    tournamentId: string,
+    matchId: string,
+    score: { homeGoals: number; awayGoals: number } | { homeGoals: null; awayGoals: null },
+  ): Promise<{ homeGoals: number | null; awayGoals: number | null }> {
+    return api.put(`${matchPath('/referee', tournamentId, matchId)}/score`, score)
+  },
+  async addGoal(tournamentId: string, matchId: string, goal: GoalInput): Promise<GoalWritten> {
+    return api.post(`${matchPath('/referee', tournamentId, matchId)}/goals`, goal)
+  },
+  async updateGoal(
+    tournamentId: string,
+    matchId: string,
+    goalId: string,
+    goal: GoalInput,
+  ): Promise<GoalWritten> {
+    return api.patch(
+      `${matchPath('/referee', tournamentId, matchId)}/goals/${encodeURIComponent(goalId)}`,
+      goal,
+    )
+  },
+  async removeGoal(tournamentId: string, matchId: string, goalId: string): Promise<void> {
+    await api.delete(`${matchPath('/referee', tournamentId, matchId)}/goals/${encodeURIComponent(goalId)}`)
+  },
+  async addCard(tournamentId: string, matchId: string, card: CardInput): Promise<{ card: Card }> {
+    return api.post(`${matchPath('/referee', tournamentId, matchId)}/cards`, card)
+  },
+  async updateCard(
+    tournamentId: string,
+    matchId: string,
+    cardId: string,
+    card: CardInput,
+  ): Promise<{ card: Card }> {
+    return api.patch(
+      `${matchPath('/referee', tournamentId, matchId)}/cards/${encodeURIComponent(cardId)}`,
+      card,
+    )
+  },
+  async removeCard(tournamentId: string, matchId: string, cardId: string): Promise<void> {
+    await api.delete(`${matchPath('/referee', tournamentId, matchId)}/cards/${encodeURIComponent(cardId)}`)
+  },
+}
+
 export const organizerService = {
   /**
    * The organisers the signed-in user administers — everything for a super
@@ -158,7 +333,7 @@ export const organizerService = {
 export type OrganizerLogin = {
   email: string
   displayName?: string
-  role: 'super_admin' | 'organizer' | 'team_manager'
+  role: 'super_admin' | 'organizer' | 'team_manager' | 'referee'
   isActive: boolean
   lastLogin?: string
 }
@@ -692,6 +867,41 @@ export const matchService = {
     await api.delete(
       `/admin/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}/goals/${encodeURIComponent(goalId)}`,
     )
+  },
+
+  /**
+   * One booking at a time. `cards` has a second author now - the referee
+   * appointed to the match - so it is never sent whole, for the reason goals
+   * and teamsheets are not.
+   */
+  async addCard(tournamentId: string, matchId: string, card: CardInput): Promise<{ card: Card }> {
+    return api.post(`${matchPath('/admin', tournamentId, matchId)}/cards`, card)
+  },
+
+  async updateCard(
+    tournamentId: string,
+    matchId: string,
+    cardId: string,
+    card: CardInput,
+  ): Promise<{ card: Card }> {
+    return api.patch(`${matchPath('/admin', tournamentId, matchId)}/cards/${encodeURIComponent(cardId)}`, card)
+  },
+
+  async removeCard(tournamentId: string, matchId: string, cardId: string): Promise<void> {
+    await api.delete(`${matchPath('/admin', tournamentId, matchId)}/cards/${encodeURIComponent(cardId)}`)
+  },
+
+  /** Who referees one fixture: all three positions, an empty one meaning nobody. */
+  async setReferees(
+    tournamentId: string,
+    matchId: string,
+    referees: Partial<Record<RefereePosition, string>>,
+  ): Promise<{ referees: Partial<Record<RefereePosition, string>> }> {
+    return api.put(`${matchPath('/admin', tournamentId, matchId)}/referees`, {
+      main: referees.main ?? null,
+      assistant1: referees.assistant1 ?? null,
+      assistant2: referees.assistant2 ?? null,
+    })
   },
 }
 

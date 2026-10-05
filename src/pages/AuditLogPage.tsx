@@ -16,10 +16,11 @@ const PAGE_SIZE = 100
 
 const GROUPS: { value: AuditGroup; label: string }[] = [
   { value: 'competitions', label: 'Competitions' },
-  { value: 'matches', label: 'Matches, goals and line-ups' },
+  { value: 'matches', label: 'Matches, goals, cards and line-ups' },
   { value: 'clubs', label: 'Clubs and players' },
   { value: 'entries', label: 'Entries and registrations' },
   { value: 'organizers', label: 'Organisers' },
+  { value: 'referees', label: 'Referees' },
   { value: 'accounts', label: 'Accounts' },
 ]
 
@@ -27,12 +28,14 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: 'super_admin', label: 'Super admin' },
   { value: 'organizer', label: 'Organiser' },
   { value: 'team_manager', label: 'Club manager' },
+  { value: 'referee', label: 'Referee' },
 ]
 
 const ROLE_BADGE: Record<UserRole, { label: string; className: string }> = {
   super_admin: { label: 'super admin', className: 'text-yellow-400' },
   organizer: { label: 'organiser', className: 'text-sky-300' },
   team_manager: { label: 'club manager', className: 'text-emerald-300' },
+  referee: { label: 'referee', className: 'text-orange-300' },
 }
 
 /** The filter keys the address carries, so a filtered view can be reloaded or sent on. */

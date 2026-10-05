@@ -339,10 +339,28 @@ export default function PublicMatchPage() {
               )}
             </span>
           )}
-          {match.referee && (
-            <span className="inline-flex items-center gap-1.5">
-              <IconWhistle size={14} className="opacity-70" /> {match.referee}
+          {/* The appointed referees by name, as the API sends them; the name
+              typed in by hand only where nobody is appointed, which is every
+              match from before referees had accounts. Assistants after the
+              referee, marked, because "Ann, Bob, Carl" says nothing about who
+              had the whistle. */}
+          {match.refereeNames?.main || match.refereeNames?.assistant1 || match.refereeNames?.assistant2 ? (
+            <span className="inline-flex items-center gap-1.5 flex-wrap justify-center">
+              <IconWhistle size={14} className="opacity-70" />
+              {[
+                match.refereeNames.main,
+                match.refereeNames.assistant1 && `${match.refereeNames.assistant1} (AR1)`,
+                match.refereeNames.assistant2 && `${match.refereeNames.assistant2} (AR2)`,
+              ]
+                .filter(Boolean)
+                .join(', ')}
             </span>
+          ) : (
+            match.referee && (
+              <span className="inline-flex items-center gap-1.5">
+                <IconWhistle size={14} className="opacity-70" /> {match.referee}
+              </span>
+            )
           )}
           {/* On the line of facts under the plate: in plain sight for anybody
               who has just read the score, and out of the plate's way. */}

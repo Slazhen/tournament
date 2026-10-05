@@ -85,3 +85,36 @@ export function locateMatch(tournament: Tournament, matchId: string): MatchLocat
 
   return found.length === 1 ? found[0] : null
 }
+
+/**
+ * Every fixture a competition holds, from both homes, with the name of the
+ * hand-built round a playoff fixture sits in.
+ *
+ * For reads that walk the season - a referee's list of the matches they are
+ * appointed to - and never for writes, which go through `locateMatch` and its
+ * refusal of a duplicated id.
+ */
+export function allFixtures(
+  tournament: Tournament,
+): Array<{ match: Record<string, unknown>; roundName?: string }> {
+  const out: Array<{ match: Record<string, unknown>; roundName?: string }> = []
+  const isFixture = (value: unknown): value is Record<string, unknown> =>
+    Boolean(value) && typeof value === 'object' && typeof idOf(value) === 'string'
+
+  for (const match of Array.isArray(tournament.matches) ? tournament.matches : []) {
+    if (isFixture(match)) out.push({ match })
+  }
+
+  const format = tournament.format as Record<string, unknown> | undefined
+  const config = format?.customPlayoffConfig as Record<string, unknown> | undefined
+  const rounds = config?.playoffRounds
+  for (const round of Array.isArray(rounds) ? rounds : []) {
+    const inRound = (round as { matches?: unknown } | null)?.matches
+    const name = (round as { name?: unknown } | null)?.name
+    for (const match of Array.isArray(inRound) ? inRound : []) {
+      if (isFixture(match)) out.push({ match, roundName: typeof name === 'string' ? name : undefined })
+    }
+  }
+
+  return out
+}

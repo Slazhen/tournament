@@ -53,17 +53,18 @@ export async function record(
  */
 export const AUDIT_GROUPS = {
   competitions: ['tournament.', 'playoffRound.', 'round.'],
-  matches: ['match.', 'goal.', 'lineup.'],
+  matches: ['match.', 'goal.', 'card.', 'lineup.'],
   // `merge` is written by scripts/merge-teams.mjs, bare, on the club it kept.
   clubs: ['team.', 'player.', 'staff.', 'club.', 'merge'],
   entries: ['entry.', 'squad.'],
   organizers: ['organizer.'],
+  referees: ['referee.'],
   accounts: ['account.'],
 } as const
 
 export type AuditGroup = keyof typeof AUDIT_GROUPS
 
-const ROLES: readonly UserRole[] = ['super_admin', 'organizer', 'team_manager']
+const ROLES: readonly UserRole[] = ['super_admin', 'organizer', 'team_manager', 'referee']
 
 export type AuditFilter = {
   organizerId?: string

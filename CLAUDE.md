@@ -327,7 +327,7 @@ season configured down to one bracket whose second bracket's fixtures are still
 in the record keeps a section for them: the matches exist, and a section missing
 from the page is a match nobody can open.
 
-**Roles.** `super_admin`, `organizer`, `team_manager`. Login is an email address
+**Roles.** `super_admin`, `organizer`, `team_manager`, `referee`. Login is an email address
 and nothing else — usernames survive as labels on old accounts and open no door.
 There should always be two super admins: the role has nobody above it to reset
 its password.
@@ -890,6 +890,93 @@ the same presigned POST as everything else, and what is not covered is what is
 not covered for a player either: removing somebody leaves their photograph in
 the bucket.
 
+**A referee is a record the organiser keeps, and an appointment is a
+permission.** `organizer.referees` is the list - `{ id, name, email?, userId?,
+createdAtISO, linkedAtISO? }`, read only through `refereesOf` in
+`server/src/lib/referees.ts` - on the organiser and not on a season, because the
+same people referee next year and a list per season would leave one person's
+account linked to a copy of them in every one. It is written one element at a
+time (`organizers.addReferee`/`updateReferee`/`removeReferee`, by checked
+index, re-read consistently on a failed condition) and is in no
+`ORGANIZER_FIELDS`. Every public projection of an organiser is a whitelist, so
+the addresses and account ids in it never leave the organiser's own routes.
+
+Who referees a fixture is `match.referees = { main?, assistant1?, assistant2? }`,
+ids into the season's organiser's list, written only by `PUT
+/admin/tournaments/:t/matches/:m/referees` - all three positions per request, a
+missing one meaning nobody, one person in two positions refused. It is not in
+`MATCH_FIELDS`, and the two routes that still write `matches` whole put every
+stored appointment back (`keepAppointments`): a tab loaded before the organiser
+replaced one referee with another would otherwise hand the match back by
+generating the playoffs. The create strips them. Removing a referee from the
+list takes them off every fixture too (`clearAppointment`, conditional per
+position). The public routes send names in `refereeNames` and never the ids
+(`withRefereeNames`, after `toPublicTournament`). The free-text `match.referee`
+from before this is still written by the match screen and still printed where
+nobody is appointed.
+
+`referee` is a role with no `organizerId`: one person can referee in several
+leagues, so nothing on the account says what it may touch. `refereeMatch` in
+`routes/referees.ts` decides it on every request - role `referee`, a record on
+the season's organiser's list whose `userId` is the caller, appointed to this
+fixture in any position - and every write asserts the appointment again in its
+condition (`EventGuard.referee` in `repos.ts`), so taking somebody off a match
+ends a request already in flight. Main referee and assistants have the same
+rights; that was the decision, not an omission.
+
+What a referee may write, as decided with the product owner in October 2026:
+
+- **The score while it is theirs.** Empty, or `scoreEnteredBy: 'referee'`.
+  `PUT /referee/.../score` sets both halves, never below the goals already
+  recorded for a side, and clears only a match with no goals; the write asserts
+  the score, the mark and the goal count it read. The organiser changing the
+  result - the match `PATCH` with a different number, or an organiser's goal
+  that moves it - takes the mark off (`scoreWrite`, `updateMatch`), and from
+  then the score is the organiser's. An organiser *clearing* it makes it empty,
+  which is the referee's again; that is a consequence of "empty is anybody's",
+  not a separate rule.
+- **Goals by the organiser's rule while the score is theirs, by the club's rule
+  after.** A goal the result has no room for raises it and marks it the
+  referee's; once the organiser owns the score a referee names the goals it
+  counts and moves nothing. Either side, own goals named from the other squad.
+- **Corrections of their own entries and a club's, never the organiser's.** The
+  referee is above the club here: `authors: ['referee', 'club']`, asserted in
+  the write with `IN`, an absent `enteredBy` failing it. A club's goal the
+  referee corrects becomes the referee's, so the club cannot quietly undo the
+  correction. Cards have no club author; a referee corrects only their own.
+- **Players from the registration where there is no teamsheet.** The organiser's
+  pickers offer the sheet and send the reader to the Line-ups tab when it is
+  empty; a referee has no Line-ups tab and is often the first to record
+  anything, so their pickers fall back to `nameableInMatch` - the registration
+  plus the sheet - which is also what the server checks. A referee does not
+  write teamsheets.
+
+Every one of those writes is a goal or card route of its own under `/referee/`,
+landing in the same repository methods as the organiser's and the club's, which
+now take an `EventGuard` - `authors`, `onSide`, `referee`, `scoreAuthor`,
+`scoreBy` - instead of a string and a side.
+
+A referee is invited the way an organiser is: bound to the address on the record
+(`kind: 'referee'` in the invites table, `repos-referee-invites.ts`), one live
+link per record, the address changeable only while nobody has taken it up.
+`/auth/claim-referee` links a signed-in account only if it is a `referee`
+account on the invited address - an account has one role, and turning a coach's
+or an organiser's into a referee's would drop what it was - and otherwise opens
+one, refusing an address that already has an account (sign in first; the login
+page honours `?next=` for exactly this). The link is written before the account
+and undone if the account write fails. Deleting an account unlinks its referee
+records.
+
+Still open: an account cannot be a referee and something else. The club claim
+(`/auth/claim`) has no role check, so a referee's account can accept a club
+invitation and run a club while the bar offers it only "My matches"; nothing
+refuses that yet.
+
+**The match `PATCH` writes the fields it was sent, not the fixture.** It used to
+`SET` the whole fixture from its own read, so a goal, card, teamsheet or
+appointment that landed between that read and the write was undone. It now
+writes one path per picked field; `MATCH_FIELDS` is what makes that safe.
+
 **A teamsheet has two authors.** Who played for a club in one match is written
 by the organiser, for either side, and by that club's own manager, for their own
 side only — `PUT /admin/tournaments/:t/matches/:m/lineup` and the matching
@@ -990,8 +1077,8 @@ blank screen. Two things follow. Any one-segment address now lands there, so
 the page has to answer 404 itself for a slug that names nobody. And a static
 route ranks above `/:orgSlug`, so an organiser whose name slugifies to
 `teams`, `login`, `start`, `dashboard`, `tournaments`, `calendar`,
-`organizers`, `changes`, `join`, `join-organizer`, `public`, `admin` or `my-club`
-would have an
+`organizers`, `changes`, `join`, `join-organizer`, `join-referee`, `referee`,
+`referees`, `public`, `admin` or `my-club` would have an
 unreachable page — nothing refuses such a name yet.
 
 **There is no self-serve sign-up, and the landing page says so.** An
@@ -1222,9 +1309,13 @@ writes that field any more. The type is three chips beside the scorer, not the
 fourth select in a row of four, because organisers were not finding Penalty at
 all.
 
-`cards` is still in `MATCH_FIELDS` and travels whole, so for a booking the
-teamsheet rule is the screen's and not the server's: a hand-made request can
-credit a card to anybody's player id. `goals` is not, any more — see below.
+`cards` left `MATCH_FIELDS` when referees began writing bookings: `POST`/
+`PATCH`/`DELETE /admin/tournaments/:t/matches/:m/cards[/:id]` write one card at
+a time under a condition on the length read, and each card carries
+`enteredBy` (`organizer` or `referee`; absent is the organiser's). For the
+organiser the teamsheet rule is still the screen's and not the server's - a
+hand-made request can credit a card to anybody's player id; a referee's card is
+checked against `nameableInMatch`. `goals` left earlier - see below.
 
 **A goal has two authors, and only one of them may move the score.** A club's
 own manager names the scorers of the goals their side's result counts:

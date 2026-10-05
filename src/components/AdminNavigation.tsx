@@ -14,7 +14,11 @@ const ORGANIZER_NAV_ITEMS = [
   { to: '/tournaments', label: 'Tournaments' },
   { to: '/teams', label: 'Teams' },
   { to: '/calendar', label: 'Calendar' },
+  { to: '/referees', label: 'Referees' },
 ]
+
+// A referee's account has one screen of its own, the matches it is appointed to.
+const REFEREE_NAV_ITEMS = [{ to: '/referee', label: 'My matches' }]
 
 // The super admin's own sections. They used to sit in the account menu behind
 // the avatar, where nobody looked for them: the audit log was reachable only by
@@ -140,6 +144,7 @@ export default function AdminNavigation() {
   const navItems = [
     ...(canOrganize ? ORGANIZER_NAV_ITEMS : []),
     ...(isSuperAdmin ? SUPER_ADMIN_NAV_ITEMS : []),
+    ...(user?.role === 'referee' ? REFEREE_NAV_ITEMS : []),
   ]
 
   const isActive = (path: string) =>

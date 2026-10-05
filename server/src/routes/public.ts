@@ -3,7 +3,8 @@ import { toPublicStaff } from '../lib/staff.js'
 import { badRequest, notFound } from '../lib/http.js'
 import { organizerSlug, tournamentSlug, seriesSlug, seasonSlug, seriesKey } from '../lib/slugs.js'
 import { isPublic, organizers, teams, toSummary, tournaments } from '../repos.js'
-import { toPublicTournament, toPublicTournaments } from '../lib/rounds.js'
+import { toPublicTournament as projectSeason } from '../lib/rounds.js'
+import { refereeNameIndex, withRefereeNames } from '../lib/referees.js'
 import { isArchivedPlayer } from '../lib/players.js'
 import type { Organizer, Team, Tournament } from '../lib/types.js'
 import type { RequestContext } from '../context.js'
@@ -97,6 +98,25 @@ function ageFrom(dateOfBirth: unknown): number | undefined {
 }
 
 const toPublicTeams = (list: Team[]): Team[] => list.map(toPublicTeam)
+
+/**
+ * A season as the public reads it: rounds held back are redacted, and the
+ * referees appointed to what is left are names rather than ids into the
+ * organiser's list - which also holds their addresses and account ids.
+ *
+ * The organisers come from the same cached scan every public route already
+ * reads, so naming the referees costs no request of its own.
+ */
+async function toPublicTournaments(list: Tournament[]): Promise<Tournament[]> {
+  const index = refereeNameIndex(await organizers.list())
+  return list.map((tournament) =>
+    withRefereeNames(projectSeason(tournament), index.get(tournament.organizerId) ?? new Map()),
+  )
+}
+
+async function toPublicTournament(tournament: Tournament): Promise<Tournament> {
+  return (await toPublicTournaments([tournament]))[0]!
+}
 
 /**
  * A club as a listing shows it: a crest, a name and the colours to draw it in.
@@ -206,10 +226,10 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
     return unfinished ?? byNewest[0]
   }
 
-  const bundle = (all: Tournament[], tournament: Tournament, organizer: Organizer) => ({
+  const bundle = async (all: Tournament[], tournament: Tournament, organizer: Organizer) => ({
     // The seasons beside it are summaries, which carry no fixtures; the season
     // itself is the one thing here that does.
-    tournament: toPublicTournament(tournament),
+    tournament: await toPublicTournament(tournament),
     seasons: seasonsOf(all, tournament),
     organizer: {
       id: organizer.id,
@@ -285,7 +305,7 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
 
     const teamIds = Array.isArray(tournament.teamIds) ? tournament.teamIds : []
     return {
-      ...bundle(candidates, tournament, organizer),
+      ...(await bundle(candidates, tournament, organizer)),
       teams: toPublicTeams(await teams.getMany(teamIds)),
       matchedAs: exact ? 'tournament' : 'series',
     }
@@ -308,7 +328,7 @@ export function registerPublicRoutes(router: Router<RequestContext>): void {
 
     const teamIds = Array.isArray(tournament.teamIds) ? tournament.teamIds : []
     return {
-      ...bundle(candidates, tournament, organizer),
+      ...(await bundle(candidates, tournament, organizer)),
       teams: toPublicTeams(await teams.getMany(teamIds)),
       matchedAs: 'season',
     }
@@ -382,7 +402,7 @@ async function buildTeamContext(team: Awaited<ReturnType<typeof teams.get>> & ob
   // Projected before the clubs are gathered, not after: a fixture in a hidden
   // round names nobody, and fetching the clubs it names would put them in this
   // answer as the only trace of a round the season is keeping back.
-  const publicSeasons = toPublicTournaments(played)
+  const publicSeasons = await toPublicTournaments(played)
 
   const referenced = new Set<string>()
   for (const tournament of publicSeasons) {

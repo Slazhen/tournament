@@ -13,7 +13,7 @@ import { api, clearToken, setToken } from './api'
  * that shipped in the public bundle.
  */
 
-export type UserRole = 'super_admin' | 'organizer' | 'team_manager'
+export type UserRole = 'super_admin' | 'organizer' | 'team_manager' | 'referee'
 
 /** The user as the API returns it: no password hash, no salt. */
 export type AuthUser = {
@@ -183,7 +183,14 @@ export type AuditEntry = {
 }
 
 /** Kinds of event the log can be narrowed to; the server owns what each one covers. */
-export type AuditGroup = 'competitions' | 'matches' | 'clubs' | 'entries' | 'organizers' | 'accounts'
+export type AuditGroup =
+  | 'competitions'
+  | 'matches'
+  | 'clubs'
+  | 'entries'
+  | 'organizers'
+  | 'referees'
+  | 'accounts'
 
 export type AuditFilter = {
   organizerId?: string
@@ -276,5 +283,24 @@ export async function claimOrganizer(input: {
  */
 export function landingPathFor(user: AuthUser | null): string {
   if (!user) return '/login'
-  return user.role === 'team_manager' ? '/my-club' : '/dashboard'
+  if (user.role === 'team_manager') return '/my-club'
+  if (user.role === 'referee') return '/referee'
+  return '/dashboard'
+}
+
+/**
+ * Takes up an invitation to referee for an organiser.
+ *
+ * Signed in, it links the account that is here - which has to be a referee's
+ * account on the invited address. Signed out, it opens one on that address and
+ * signs the browser into it.
+ */
+export async function claimReferee(input: {
+  token: string
+  password?: string
+  displayName?: string
+}): Promise<{ user: AuthUser }> {
+  const result = await api.post<{ user: AuthUser; token?: string }>('/auth/claim-referee', input)
+  if (result.token) setToken(result.token)
+  return { user: result.user }
 }

@@ -160,6 +160,18 @@ describe('what the write asserts', () => {
   })
 })
 
+describe('a result that was cleared rather than never typed', () => {
+  it('is asserted as present, not as absent', () => {
+    // The match PATCH stores the null a cleared scoreboard sends. Read as absent,
+    // the condition could never hold and every goal on that fixture was refused.
+    expect(expectationOf(match({ homeGoals: null, awayGoals: null }))).toEqual({
+      goals: 0,
+      homeGoals: null,
+      awayGoals: null,
+    })
+  })
+})
+
 describe('reading a goal off a request', () => {
   it('refuses a side that is not a side', () => {
     expect(() => readGoal({ team: 'both' })).toThrow(HttpError)

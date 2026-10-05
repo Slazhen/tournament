@@ -10,6 +10,7 @@ import InlineInput from '../components/InlineInput'
 import InlineTextarea from '../components/InlineTextarea'
 import MatchEvents from '../components/MatchEvents'
 import ShootoutPanel from '../components/ShootoutPanel'
+import MatchReferees from '../components/MatchReferees'
 import {
   IconArrowLeft,
   IconClipboard,
@@ -43,7 +44,7 @@ const STATISTIC_ROWS: Array<{
 
 export default function MatchPage() {
   const { tournamentId, matchId, orgSlug, tournamentSlug } = useParams()
-  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateMatchFields, addGoal, updateGoal, removeGoal, setLineup, superAdmin } = useAppStore()
+  const { getCurrentOrganizer, getOrganizerById, getOrganizerTeams, getOrganizerTournaments, updateMatchFields, addGoal, updateGoal, removeGoal, addCard, updateCard, removeCard, setLineup, superAdmin } = useAppStore()
 
   const currentOrganizer = getCurrentOrganizer()
   const teams = getOrganizerTeams()
@@ -276,6 +277,13 @@ export default function MatchPage() {
             />
           </div>
 
+          {/* Who referees it. Above the line of details rather than in it:
+              an appointment is a permission - whoever holds one may enter this
+              match's result - and not a label like the venue. */}
+          <div className="mb-4">
+            <MatchReferees tournament={tournament} match={match} />
+          </div>
+
           {/* Match Info */}
           <div className="flex items-center justify-center gap-6 text-sm">
             <div>
@@ -311,16 +319,23 @@ export default function MatchPage() {
                 className="ml-2 px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
               />
             </div>
-            <div>
-              <span className="opacity-70">Referee:</span>
-          <InlineInput
-                type="text"
-                value={match.referee || ''}
-                onCommit={(value) => updateMatch({ referee: value || undefined })}
-                placeholder="Enter referee"
-                className="ml-2 px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
-              />
-            </div>
+            {/* The name typed in by hand, from before referees had accounts.
+                Kept for a competition that does not keep a list of referees,
+                and shown only where something is already written or nobody is
+                appointed - two answers to "who refereed" side by side would
+                disagree the first time either changed. */}
+            {(match.referee || !match.referees?.main) && (
+              <div>
+                <span className="opacity-70">Referee name:</span>
+                <InlineInput
+                  type="text"
+                  value={match.referee || ''}
+                  onCommit={(value) => updateMatch({ referee: value || undefined })}
+                  placeholder="Enter referee"
+                  className="ml-2 px-2 py-1 rounded bg-transparent border border-white/20 text-xs focus:border-white/40 focus:outline-none"
+                />
+              </div>
+            )}
             <div>
               <span className="opacity-70">Status:</span>
               <select
@@ -595,10 +610,12 @@ export default function MatchPage() {
             match={match}
             homeTeam={homeTeam}
             awayTeam={awayTeam}
-            onSave={updateMatch}
             onAddGoal={(goal) => addGoal(tournament.id, match.id, goal)}
             onUpdateGoal={(goalId, goal) => updateGoal(tournament.id, match.id, goalId, goal)}
             onDeleteGoal={(goalId) => removeGoal(tournament.id, match.id, goalId)}
+            onAddCard={(card) => addCard(tournament.id, match.id, card)}
+            onUpdateCard={(cardId, card) => updateCard(tournament.id, match.id, cardId, card)}
+            onDeleteCard={(cardId) => removeCard(tournament.id, match.id, cardId)}
             onGoToLineups={() => setActiveTab('lineups')}
           />
         )}

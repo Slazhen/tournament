@@ -1,4 +1,10 @@
-export type UserRole = 'super_admin' | 'organizer' | 'team_manager'
+/**
+ * `referee` carries no `organizerId`: one person can referee in several
+ * leagues, so what a referee account may touch is decided by the referee
+ * records linked to it (`referee.userId` on an organiser's list) and by the
+ * fixtures those records are appointed to - never by a field on the account.
+ */
+export type UserRole = 'super_admin' | 'organizer' | 'team_manager' | 'referee'
 
 export type AuthUser = {
   id: string
@@ -53,6 +59,12 @@ export type Organizer = {
    * this organiser works from before any of that has been decided.
    */
   shortlistedTeamIds?: string[]
+  /**
+   * The people who referee this organiser's matches. Read through `refereesOf`
+   * in `lib/referees.ts`, which says why the list lives here and not on a
+   * competition; typed as unknown because it is only ever read through there.
+   */
+  referees?: unknown
 }
 
 export type Team = {

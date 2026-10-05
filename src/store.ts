@@ -7,7 +7,7 @@ import { generateFixtures } from './utils/fixtures'
 import { applySchedule } from './utils/matchdates'
 import type { ScheduleOptions } from './utils/matchdates'
 import { organizerService, teamService, tournamentService, matchService, playerService, uploadImage } from './lib/data'
-import type { GoalInput, RoundExpectation } from './lib/data'
+import type { CardInput, GoalInput, RefereePosition, RoundExpectation } from './lib/data'
 import { readCrestAppearance } from './utils/crest'
 
 const playoffRoundsOf = (tournament: Tournament): CustomPlayoffRoundConfig[] =>
@@ -201,6 +201,16 @@ type AppStore = {
     goal: GoalInput,
   ) => Promise<void>
   removeGoal: (tournamentId: string, matchId: string, goalId: string) => Promise<void>
+  /** One booking of one match, for the same reason a goal is written on its own. */
+  addCard: (tournamentId: string, matchId: string, card: CardInput) => Promise<void>
+  updateCard: (tournamentId: string, matchId: string, cardId: string, card: CardInput) => Promise<void>
+  removeCard: (tournamentId: string, matchId: string, cardId: string) => Promise<void>
+  /** Who referees a fixture. Applied once the server has agreed, like a teamsheet. */
+  setMatchReferees: (
+    tournamentId: string,
+    matchId: string,
+    referees: Partial<Record<RefereePosition, string>>,
+  ) => Promise<void>
 
   /**
    * One club's teamsheet for one match. Throws rather than swallowing, so a
@@ -367,7 +377,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     // session being told to select an organizer first, and a reload was the
     // only way out of it. Loading only into an empty list keeps the ordinary
     // page load at the one request it already made.
-    if (user && user.role !== 'team_manager' && get().organizers.length === 0) {
+    if (user && user.role !== 'team_manager' && user.role !== 'referee' && get().organizers.length === 0) {
       void get().loadOrganizers()
     }
 
@@ -767,7 +777,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set(state => ({
       tournaments: state.tournaments.map(tournament =>
         tournament.id === tournamentId
-          ? applyMatchUpdate(tournament, matchId, match => ({ ...match, ...updates }))
+          ? applyMatchUpdate(tournament, matchId, match => {
+              const next = { ...match, ...updates }
+              // The same rule the server applies: the organiser changing the
+              // result takes it from the referee.
+              const scoreMoved = (['homeGoals', 'awayGoals'] as const).some(
+                field => field in updates && updates[field] !== match[field],
+              )
+              return scoreMoved ? { ...next, scoreEnteredBy: undefined } : next
+            })
           : tournament,
       ),
     }))
@@ -903,7 +921,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ? applyMatchUpdate(tournament, matchId, match => ({
               ...match,
               goals: [...(match.goals ?? []), written.goal],
-              ...(written.score ?? {}),
+              // A score the organiser moved is theirs: the server takes the
+              // referee's mark off in the same write.
+              ...(written.score ? { ...written.score, scoreEnteredBy: undefined } : {}),
             }))
           : tournament,
       ),
@@ -923,7 +943,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ? applyMatchUpdate(tournament, matchId, match => ({
               ...match,
               goals: (match.goals ?? []).map(one => (one.id === goalId ? written.goal : one)),
-              ...(written.score ?? {}),
+              ...(written.score ? { ...written.score, scoreEnteredBy: undefined } : {}),
             }))
           : tournament,
       ),
@@ -940,6 +960,60 @@ export const useAppStore = create<AppStore>((set, get) => ({
               ...match,
               goals: (match.goals ?? []).filter(one => one.id !== goalId),
             }))
+          : tournament,
+      ),
+    }))
+  },
+
+  addCard: async (tournamentId: string, matchId: string, card: CardInput) => {
+    const written = await matchService.addCard(tournamentId, matchId, card)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? applyMatchUpdate(tournament, matchId, match => ({
+              ...match,
+              cards: [...(match.cards ?? []), written.card],
+            }))
+          : tournament,
+      ),
+    }))
+  },
+
+  updateCard: async (tournamentId: string, matchId: string, cardId: string, card: CardInput) => {
+    const written = await matchService.updateCard(tournamentId, matchId, cardId, card)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? applyMatchUpdate(tournament, matchId, match => ({
+              ...match,
+              cards: (match.cards ?? []).map(one => (one.id === cardId ? written.card : one)),
+            }))
+          : tournament,
+      ),
+    }))
+  },
+
+  removeCard: async (tournamentId: string, matchId: string, cardId: string) => {
+    await matchService.removeCard(tournamentId, matchId, cardId)
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? applyMatchUpdate(tournament, matchId, match => ({
+              ...match,
+              cards: (match.cards ?? []).filter(one => one.id !== cardId),
+            }))
+          : tournament,
+      ),
+    }))
+  },
+
+  setMatchReferees: async (tournamentId, matchId, referees) => {
+    const stored = await matchService.setReferees(tournamentId, matchId, referees)
+    const appointed = Object.keys(stored.referees).length > 0 ? stored.referees : undefined
+    set(state => ({
+      tournaments: state.tournaments.map(tournament =>
+        tournament.id === tournamentId
+          ? applyMatchUpdate(tournament, matchId, match => ({ ...match, referees: appointed }))
           : tournament,
       ),
     }))

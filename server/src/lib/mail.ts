@@ -213,3 +213,64 @@ export async function sendOrganizerInvite(
     return { sent: false, reason: (error as Error).message }
   }
 }
+
+/**
+ * The invitation to referee for an organiser.
+ *
+ * Bound to the address it is sent to, like an organiser's: the account it
+ * opens may enter results in the matches its holder is appointed to, which is
+ * more than a club's manager may do with the score.
+ */
+export async function sendRefereeInvite(
+  to: string,
+  organizerName: string,
+  link: string,
+): Promise<MailResult> {
+  if (!ses || !MAIL_FROM) return { sent: false, reason: 'email is not configured' }
+
+  const text = [
+    `${organizerName} has added you as a referee on MFTournament.`,
+    '',
+    'Open this link to set up your account:',
+    link,
+    '',
+    'You will be able to record the score, the goals and the cards of the matches',
+    'you are appointed to. The link works once and lasts a fortnight.',
+    '',
+    SITE_URL,
+  ].join('\n')
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.55;color:#0B1120">
+      <p><strong>${escapeHtml(organizerName)}</strong> has added you as a referee on MFTournament.</p>
+      <p>
+        <a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#4F46E5;color:#fff;text-decoration:none;font-weight:600">
+          Set up your account
+        </a>
+      </p>
+      <p style="color:#475569;font-size:14px">
+        You will be able to record the score, the goals and the cards of the matches you are
+        appointed to. The link works once and lasts a fortnight.
+      </p>
+      <p style="color:#94A3B8;font-size:12px">${SITE_URL}</p>
+    </div>`
+
+  try {
+    await ses.send(
+      new SendEmailCommand({
+        FromEmailAddress: MAIL_FROM,
+        Destination: { ToAddresses: [to] },
+        Content: {
+          Simple: {
+            Subject: { Data: oneLine(`${organizerName} has added you as a referee`) },
+            Body: { Text: { Data: text }, Html: { Data: html } },
+          },
+        },
+      }),
+    )
+    return { sent: true }
+  } catch (error) {
+    console.error('Referee invitation email failed', error)
+    return { sent: false, reason: (error as Error).message }
+  }
+}

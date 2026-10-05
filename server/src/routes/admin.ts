@@ -47,6 +47,8 @@ import {
   scoreAfterAdding,
   scoreAfterMoving,
 } from '../lib/goals.js'
+import { cardsOf, composeCard, describeCard, readCard } from '../lib/cards.js'
+import { keepAppointments, refereesOf } from '../lib/referees.js'
 import { locateMatch } from '../lib/matches.js'
 import { hasPlayedIn, isIn, withdrawClub } from '../lib/withdraw.js'
 import { allPlayerIds, isArchivedPlayer } from '../lib/players.js'
@@ -293,8 +295,9 @@ const MATCH_FIELDS = [
   'statistics',
   // `goals` is absent for the same reason, and it became so later: a goal now
   // has two authors as well — the organiser, and the club whose side it counts
-  // for. The goal routes below write one event at a time.
-  'cards',
+  // for. The goal routes below write one event at a time. `cards` followed when
+  // referees began writing bookings, and `referees` - who is appointed - is a
+  // permission with a route of its own.
   'preview',
   'report',
   'videoUrl',
@@ -1630,7 +1633,14 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // Nothing has agreed to anything yet, so a club this organiser does not own
     // cannot be in a competition on the day it is created.
     await assertEnterableTeams(organizerId, ctx.body.teamIds, [])
-    const tournament = await tournaments.create({ ...ctx.body, name, organizerId })
+    // A new season appoints nobody and its results are nobody's but the
+    // organiser's: appointments are written by their own route, which checks
+    // them against the organiser's list. Stripped here as on the PATCH.
+    const tournament = await tournaments.create({
+      ...keepAppointments(ctx.body, {}),
+      name,
+      organizerId,
+    })
     await record(user, {
       action: 'tournament.create',
       entity: 'tournament',
@@ -1703,7 +1713,11 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // the browser's copy. A body that does not name them is a screen that was
     // not editing them, and it must not take them off — they are changed at
     // `PUT /admin/tournaments/:id/discipline` and nowhere else.
-    const updates = keepDiscipline(ctx.body, tournament.format)
+    //
+    // And who referees each fixture, with the mark that says whose score it is,
+    // for the same reason and more: an appointment is a permission, and a tab
+    // loaded before it changed must not hand the match back to whoever had it.
+    const updates = keepAppointments(keepDiscipline(ctx.body, tournament.format), tournament)
 
     await tournaments.update(params.id!, updates)
     await record(user, {
@@ -2126,6 +2140,86 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
         entity: 'match',
         entityId: `${params.tournamentId}/${params.matchId}`,
         summary: `Removed a goal from a match of ${tournament.name}`,
+        organizerId: tournament.organizerId,
+      })
+      return { ok: true }
+    },
+  )
+
+  /**
+   * One booking of one match, for the organiser.
+   *
+   * Three routes rather than `cards` on the match PATCH, because the list has a
+   * second author now - the referee appointed to the match - and a list two
+   * people write is never written whole. The organiser may correct anybody's
+   * card; what they enter is marked as theirs, which is what keeps a referee off
+   * it.
+   */
+  router.post('/admin/tournaments/:tournamentId/matches/:matchId/cards', async (ctx, params) => {
+    const user = await ctx.user()
+    const tournament = await tournaments.getOrThrow(params.tournamentId!)
+    assertCanAccessOrganizer(user, tournament.organizerId)
+
+    const match = locateMatch(tournament, params.matchId!)?.match
+    if (!match) throw notFound('Match not found in this tournament')
+
+    const card = composeCard(generateId(), readCard(ctx.body), 'organizer')
+    await tournaments.addCard(params.tournamentId!, params.matchId!, card, cardsOf(match).length)
+
+    await record(user, {
+      action: 'card.add',
+      entity: 'match',
+      entityId: `${params.tournamentId}/${params.matchId}`,
+      summary: `Recorded a ${describeCard(card.type)} in ${tournament.name}`,
+      organizerId: tournament.organizerId,
+    })
+    return { card }
+  })
+
+  router.patch(
+    '/admin/tournaments/:tournamentId/matches/:matchId/cards/:cardId',
+    async (ctx, params) => {
+      const user = await ctx.user()
+      const tournament = await tournaments.getOrThrow(params.tournamentId!)
+      assertCanAccessOrganizer(user, tournament.organizerId)
+
+      const { card: stored } = await tournaments.findCard(
+        params.tournamentId!,
+        params.matchId!,
+        params.cardId!,
+      )
+      // The author stays who it was: the organiser correcting a referee's minute
+      // has not made the booking theirs, and the referee who showed it can still
+      // put it right.
+      const author = stored.enteredBy === 'referee' ? 'referee' : 'organizer'
+      const card = composeCard(params.cardId!, readCard({ ...stored, ...ctx.body }), author)
+      await tournaments.updateCard(params.tournamentId!, params.matchId!, params.cardId!, card)
+
+      await record(user, {
+        action: 'card.update',
+        entity: 'match',
+        entityId: `${params.tournamentId}/${params.matchId}`,
+        summary: `Corrected a ${describeCard(card.type)} in ${tournament.name}`,
+        organizerId: tournament.organizerId,
+      })
+      return { card }
+    },
+  )
+
+  router.delete(
+    '/admin/tournaments/:tournamentId/matches/:matchId/cards/:cardId',
+    async (ctx, params) => {
+      const user = await ctx.user()
+      const tournament = await tournaments.getOrThrow(params.tournamentId!)
+      assertCanAccessOrganizer(user, tournament.organizerId)
+
+      await tournaments.removeCard(params.tournamentId!, params.matchId!, params.cardId!)
+
+      await record(user, {
+        action: 'card.remove',
+        entity: 'match',
+        entityId: `${params.tournamentId}/${params.matchId}`,
+        summary: `Removed a card from a match of ${tournament.name}`,
         organizerId: tournament.organizerId,
       })
       return { ok: true }
@@ -2612,6 +2706,20 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     for (const teamId of target.teamIds ?? []) {
       const team = await teams.get(teamId)
       if (team) await unlinkManagerFromTeam(target.id, team as Team)
+    }
+    // And the referee records it had taken up. An id is the whole of that link
+    // too, and a record still holding a deleted account's id is one the
+    // organiser can neither invite anybody to nor see as free.
+    for (const organizer of await organizers.linkedToReferee(target.id, liveRead)) {
+      for (const referee of refereesOf(organizer)) {
+        if (referee.userId !== target.id) continue
+        await organizers.updateReferee(
+          organizer.id,
+          referee.id,
+          { userId: undefined, linkedAtISO: undefined },
+          { userId: target.id },
+        )
+      }
     }
     await ddb.send(new DeleteCommand({ TableName: TABLES.AUTH_USERS, Key: { id: target.id } }))
     await record(actor, {

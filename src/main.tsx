@@ -62,6 +62,10 @@ const ResetPasswordPage = lazyPage(() => import('./pages/ResetPasswordPage.tsx')
 const AuditLogPage = lazyPage(() => import('./pages/AuditLogPage.tsx'))
 const ClaimTeamPage = lazyPage(() => import('./pages/ClaimTeamPage.tsx'))
 const ClaimOrganizerPage = lazyPage(() => import('./pages/ClaimOrganizerPage.tsx'))
+const ClaimRefereePage = lazyPage(() => import('./pages/ClaimRefereePage.tsx'))
+const RefereesPage = lazyPage(() => import('./pages/RefereesPage.tsx'))
+const RefereeHomePage = lazyPage(() => import('./pages/RefereeHomePage.tsx'))
+const RefereeMatchPage = lazyPage(() => import('./pages/RefereeMatchPage.tsx'))
 const MyClubPage = lazyPage(() => import('./pages/MyClubPage.tsx'))
 const ClubPlayerPage = lazyPage(() => import('./pages/ClubPlayerPage.tsx'))
 const OrganizersPage = lazyPage(() => import('./pages/OrganizersPage.tsx'))
@@ -147,6 +151,19 @@ const router = createBrowserRouter([
       // the other's routes. Both are one-segment static routes, so they take
       // `join` and `join-organizer` away from /:orgSlug — see CLAUDE.md.
       { path: 'join-organizer', element: <ClaimOrganizerPage /> },
+      // And for a referee. It reads who is signed in, because a referee who
+      // already has an account takes the invitation up with it.
+      { path: 'join-referee', element: <ClaimRefereePage /> },
+
+      /* ---------- The referee's own screens ---------- */
+      {
+        path: 'referee',
+        element: <ProtectedRoute requireReferee><RefereeHomePage /></ProtectedRoute>,
+      },
+      {
+        path: 'referee/:tournamentId/:matchId',
+        element: <ProtectedRoute requireReferee><RefereeMatchPage /></ProtectedRoute>,
+      },
 
       /* ---------- The club manager's own screens ---------- */
       { path: 'my-club', element: <MyClubPage /> },
@@ -238,6 +255,7 @@ const router = createBrowserRouter([
         element: <ProtectedRoute requireOrganizer><PlayerPage /></ProtectedRoute>,
       },
       { path: 'calendar', element: <ProtectedRoute requireOrganizer><CalendarPage /></ProtectedRoute> },
+      { path: 'referees', element: <ProtectedRoute requireOrganizer><RefereesPage /></ProtectedRoute> },
 
       /* ---------- The addresses these screens used to have ----------
          Every one of them is in somebody's bookmarks and in every organiser's

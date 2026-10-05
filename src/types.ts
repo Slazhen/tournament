@@ -285,7 +285,29 @@ export type Match = {
    * had to be migrated.
    */
   venueLink?: string
+  /**
+   * A referee's name typed in by hand, from before referees had accounts.
+   *
+   * Still written by the organiser's match screen for a competition that does
+   * not keep a list of referees, and still printed where nobody is appointed.
+   */
   referee?: string
+  /**
+   * Who is appointed to referee this fixture, as ids into the organiser's list
+   * of referees. A permission as much as a fact: whoever holds one of these
+   * positions may enter this match's score, goals and cards. Written only by
+   * `matchService.setReferees`, never by the match PATCH. The admin routes
+   * carry it; the public ones replace it with `refereeNames`.
+   */
+  referees?: { main?: string; assistant1?: string; assistant2?: string }
+  /** The appointed referees by name, as the public routes send them. */
+  refereeNames?: { main?: string; assistant1?: string; assistant2?: string }
+  /**
+   * `referee` when the score was set by the appointed referee and nobody has
+   * changed it since. Absent is the organiser's - every score written before
+   * the mark existed - and the organiser changing the result takes it off.
+   */
+  scoreEnteredBy?: 'referee'
   /**
    * Kick-off, kept apart from the day.
    *
@@ -340,8 +362,8 @@ export type Match = {
     minute?: number
     type: 'goal' | 'penalty' | 'own_goal'
     assistPlayerId?: string
-    /** Which side entered it, and so who may correct it. Not an account id. */
-    enteredBy?: 'organizer' | 'club'
+    /** Who entered it, and so who may correct it. Not an account id. */
+    enteredBy?: 'organizer' | 'club' | 'referee'
     goalNumber?: number // Goal number for this team (1st, 2nd, 3rd goal, etc.)
   }>
   /**
@@ -368,6 +390,8 @@ export type Match = {
     playerId: string
     minute: number
     type: 'yellow' | 'second_yellow' | 'red' | 'blue'
+    /** Absent is the organiser's, which is every card from before referees. */
+    enteredBy?: 'organizer' | 'referee'
   }>
   /**
    * Who played, one side at a time.

@@ -8,6 +8,8 @@ interface ProtectedRouteProps {
   requireSuperAdmin?: boolean
   /** The organiser's area: an organizer or the super admin, never a club manager. */
   requireOrganizer?: boolean
+  /** The referee's own screens: a referee's account and nobody else's. */
+  requireReferee?: boolean
   fallbackPath?: string
 }
 
@@ -15,6 +17,7 @@ export default function ProtectedRoute({
   children,
   requireSuperAdmin = false,
   requireOrganizer = false,
+  requireReferee = false,
   fallbackPath = '/login',
 }: ProtectedRouteProps) {
   const { user, isLoading, isSuperAdmin } = useAuth()
@@ -48,6 +51,10 @@ export default function ProtectedRoute({
   }
 
   if (requireOrganizer && !canOrganize) {
+    return <Navigate to={landingPathFor(user)} replace />
+  }
+
+  if (requireReferee && user.role !== 'referee') {
     return <Navigate to={landingPathFor(user)} replace />
   }
 

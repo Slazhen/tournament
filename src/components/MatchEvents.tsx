@@ -1,12 +1,11 @@
-import { useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Match, Player, Team } from '../types'
-import { uid } from '../utils/uid'
 import { playersNamedInMatch } from '../utils/squads'
-import { playerLabel } from '../utils/players'
+import { byShirtNumber, playerLabel } from '../utils/players'
 import { byMinute, cardLabel, scorerSide, unattributedGoals } from '../utils/matches'
 import type { CardType } from '../utils/matches'
-import type { GoalInput } from '../lib/data'
+import type { CardInput, GoalInput } from '../lib/data'
 import { IconBall, IconCard } from './icons'
 
 type Side = 'home' | 'away'
@@ -62,6 +61,36 @@ function minuteOf(entered: string): number | null {
  * teamsheet while the match is still in mind, so it keeps its minute.
  */
 const minuteGiven = (entered: string) => entered.trim() !== ''
+
+/**
+ * Who the pickers offer on each side, and where an empty one sends the reader.
+ *
+ * The organiser's screen offers the teamsheet and nothing else, and an empty
+ * sheet sends them to the Line-ups tab to fill it in. A referee has no Line-ups
+ * tab and is often the first person to record anything about the match, so
+ * where a side's sheet is empty the referee is offered whoever may be named for
+ * it - the registration, as the server works it out - instead.
+ */
+type Picking = {
+  registered?: { home: string[]; away: string[] }
+  onGoToLineups?: () => void
+}
+
+const PickingContext = createContext<Picking>({})
+
+/** The players a picker offers for one side of this match. */
+function usePlayersFor() {
+  const { registered } = useContext(PickingContext)
+  return (team: Team, match: Match, side: Side, ...keep: string[]): Player[] => {
+    const sheet = playersNamedInMatch(team, match.lineups?.[side], ...keep)
+    const onSheet = (match.lineups?.[side]?.starting ?? []).length > 0
+    if (onSheet || !registered) return sheet
+    const allowed = new Set([...registered[side], ...keep.filter(Boolean)])
+    return (team.players ?? [])
+      .filter((player) => player != null && allowed.has(player.id))
+      .sort(byShirtNumber)
+  }
+}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -148,7 +177,6 @@ function PlayerChoice({
   teamName,
   allowNobody,
   nobodyLabel,
-  onGoToLineups,
 }: {
   label: string
   players: Player[]
@@ -157,8 +185,8 @@ function PlayerChoice({
   teamName: string
   allowNobody?: boolean
   nobodyLabel?: string
-  onGoToLineups: () => void
 }) {
+  const { onGoToLineups } = useContext(PickingContext)
   // The picker is the teamsheet, so an empty one is a sheet nobody has filled
   // in rather than a club with no players. Saying which, and where to fix it,
   // is the whole difference between a screen that is empty and one that is
@@ -167,11 +195,17 @@ function PlayerChoice({
     return (
       <Field label={label}>
         <p className="text-sm opacity-70 leading-relaxed">
-          Nobody is named for {teamName} in this match yet.{' '}
-          <button type="button" onClick={onGoToLineups} className="underline hover:opacity-100">
-            Name the side on the Line-ups tab
-          </button>
-          , then record the event.
+          {onGoToLineups ? (
+            <>
+              Nobody is named for {teamName} in this match yet.{' '}
+              <button type="button" onClick={onGoToLineups} className="underline hover:opacity-100">
+                Name the side on the Line-ups tab
+              </button>
+              , then record the event.
+            </>
+          ) : (
+            <>Nobody is registered for {teamName} in this competition. Ask the organiser.</>
+          )}
         </p>
       </Field>
     )
@@ -192,6 +226,21 @@ function PlayerChoice({
 }
 
 /**
+ * Who entered an event, where it was not the organiser.
+ *
+ * A goal or a card can now come from three places, and the person correcting
+ * one needs to know whose record they are changing before they change it.
+ */
+function AuthorNote({ enteredBy }: { enteredBy?: string }) {
+  if (enteredBy !== 'referee' && enteredBy !== 'club') return null
+  return (
+    <span className="text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-white/15 opacity-60">
+      {enteredBy === 'referee' ? 'Referee' : 'Club'}
+    </span>
+  )
+}
+
+/**
  * Everything a goal is, in one form.
  *
  * The same fields fill in a new goal and correct an existing one, and neither
@@ -206,7 +255,6 @@ function GoalFields({
   homeTeam,
   awayTeam,
   scorerOptional,
-  onGoToLineups,
 }: {
   draft: GoalDraft
   onChange: (draft: GoalDraft) => void
@@ -221,8 +269,8 @@ function GoalFields({
    * goal nobody names is entered from the row that says nobody has named it.
    */
   scorerOptional?: boolean
-  onGoToLineups: () => void
 }) {
+  const playersFor = usePlayersFor()
   // An own goal counts for one side and is put in by a player of the other, so
   // the scorer is picked from the opposite teamsheet.
   const side = scorerSide({ team: draft.team, type: draft.type })
@@ -230,8 +278,8 @@ function GoalFields({
   const assistTeam = draft.team === 'home' ? homeTeam : awayTeam
   const isOwnGoal = draft.type === 'own_goal'
 
-  const scorers = playersNamedInMatch(scorerTeam, match.lineups?.[side], draft.playerId)
-  const assists = playersNamedInMatch(assistTeam, match.lineups?.[draft.team], draft.assistPlayerId)
+  const scorers = playersFor(scorerTeam, match, side, draft.playerId)
+  const assists = playersFor(assistTeam, match, draft.team, draft.assistPlayerId)
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -280,7 +328,6 @@ function GoalFields({
         teamName={scorerTeam.name}
         allowNobody={isOwnGoal || scorerOptional}
         nobodyLabel="Not known"
-        onGoToLineups={onGoToLineups}
       />
       {/* An own goal has no assist, so the field is not offered for one. Nor is
           it offered for a goal with nobody on it: an assist for a goal whose
@@ -295,7 +342,6 @@ function GoalFields({
           teamName={assistTeam.name}
           allowNobody
           nobodyLabel="No assist"
-          onGoToLineups={onGoToLineups}
         />
       )}
     </div>
@@ -308,17 +354,16 @@ function CardFields({
   match,
   homeTeam,
   awayTeam,
-  onGoToLineups,
 }: {
   draft: CardDraft
   onChange: (draft: CardDraft) => void
   match: Match
   homeTeam: Team
   awayTeam: Team
-  onGoToLineups: () => void
 }) {
+  const playersFor = usePlayersFor()
   const team = draft.team === 'home' ? homeTeam : awayTeam
-  const players = playersNamedInMatch(team, match.lineups?.[draft.team], draft.playerId)
+  const players = playersFor(team, match, draft.team, draft.playerId)
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -351,7 +396,6 @@ function CardFields({
         value={draft.playerId}
         onChange={(playerId) => onChange({ ...draft, playerId })}
         teamName={team.name}
-        onGoToLineups={onGoToLineups}
       />
     </div>
   )
@@ -372,21 +416,42 @@ export default function MatchEvents({
   match,
   homeTeam,
   awayTeam,
-  onSave,
   onAddGoal,
   onUpdateGoal,
   onDeleteGoal,
+  onAddCard,
+  onUpdateCard,
+  onDeleteCard,
   onGoToLineups,
+  registered,
+  mayCorrect = () => true,
+  scoreIsMine = true,
 }: {
   match: Match
   homeTeam: Team
   awayTeam: Team
-  /** Cards, which have one author and still travel as a list. */
-  onSave: (updates: Partial<Match>) => void
   onAddGoal: (goal: GoalInput) => Promise<void>
   onUpdateGoal: (goalId: string, goal: GoalInput) => Promise<void>
   onDeleteGoal: (goalId: string) => Promise<void>
-  onGoToLineups: () => void
+  /** Bookings, one at a time: the referee appointed to the match writes them too. */
+  onAddCard: (card: CardInput) => Promise<void>
+  onUpdateCard: (cardId: string, card: CardInput) => Promise<void>
+  onDeleteCard: (cardId: string) => Promise<void>
+  /** Where an empty teamsheet sends the reader. Absent on a screen with no Line-ups tab. */
+  onGoToLineups?: () => void
+  /** Who may be named on each side when its teamsheet is empty. Only the referee's screen sends it. */
+  registered?: { home: string[]; away: string[] }
+  /**
+   * Whether this screen may correct one event. The organiser may correct
+   * anything; a referee only what a referee or a club entered. The server
+   * refuses the rest whatever this says - it only decides which buttons are drawn.
+   */
+  mayCorrect?: (event: { enteredBy?: string }) => boolean
+  /**
+   * Whether a goal the result has no room for raises the score. True for the
+   * organiser, and for a referee while the score is still theirs.
+   */
+  scoreIsMine?: boolean
 }) {
   const [goalDraft, setGoalDraft] = useState<GoalDraft>(EMPTY_GOAL)
   const [cardDraft, setCardDraft] = useState<CardDraft>(EMPTY_CARD)
@@ -490,34 +555,33 @@ export default function MatchEvents({
     if (removed && editingGoal?.id === id) setEditingGoal(null)
   }
 
-  const addCard = () => {
+  const cardBody = (draft: CardDraft, minute: number): CardInput => ({
+    team: draft.team,
+    type: draft.type,
+    minute,
+    playerId: draft.playerId,
+  })
+
+  const addCard = async () => {
     const minute = minuteOf(cardDraft.minute)
     if (minute === null || !cardIsComplete(cardDraft)) return
-    onSave({
-      cards: [
-        ...cards,
-        { id: uid(), team: cardDraft.team, playerId: cardDraft.playerId, minute, type: cardDraft.type },
-      ],
-    })
-    setCardDraft({ ...EMPTY_CARD, team: cardDraft.team })
+    const saved = await write(() => onAddCard(cardBody(cardDraft, minute)), 'That card could not be saved.')
+    if (saved) setCardDraft({ ...EMPTY_CARD, team: cardDraft.team })
   }
 
-  const saveCard = (id: string, draft: CardDraft) => {
+  const saveCard = async (id: string, draft: CardDraft) => {
     const minute = minuteOf(draft.minute)
     if (minute === null || !cardIsComplete(draft)) return
-    onSave({
-      cards: cards.map((card) =>
-        card.id === id
-          ? { ...card, team: draft.team, type: draft.type, minute, playerId: draft.playerId }
-          : card,
-      ),
-    })
-    setEditingCard(null)
+    const saved = await write(
+      () => onUpdateCard(id, cardBody(draft, minute)),
+      'That correction could not be saved.',
+    )
+    if (saved) setEditingCard(null)
   }
 
-  const deleteCard = (id: string) => {
-    onSave({ cards: cards.filter((card) => card.id !== id) })
-    if (editingCard?.id === id) setEditingCard(null)
+  const deleteCard = async (id: string) => {
+    const removed = await write(() => onDeleteCard(id), 'That card could not be removed.')
+    if (removed && editingCard?.id === id) setEditingCard(null)
   }
 
   // Copied before sorting: the array belongs to the record this page is
@@ -538,6 +602,7 @@ export default function MatchEvents({
   }
 
   return (
+    <PickingContext.Provider value={{ registered, onGoToLineups }}>
     <div className="space-y-8">
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -563,7 +628,6 @@ export default function MatchEvents({
             match={match}
             homeTeam={homeTeam}
             awayTeam={awayTeam}
-            onGoToLineups={onGoToLineups}
           />
           <div className="flex items-center gap-4 flex-wrap">
             <button
@@ -577,7 +641,9 @@ export default function MatchEvents({
             <span className="text-sm opacity-60">
               {unnamed.home + unnamed.away > 0
                 ? 'The result already counts this goal, so the score does not change.'
-                : 'This match has no goal left to name, so the score goes up by one.'}
+                : scoreIsMine
+                  ? 'This match has no goal left to name, so the score goes up by one.'
+                  : 'Every goal in this result is named. The organiser set the score, so only they can change it.'}
             </span>
           </div>
         </div>
@@ -607,7 +673,6 @@ export default function MatchEvents({
                       homeTeam={homeTeam}
                       awayTeam={awayTeam}
                       scorerOptional={!goal.playerId}
-                      onGoToLineups={onGoToLineups}
                     />
                     <div className="flex gap-3">
                       <button
@@ -666,6 +731,8 @@ export default function MatchEvents({
                     </span>
                   )}
                   <span className="text-sm opacity-50">{countsFor.name}</span>
+                  <AuthorNote enteredBy={goal.enteredBy} />
+                  {mayCorrect(goal) && (
                   <div className="ml-auto flex items-center gap-3">
                     <button
                       type="button"
@@ -693,6 +760,7 @@ export default function MatchEvents({
                       Delete
                     </button>
                   </div>
+                  )}
                 </div>
               )
             })}
@@ -781,6 +849,12 @@ export default function MatchEvents({
       <section className="space-y-4 pt-6 border-t border-white/10">
         <h3 className="font-semibold text-xl">Cards</h3>
 
+        {error && (
+          <div className="rounded-lg px-4 py-3 text-sm bg-red-500/15 border border-red-400/30">
+            {error}
+          </div>
+        )}
+
         <div className="glass rounded-xl p-5 space-y-4">
           <h4 className="font-semibold">Add a card</h4>
           <CardFields
@@ -789,12 +863,11 @@ export default function MatchEvents({
             match={match}
             homeTeam={homeTeam}
             awayTeam={awayTeam}
-            onGoToLineups={onGoToLineups}
           />
           <button
             type="button"
             onClick={addCard}
-            disabled={!cardIsComplete(cardDraft)}
+            disabled={busy || !cardIsComplete(cardDraft)}
             className="px-4 py-2 rounded-lg glass border border-white/20 hover:bg-white/10 transition-all disabled:opacity-40 disabled:hover:bg-transparent"
           >
             Add card
@@ -824,13 +897,12 @@ export default function MatchEvents({
                       match={match}
                       homeTeam={homeTeam}
                       awayTeam={awayTeam}
-                      onGoToLineups={onGoToLineups}
                     />
                     <div className="flex gap-3">
                       <button
                         type="button"
                         onClick={() => saveCard(card.id, editingCard.draft)}
-                        disabled={!cardIsComplete(editingCard.draft)}
+                        disabled={busy || !cardIsComplete(editingCard.draft)}
                         className="px-4 py-2 rounded-lg glass border border-white/20 hover:bg-white/10 transition-all disabled:opacity-40"
                       >
                         Save
@@ -856,6 +928,8 @@ export default function MatchEvents({
                   </span>
                   <span className="text-sm opacity-70">{cardLabel(card.type)}</span>
                   <span className="text-sm opacity-50">{team.name}</span>
+                  <AuthorNote enteredBy={card.enteredBy} />
+                  {mayCorrect(card) && (
                   <div className="ml-auto flex items-center gap-3">
                     <button
                       type="button"
@@ -882,6 +956,7 @@ export default function MatchEvents({
                       Delete
                     </button>
                   </div>
+                  )}
                 </div>
               )
             })}
@@ -889,5 +964,6 @@ export default function MatchEvents({
         )}
       </section>
     </div>
+    </PickingContext.Provider>
   )
 }

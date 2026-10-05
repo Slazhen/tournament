@@ -1557,7 +1557,7 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
       // And the club still on that side when the write lands, the guard the
       // teamsheet route has carried since a knockout redraw moved a fixture
       // under a permission granted for it.
-      { teamId: team.id, side },
+      { onSide: { teamId: team.id, side } },
     )
 
     await record(user, {
@@ -1613,9 +1613,9 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
         null,
         expectationOf(located.match),
         // And the goal it corrects must still be the club's own when the write
-        // lands — the organiser can have replaced it since it was read.
-        'club',
-        { teamId: team.id, side },
+        // lands — the organiser or the referee can have replaced it since it
+        // was read.
+        { authors: ['club'], onSide: { teamId: team.id, side } },
       )
 
       await record(user, {
@@ -1644,9 +1644,9 @@ export function registerClubRoutes(router: Router<RequestContext>): void {
 
       // The score stays where it is: the goal was counted before anybody named
       // it, and it goes back to being one of the ones nobody has named.
-      await tournaments.removeGoal(params.tournamentId!, params.matchId!, params.goalId!, 'club', {
-        teamId: team.id,
-        side,
+      await tournaments.removeGoal(params.tournamentId!, params.matchId!, params.goalId!, {
+        authors: ['club'],
+        onSide: { teamId: team.id, side },
       })
 
       await record(user, {
@@ -2034,6 +2034,9 @@ function assertClubPlayers(
 /** A goal this club entered itself, which is the only kind it may correct. */
 function assertClubWrote(goal: Record<string, unknown>, side: 'home' | 'away'): void {
   if (goal.team !== side) throw forbidden("That goal belongs to the other club's side of the match")
+  if (goal.enteredBy === 'referee') {
+    throw forbidden('The referee entered that goal. Ask the organiser if it needs changing.')
+  }
   if (goal.enteredBy !== 'club') {
     throw forbidden('The organiser entered that goal. Ask them to change it.')
   }

@@ -10,9 +10,11 @@ export type GoalType = 'goal' | 'penalty' | 'own_goal'
  * public match page and to the opposing club's manager, and an account id on
  * it would be an identifier leaving the API for nothing: the only question
  * anything asks of this field is whether the club may correct its own entry,
- * and the club is already named by the side the goal counts for.
+ * and the club is already named by the side the goal counts for. A referee is
+ * one more author of the same kind: which referee is a question the audit log
+ * answers, and the public page has no business asking it.
  */
-export type GoalAuthor = 'organizer' | 'club'
+export type GoalAuthor = 'organizer' | 'club' | 'referee'
 
 export type StoredGoal = {
   id: string
@@ -243,14 +245,26 @@ export function scoreAfterMoving(
  */
 export type MatchExpectation = {
   goals: number
-  homeGoals?: number
-  awayGoals?: number
+  /**
+   * A number, `undefined` for a field that is not there, or `null` for one that
+   * is there and holds something else - which is what clearing a result through
+   * the match `PATCH` stores. The three are asserted three different ways in
+   * `scoreGuard`, and the third used to be read as the second: a condition of
+   * `attribute_not_exists` against a stored NULL is never true, so every goal on
+   * such a fixture was refused until somebody typed a score into it.
+   */
+  homeGoals?: number | null
+  awayGoals?: number | null
 }
 
 export function expectationOf(match: Record<string, unknown>): MatchExpectation {
   const score = (side: Side) => {
-    const value = match[side === 'home' ? 'homeGoals' : 'awayGoals']
-    return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+    const field = side === 'home' ? 'homeGoals' : 'awayGoals'
+    if (!Object.prototype.hasOwnProperty.call(match, field) || match[field] === undefined) {
+      return undefined
+    }
+    const value = match[field]
+    return typeof value === 'number' && Number.isFinite(value) ? value : null
   }
   return { goals: goalsOf(match).length, homeGoals: score('home'), awayGoals: score('away') }
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { useNavigate, Link, Navigate } from 'react-router-dom'
+import { useNavigate, Link, Navigate, useSearchParams } from 'react-router-dom'
 import {
   IconBall,
 } from '../components/icons'
@@ -13,6 +13,14 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const { login, user, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
+  // Where to go once signed in, when a page sent somebody here to sign in
+  // first - a referee invitation for an address that already has an account.
+  // Only a path on this site: an absolute address here would make the sign-in
+  // page a way to send somebody anywhere.
+  const [searchParams] = useSearchParams()
+  const requested = searchParams.get('next') ?? ''
+  const next =
+    requested.startsWith('/') && !requested.startsWith('//') && !requested.includes('\\') ? requested : ''
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -22,7 +30,7 @@ export default function LoginPage() {
     try {
       const account = await login(loginCredential, password)
       if (account) {
-        navigate(landingPathFor(account))
+        navigate(next || landingPathFor(account))
       } else {
         setError('That email and password do not match an account')
       }
@@ -37,7 +45,7 @@ export default function LoginPage() {
   // sent around is this one, and following it while signed in used to leave a
   // club manager looking at a door they had already come through.
   if (!authLoading && user) {
-    return <Navigate to={landingPathFor(user)} replace />
+    return <Navigate to={next || landingPathFor(user)} replace />
   }
 
   return (
