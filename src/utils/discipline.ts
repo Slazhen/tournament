@@ -363,6 +363,56 @@ export function disciplineOf(tournament: Tournament | null | undefined): Discipl
   return { rules, records, suspensions }
 }
 
+/**
+ * The order a list of records is read in: suspended first, then the players
+ * closest to a ban, then everybody else by how many cards they are carrying.
+ *
+ * The organiser's panel and the public page both sort by it, because the reason
+ * to open either is to find out who cannot play, and two orders for one list
+ * would put a different player at the top of each.
+ */
+export function byUrgency(a: DisciplineRecord, b: DisciplineRecord): number {
+  const out = b.missing.length + b.outstanding - (a.missing.length + a.outstanding)
+  if (out !== 0) return out
+  const left = a.yellowsToNextBan ?? Number.POSITIVE_INFINITY
+  const right = b.yellowsToNextBan ?? Number.POSITIVE_INFINITY
+  if (left !== right) return left - right
+  return b.yellows + b.reds + b.blues - (a.yellows + a.reds + a.blues)
+}
+
+const matchesWord = (n: number): string => (n === 1 ? 'the next match' : `the next ${n} matches`)
+
+/**
+ * The season's rules as sentences a visitor can read, one per rule that costs
+ * anybody anything.
+ *
+ * A suspension printed with no rule beside it reads as the organiser's whim,
+ * and the rules differ from season to season, so the public page says which
+ * ones this season is played by. A rule that costs nothing is left out rather
+ * than printed as "costs no matches".
+ */
+export function describeRules(rules: DisciplineRules): string[] {
+  const lines: string[] = []
+  if (rules.red > 0) lines.push(`A red card rules a player out of ${matchesWord(rules.red)}.`)
+  if (rules.secondYellow > 0) {
+    lines.push(`Two bookings in one match rule a player out of ${matchesWord(rules.secondYellow)}.`)
+  }
+  if (rules.blue > 0) lines.push(`A blue card rules a player out of ${matchesWord(rules.blue)}.`)
+  if (rules.yellowEvery > 0 && rules.yellowSuspension > 0) {
+    lines.push(
+      `Every ${rules.yellowEvery === 1 ? 'yellow card' : `${rules.yellowEvery} yellow cards`} ` +
+        `${rules.yellowEvery === 1 ? 'costs' : 'cost'} ${matchesWord(rules.yellowSuspension)}.`,
+    )
+  }
+  if (rules.blueEvery > 0 && rules.blueSuspension > 0) {
+    lines.push(
+      `Every ${rules.blueEvery === 1 ? 'blue card' : `${rules.blueEvery} blue cards`} ` +
+        `${rules.blueEvery === 1 ? 'costs' : 'cost'} ${matchesWord(rules.blueSuspension)}.`,
+    )
+  }
+  return lines
+}
+
 /** Who is out of one match. Empty for every match of a season that suspends nobody. */
 export function suspendedInMatch(
   tournament: Tournament | null | undefined,

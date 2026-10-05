@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { Player, Team, Tournament } from '../types'
-import { disciplineOf, disciplineIsIdle, type DisciplineRecord } from '../utils/discipline'
+import { byUrgency, disciplineOf, disciplineIsIdle, type DisciplineRecord } from '../utils/discipline'
 import { playerLabel } from '../utils/players'
 import { IconCard } from './icons'
 
@@ -118,17 +118,7 @@ export default function DisciplinePanel({
     )
   }
 
-  // Suspended first, then the players closest to one, then everybody else by
-  // how many cards they are carrying: the reason to open this panel is to find
-  // out who cannot play.
-  const byUrgency = [...records].sort((a, b) => {
-    const out = b.missing.length + b.outstanding - (a.missing.length + a.outstanding)
-    if (out !== 0) return out
-    const left = a.yellowsToNextBan ?? Number.POSITIVE_INFINITY
-    const right = b.yellowsToNextBan ?? Number.POSITIVE_INFINITY
-    if (left !== right) return left - right
-    return b.yellows + b.reds + b.blues - (a.yellows + a.reds + a.blues)
-  })
+  const sorted = [...records].sort(byUrgency)
 
   const clubName = (teamId: string) =>
     teams.find((team) => team.id === teamId)?.name ?? 'Unknown club'
@@ -143,7 +133,7 @@ export default function DisciplinePanel({
       </div>
 
       <ul className="divide-y divide-white/10">
-        {byUrgency.map((record) => (
+        {sorted.map((record) => (
           <li
             key={`${record.teamId}:${record.playerId}`}
             className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2"

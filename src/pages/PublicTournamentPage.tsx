@@ -21,7 +21,9 @@ import {
   tierAtPlace,
 } from '../utils/standings'
 import type { PlayoffCut, PlayoffTier, TierMark } from '../utils/standings'
-import { IconTrophy } from '../components/icons'
+import { IconCard, IconTrophy } from '../components/icons'
+import { byUrgency, describeRules, disciplineOf } from '../utils/discipline'
+import type { DisciplineRecord } from '../utils/discipline'
 import { DeductionMark, DeductionNote, deductionsInTable } from '../components/PointDeductions'
 import PublicHeader from '../components/PublicHeader'
 import { competitionColor, headerColor, inkOn, luminance, shade, translucent } from '../utils/crest'
@@ -732,6 +734,7 @@ export default function PublicTournamentPage() {
     ...(hasPlayoffBracket ? [{ id: 'playoffs', label: 'Playoffs' }] : []),
     { id: 'fixtures', label: 'Fixtures' },
     { id: 'stats', label: 'Stats' },
+    { id: 'discipline', label: 'Discipline' },
   ]
 
   return (
@@ -1544,6 +1547,8 @@ export default function PublicTournamentPage() {
           </div>
         </div>
 
+        <PublicDiscipline tournament={tournament} teams={teams} />
+
         {/* ---------- The competition's other seasons ---------- */}
         {otherSeasons.length > 0 && (
           <div className="mb-12 border-t border-white/5 pt-10">
@@ -2221,4 +2226,179 @@ function ClubBadge({ team, fallback }: { team: any; fallback: string }) {
       className="w-9 h-9 sm:w-11 sm:h-11 shrink-0 rounded-full object-cover border border-white/25"
     />
   )
+}
+
+/**
+ * Who has been booked in this season, and who that rules out.
+ *
+ * Everything is derived from the cards on the published fixtures and the
+ * season's own rules (`disciplineOf`), exactly as the organiser's panel is, so
+ * the two cannot disagree about who is suspended.
+ *
+ * One thing the public answer cannot know is which match a ban is served in
+ * when the organiser is holding rounds back: a withheld fixture arrives with no
+ * clubs on it, so it serves nobody's ban here. That is why a suspension is
+ * printed as a count of matches and never as a named fixture, and why a ban the
+ * visible fixtures cannot hold is folded into the same count rather than called
+ * "no fixture left to serve it" - on this page that is often simply a round the
+ * public cannot see yet.
+ */
+function PublicDiscipline({ tournament, teams }: { tournament: any; teams: any[] }) {
+  const [showAll, setShowAll] = useState(false)
+  const { records, rules } = useMemo(() => disciplineOf(tournament), [tournament])
+
+  const sorted = [...records].sort(byUrgency)
+  const visible = showAll ? sorted : sorted.slice(0, 10)
+  const rulesText = describeRules(rules)
+  // Most competitions never show a blue card, and a column of noughts on every
+  // row is a fact about nothing - the same rule the match statistics follow.
+  const showBlue = records.some((record) => record.blues > 0)
+
+  const lookup = (record: DisciplineRecord) => {
+    const team = teams.find((candidate: any) => candidate.id === record.teamId)
+    const player = (team?.players || []).find(
+      (candidate: any) => candidate && candidate.id === record.playerId,
+    )
+    return { team, player }
+  }
+
+  const cell = 'py-2 px-1 sm:px-4 text-center text-white font-medium text-xs sm:text-base'
+  const head = 'py-2 px-1 sm:px-4 text-white font-semibold text-xs sm:text-base'
+
+  return (
+    <div id="discipline" className="mb-12 scroll-mt-20">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+          Discipline
+        </h2>
+      </div>
+
+      <div className="glass rounded-2xl p-4 sm:p-8 shadow-2xl border border-white/20 space-y-4">
+        {records.length === 0 ? (
+          <p className="text-center text-gray-300 py-6">
+            No cards have been recorded in this competition yet.
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs sm:text-base">
+                <thead>
+                  <tr className="border-b border-white/20">
+                    <th className={`${head} text-left`}>Player</th>
+                    <th className={`${head} text-left`}>Club</th>
+                    <th className={`${head} text-center`} title="Yellow cards">
+                      <IconCard size={16} variant="yellow" className="inline-block" />
+                    </th>
+                    <th className={`${head} text-center`} title="Sent off for two bookings">
+                      <IconCard size={16} variant="second_yellow" className="inline-block" />
+                    </th>
+                    <th className={`${head} text-center`} title="Red cards">
+                      <IconCard size={16} variant="red" className="inline-block" />
+                    </th>
+                    {showBlue && (
+                      <th className={`${head} text-center`} title="Blue cards">
+                        <IconCard size={16} variant="blue" className="inline-block" />
+                      </th>
+                    )}
+                    <th className={`${head} text-left`}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((record) => {
+                    const { team, player } = lookup(record)
+                    const out = record.missing.length + record.outstanding
+                    return (
+                      <tr
+                        key={`${record.teamId}:${record.playerId}`}
+                        className={`border-b border-white/10 transition-colors ${
+                          out > 0 ? 'bg-red-500/5 hover:bg-red-500/10' : 'hover:bg-white/5'
+                        }`}
+                      >
+                        <td className="py-2 px-1 sm:px-4 text-white font-semibold text-xs sm:text-base">
+                          {player ? (
+                            <Link
+                              to={`/public/players/${player.id}`}
+                              className="hover:text-blue-300 transition-colors"
+                            >
+                              {player.firstName} {player.lastName}
+                            </Link>
+                          ) : (
+                            // Same answer the scorer table gives: cards from the
+                            // browser-side era can name a player no squad holds.
+                            <span className="text-gray-300">Former player</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-1 sm:px-4 text-white text-xs sm:text-base">
+                          {team ? (
+                            <Link
+                              to={publicTeamUrl(team.id, tournament.id)}
+                              className="hover:text-blue-300 transition-colors"
+                            >
+                              {team.name}
+                            </Link>
+                          ) : (
+                            'Unknown club'
+                          )}
+                        </td>
+                        <td className={cell}>{record.yellows || <span className="text-gray-500">0</span>}</td>
+                        <td className={cell}>{record.secondYellows || <span className="text-gray-500">0</span>}</td>
+                        <td className={cell}>{record.reds || <span className="text-gray-500">0</span>}</td>
+                        {showBlue && (
+                          <td className={cell}>{record.blues || <span className="text-gray-500">0</span>}</td>
+                        )}
+                        <td className="py-2 px-1 sm:px-4 text-xs sm:text-sm">
+                          <DisciplineStatus record={record} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {sorted.length > 10 && (
+              <div className="text-center">
+                <button
+                  onClick={() => setShowAll(!showAll)}
+                  className="px-4 py-2 rounded-lg text-xs sm:text-sm font-medium bg-white/5 text-gray-300 hover:bg-white/10 border border-white/20 transition-all"
+                >
+                  {showAll ? 'Show top 10' : `Show all ${sorted.length}`}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        <p className="text-xs sm:text-sm text-gray-400 border-t border-white/10 pt-4">
+          {rulesText.length > 0
+            ? rulesText.join(' ')
+            : 'No card suspends anybody in this competition.'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function DisciplineStatus({ record }: { record: DisciplineRecord }) {
+  const out = record.missing.length + record.outstanding
+  if (out > 0) {
+    const reason = record.missing[0]?.reason
+    return (
+      <span className="text-red-300">
+        Suspended for {out === 1 ? 'the next match' : `the next ${out} matches`}
+        {reason && <span className="text-gray-400"> - {reason}</span>}
+      </span>
+    )
+  }
+
+  if (typeof record.yellowsToNextBan === 'number' && record.yellowsToNextBan > 0) {
+    return (
+      <span className="text-amber-300/90">
+        {record.yellowsToNextBan === 1
+          ? 'One booking from a suspension'
+          : `${record.yellowsToNextBan} bookings from a suspension`}
+      </span>
+    )
+  }
+
+  return <span className="text-gray-400">Available</span>
 }
