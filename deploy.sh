@@ -72,7 +72,10 @@ if [[ "${SKIP_PUSH:-0}" != "1" ]]; then
         echo "Stopped. Nothing was built, deployed or committed."
         exit 1
       fi
-    elif [[ "${DEPLOY_ALL:-0}" != "1" ]]; then
+    # Naming the paths is the deliberate answer too: the guard exists so that
+    # somebody else's unfinished change does not ride along unseen, and a list
+    # of paths written out by hand is exactly that decision made in advance.
+    elif [[ "${DEPLOY_ALL:-0}" != "1" && -z "${ONLY:-}" ]]; then
       cat >&2 <<'EOF'
 
 This shell has no terminal to ask at, and the list above is everything the
