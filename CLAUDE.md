@@ -1783,7 +1783,59 @@ round: a row whose player cannot be found still counts, under "Former player".
   `typeof === 'number'`. `!== undefined` counts an unplayed fixture and produces
   `NaN` in the table.
 
+
+## Working here as an agent
+
+This section is for an agent running in this folder with a shell (Claude Code).
+It replaces the instructions that used to live in a claude.ai project, written
+for a sandbox that could not build or test anything.
+
+**Deploying is Igor's.** Never run `./deploy.sh`, `sam deploy` or `git push`;
+`.claude/settings.json` denies them, and the deny list is a guard rail, not the
+reason. A finished change ends with the exact `./deploy.sh "message"` command
+for him to run. Committing locally is fine; say what was committed.
+
+**Done means checked.** Before calling a change finished:
+
+- `npx tsc -p tsconfig.app.json --noEmit` for the site and
+  `cd server && npx tsc --noEmit` for the API, and fix what they report;
+- the API tests, the way `deploy.sh` runs them;
+- for anything touched on the server, a review of its authorization boundaries
+  by a fresh subagent rather than your own reread. The last such review found
+  eight real holes in code that had already type-checked and looked right;
+- a new environment variable is in `server/tests/setup-env.ts` as well as
+  `template.yaml` (see Traps). Two deploys in a row shipped one that was not.
+
+Say plainly what was not covered. A summary that reads as complete when it is
+not costs more than the gap it hides.
+
+**Look at the live system before reasoning from the code.** The app is live
+with real data: when behaviour is in question, read what the deployed API, the
+audit log and the record in DynamoDB actually say. Several fixes here were wrong
+until the live data corrected them. Reading production is routine; anything that
+writes to it — a script in `server/scripts/`, an `aws dynamodb` write — is asked
+for first, every time.
+
+**Decisions with more than one defensible answer are Igor's.** Where state
+lives, what a default means, who may do something: put the options and their
+consequences to him and let him choose. Do not silently pick and build.
+
+Push back when something looks wrong, including on decisions already made.
+Prefer the smallest change that is actually correct; when a fix is a patch over
+a design problem, say so and name the design problem.
+
+**Specs live in `docs/`.** `docs/tournament-creation-redesign.md` is the current
+one: the create-screen and table-rules work, with what is done and what is next.
+Keep its "Порядок работ" section true as items land.
+
+**Keeping this file current.** One conversation per task. When a decision, a
+convention or a trap turns out to be worth remembering, propose the edit to this
+file in the same batch as the code it came from.
+
+
 ## Running and shipping
+
+
 
 `./deploy.sh "what changed"` is the only way this goes out. It type-checks the
 site, builds it, refuses to ship a bundle containing anything that looks like a

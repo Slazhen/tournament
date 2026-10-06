@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(./deploy.sh:*)",
+      "Bash(bash deploy.sh:*)",
+      "Bash(sh deploy.sh:*)",
+      "Bash(sam deploy:*)",
+      "Bash(git push:*)"
+    ],
+    "ask": [
+      "Bash(node server/scripts/:*)",
+      "Bash(node scripts/:*)",
+      "Bash(aws dynamodb put-item:*)",
+      "Bash(aws dynamodb update-item:*)",
+      "Bash(aws dynamodb delete-item:*)",
+      "Bash(aws dynamodb batch-write-item:*)",
+      "Bash(aws dynamodb transact-write-items:*)",
+      "Bash(aws s3 rm:*)",
+      "Bash(aws s3 cp:*)",
+      "Bash(aws s3 mv:*)",
+      "Bash(aws s3 sync:*)",
+      "Bash(aws lambda:*)",
+      "Bash(aws cloudformation:*)"
+    ]
+  }
+}
