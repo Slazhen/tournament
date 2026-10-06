@@ -24,6 +24,14 @@ export type AuthUser = {
    * a scan; the two are only ever written together, by linkManagerToTeam.
    */
   teamIds?: string[]
+  /**
+   * When this account started helping run its organiser, written by every
+   * helper claim. Absent on an organiser's own first login. It is what tells
+   * a club the account ran before it was an organiser (an invitation, theirs
+   * to keep) from one it linked itself to as an organiser (granted by owning
+   * the club) — `grantedByOrganizer` in `lib/organizer-helpers.ts`.
+   */
+  organizerSince?: string
   createdAt: string
   lastLogin?: string
   isActive: boolean
@@ -65,6 +73,14 @@ export type Organizer = {
    * competition; typed as unknown because it is only ever read through there.
    */
   referees?: unknown
+  /**
+   * Which of the accounts carrying this organizerId is in charge of the
+   * others: invites and removes helpers, owns this record. Absent means the
+   * oldest of them, which is every organiser from before helpers existed;
+   * `ownerOf` in `lib/organizer-helpers.ts` is the only reader. An account id,
+   * so it never leaves a public route: those build the organiser field by field.
+   */
+  ownerUserId?: string
 }
 
 export type Team = {

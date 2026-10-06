@@ -17,7 +17,7 @@ import { generateToken } from './passwords.js'
  * one.
  */
 
-export type InviteKind = 'team' | 'organizer' | 'referee'
+export type InviteKind = 'team' | 'organizer' | 'organizer_helper' | 'referee'
 
 /** What every invitation carries, whatever it invites somebody to. */
 export type InviteBase = {

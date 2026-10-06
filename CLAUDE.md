@@ -967,10 +967,64 @@ page honours `?next=` for exactly this). The link is written before the account
 and undone if the account write fails. Deleting an account unlinks its referee
 records.
 
-Still open: an account cannot be a referee and something else. The club claim
+Still open: an account cannot be a referee and something else - and so a
+referee cannot also help run an organiser. The club claim
 (`/auth/claim`) has no role check, so a referee's account can accept a club
 invitation and run a club while the bar offers it only "My matches"; nothing
 refuses that yet.
+
+**An organiser is run by several accounts, and one of them owns it.** A helper
+is another account with `role: 'organizer'` and the same `organizerId`, so every
+route behind `assertCanAccessOrganizer` admits them with no change: helpers do
+everything the owner does with competitions, clubs, results and referees,
+deleting seasons included (decided with the product owner, October 2026). What
+they do not share is who comes and goes and the organiser's own record:
+inviting and removing helpers, handing the organiser on
+(`PUT /admin/organizers/:id/owner`) and `PATCH /admin/organizers/:id` (its name
+is its public address) are the owner's or the super admin's
+(`assertOrganizerOwner`, `assertMayEditOrganizerRecord`). The rules are in
+`lib/organizer-helpers.ts`, the writes in `repos-organizer-helpers.ts`, the
+routes in `routes/organizer-helpers.ts`; the screens are `/helpers` and
+`/join-helper`.
+
+The owner is `organizer.ownerUserId` while it names a live member, else the
+longest-serving one by `organizerSince ?? createdAt` (`ownerOf`). Not by
+`createdAt` alone: a coach who joins brings an older account, and that order
+made them owner the moment they arrived. The first helper invitation pins
+`ownerUserId` (compare-and-swap) before anybody can join, so the fallback only
+matters once the named owner is gone.
+
+A helper invitation is `kind: 'organizer_helper'`, bound to an address, one
+live link per address, five helpers at most with open links counted. What
+taking it up does depends on what is on the address (`helperClaimMode`):
+nothing - an organiser's account is opened; a live club manager - after signing
+in, the account becomes an organiser's and keeps its clubs; this organiser's
+removed helper - the account is switched back on with the password it already
+had and no session. Never a password chosen at the link: the owner holds the
+link too and could sign in as the person they removed. Refused: referees (an
+account has one role, so an organiser who referees needs a second address),
+another organiser's account, a live member, a super admin.
+
+Removing a helper (never the owner - hand the organiser on first) deletes the
+open invitations they wrote for this organiser, except a club head's own links,
+and takes them off this organiser's clubs they had put themselves on as its
+organiser. Then an account that still runs clubs becomes `team_manager` with
+no `organizerId`; one that does not is switched off (`isActive: false`, sessions
+deleted, `organizerId` kept so this organiser can bring it back). Never
+deleted: the audit log names authors by account id.
+
+Which club links an organiser account holds *by owning the club* is
+`grantedByOrganizer`: on a helper, a link dated at or after `organizerSince`;
+on an organiser's first login (no `organizerSince`), any link, as before.
+`unlinkOwnerManagers` goes by it, so a coach-helper keeps their own club when it
+moves away or the organiser is deleted - and deleting an organiser now demotes
+an account that still runs clubs instead of deleting it.
+
+Still open: the owner sees every link they issue, so a `new`-mode link can be
+taken up by the owner on somebody else's address - the same property the
+organiser's and the club's invitations have. And whatever a helper hands out
+before removal - a club given to an address they control, a referee account -
+outlives them.
 
 **The match `PATCH` writes the fields it was sent, not the fixture.** It used to
 `SET` the whole fixture from its own read, so a goal, card, teamsheet or
@@ -1077,8 +1131,8 @@ blank screen. Two things follow. Any one-segment address now lands there, so
 the page has to answer 404 itself for a slug that names nobody. And a static
 route ranks above `/:orgSlug`, so an organiser whose name slugifies to
 `teams`, `login`, `start`, `dashboard`, `tournaments`, `calendar`,
-`organizers`, `changes`, `join`, `join-organizer`, `join-referee`, `referee`,
-`referees`, `public`, `admin` or `my-club` would have an
+`organizers`, `changes`, `join`, `join-organizer`, `join-referee`,
+`join-helper`, `referee`, `referees`, `helpers`, `public`, `admin` or `my-club` would have an
 unreachable page — nothing refuses such a name yet.
 
 **There is no self-serve sign-up, and the landing page says so.** An

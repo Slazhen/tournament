@@ -9,6 +9,7 @@ import { registerAdminRoutes } from './routes/admin.js'
 import { registerUploadRoutes } from './routes/uploads.js'
 import { registerClubRoutes } from './routes/clubs.js'
 import { registerRefereeRoutes } from './routes/referees.js'
+import { registerOrganizerHelperRoutes } from './routes/organizer-helpers.js'
 import type { RequestContext } from './context.js'
 
 const router = new Router<RequestContext>()
@@ -18,6 +19,7 @@ registerAdminRoutes(router)
 registerUploadRoutes(router)
 registerClubRoutes(router)
 registerRefereeRoutes(router)
+registerOrganizerHelperRoutes(router)
 
 export { router }
 

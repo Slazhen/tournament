@@ -15,7 +15,10 @@ import {
   generateSalt,
   hashPassword,
 } from '../lib/passwords.js'
-import { createSession, deleteAllUserSessions } from '../lib/sessions.js'
+import { createSession, deleteAllUserSessions, getUserById } from '../lib/sessions.js'
+import { revocationOf } from '../lib/organizer-helpers.js'
+import { revokeHelper } from '../repos-organizer-helpers.js'
+import { assertMayEditOrganizerRecord } from './organizer-helpers.js'
 import { toPublicUser, type AuthUser, type Team } from '../lib/types.js'
 import { organizers, teams, toSummary, tournaments } from '../repos.js'
 import {
@@ -967,7 +970,9 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
 
   router.patch('/admin/organizers/:id', async (ctx, params) => {
     const user = await ctx.user()
-    assertCanAccessOrganizer(user, params.id!)
+    // The owner's, not every helper's: the name is the organiser's public
+    // address, and renaming it moves every link to its competitions.
+    await assertMayEditOrganizerRecord(user, params.id!)
     const existing = await organizers.get(params.id!)
     if (!existing) throw notFound('Organizer not found')
     await organizers.update(params.id!, pick(ctx.body, ORGANIZER_FIELDS))
@@ -1081,7 +1086,19 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     const accounts = (await accountsOfOrganizer(id)).filter(
       (account) => account.role !== 'super_admin' && account.id !== actor.id,
     )
+    //
+    // Except that an account which still runs clubs once this organiser's own
+    // are unlinked above stays, as the club manager it also is. A helper can be
+    // a coach who took the invitation up with their own login, and deleting
+    // the organiser must not delete their club's manager with it. Read again
+    // whole, because the unlinking above has just changed `teamIds`.
+    let accountsKept = 0
     for (const account of accounts) {
+      const fresh = await getUserById(account.id)
+      if (fresh && revocationOf(fresh) === 'demote' && (await revokeHelper(fresh.id, id, 'demote'))) {
+        accountsKept += 1
+        continue
+      }
       await deleteAllUserSessions(account.id)
       await ddb.send(new DeleteCommand({ TableName: TABLES.AUTH_USERS, Key: { id: account.id } }))
     }
@@ -1098,7 +1115,8 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       // finding out where they are.
       summary:
         `Deleted ${organizer.name}: ${ownTournaments.length} ${ownTournaments.length === 1 ? 'competition' : 'competitions'}` +
-        `, ${accounts.length} ${accounts.length === 1 ? 'login' : 'logins'}` +
+        `, ${accounts.length - accountsKept} ${accounts.length - accountsKept === 1 ? 'login' : 'logins'}` +
+        (accountsKept > 0 ? `, ${accountsKept} kept as club managers` : '') +
         `, ${invitesDeleted} ${invitesDeleted === 1 ? 'invitation' : 'invitations'}` +
         (ownTeams.length > 0 ? `, ${ownTeams.length} clubs moved to ${teamsTo}` : ''),
       organizerId: id,
@@ -1108,7 +1126,8 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
       ok: true,
       tournamentsDeleted: ownTournaments.length,
       teamsMoved: ownTeams.length,
-      accountsDeleted: accounts.length,
+      accountsDeleted: accounts.length - accountsKept,
+      accountsKept,
       invitesDeleted,
     }
   })

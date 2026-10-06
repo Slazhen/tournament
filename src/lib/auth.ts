@@ -276,6 +276,27 @@ export async function claimOrganizer(input: {
 }
 
 /**
+ * Takes up an invitation to help run an organiser.
+ *
+ * Signed in, it turns the club manager's account that is here into an
+ * organiser's, keeping its clubs. Signed out, it opens an account on the
+ * invited address and signs the browser into it, or brings back a removed
+ * helper's account without signing anybody in (`reactivated`). Which of these happens is the server's decision, not the page's.
+ */
+export async function claimHelper(input: {
+  token: string
+  password?: string
+  displayName?: string
+}): Promise<{ user?: AuthUser; reactivated?: boolean }> {
+  const result = await api.post<{ user?: AuthUser; token?: string; reactivated?: boolean }>(
+    '/auth/claim-helper',
+    input,
+  )
+  if (result.token) setToken(result.token)
+  return { user: result.user, reactivated: result.reactivated }
+}
+
+/**
  * Where an account belongs the moment it signs in.
  *
  * Everybody used to land on the organiser's panel, including a club manager,

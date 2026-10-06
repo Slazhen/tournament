@@ -15,6 +15,7 @@ const ORGANIZER_NAV_ITEMS = [
   { to: '/teams', label: 'Teams' },
   { to: '/calendar', label: 'Calendar' },
   { to: '/referees', label: 'Referees' },
+  { to: '/helpers', label: 'Helpers' },
 ]
 
 // A referee's account has one screen of its own, the matches it is appointed to.

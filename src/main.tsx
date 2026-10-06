@@ -64,6 +64,8 @@ const ClaimTeamPage = lazyPage(() => import('./pages/ClaimTeamPage.tsx'))
 const ClaimOrganizerPage = lazyPage(() => import('./pages/ClaimOrganizerPage.tsx'))
 const ClaimRefereePage = lazyPage(() => import('./pages/ClaimRefereePage.tsx'))
 const RefereesPage = lazyPage(() => import('./pages/RefereesPage.tsx'))
+const HelpersPage = lazyPage(() => import('./pages/HelpersPage.tsx'))
+const ClaimHelperPage = lazyPage(() => import('./pages/ClaimHelperPage.tsx'))
 const RefereeHomePage = lazyPage(() => import('./pages/RefereeHomePage.tsx'))
 const RefereeMatchPage = lazyPage(() => import('./pages/RefereeMatchPage.tsx'))
 const MyClubPage = lazyPage(() => import('./pages/MyClubPage.tsx'))
@@ -154,6 +156,10 @@ const router = createBrowserRouter([
       // And for a referee. It reads who is signed in, because a referee who
       // already has an account takes the invitation up with it.
       { path: 'join-referee', element: <ClaimRefereePage /> },
+      // And for somebody invited to help run an organiser. Not join-organizer:
+      // that link opens an organiser's first login and nothing else, while this
+      // one may change an account that already exists.
+      { path: 'join-helper', element: <ClaimHelperPage /> },
 
       /* ---------- The referee's own screens ---------- */
       {
@@ -256,6 +262,7 @@ const router = createBrowserRouter([
       },
       { path: 'calendar', element: <ProtectedRoute requireOrganizer><CalendarPage /></ProtectedRoute> },
       { path: 'referees', element: <ProtectedRoute requireOrganizer><RefereesPage /></ProtectedRoute> },
+      { path: 'helpers', element: <ProtectedRoute requireOrganizer><HelpersPage /></ProtectedRoute> },
 
       /* ---------- The addresses these screens used to have ----------
          Every one of them is in somebody's bookmarks and in every organiser's

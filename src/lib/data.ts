@@ -125,6 +125,71 @@ export type RefereeMatch = {
 const matchPath = (prefix: string, tournamentId: string, matchId: string) =>
   `${prefix}/tournaments/${encodeURIComponent(tournamentId)}/matches/${encodeURIComponent(matchId)}`
 
+/** One account that runs an organiser, as its members see each other. */
+export type OrganizerMember = {
+  id: string
+  email: string
+  displayName?: string
+  isOwner: boolean
+  isYou: boolean
+  lastLogin?: string
+  /** Whether removing them leaves a club manager behind rather than a switched-off login. */
+  runsClubs: boolean
+}
+
+export type OrganizerHelpers = {
+  members: OrganizerMember[]
+  /** Open invitations. Empty for anybody but the owner and the super admin. */
+  invites: Array<{ email: string; expiresAt: string }>
+  /** Whether the reader may invite, remove and hand over. */
+  mayManage: boolean
+  maxHelpers: number
+}
+
+export type HelperInviteIssued = {
+  link: string
+  expiresAt: string
+  emailed: boolean
+  email: string
+}
+
+export type HelperInvitePreview = {
+  organizerName: string
+  email: string
+  expiresAt: string
+  /**
+   * What the link does to the address: open an account, change the club
+   * manager's account that is there (after signing in), or bring back a
+   * removed helper with a new password. Absent when `refused` says why it
+   * cannot be used at all.
+   */
+  mode?: 'new' | 'signin' | 'reactivate'
+  refused?: string
+}
+
+const organizerPath = (organizerId: string) => `/admin/organizers/${encodeURIComponent(organizerId)}`
+
+export const helperService = {
+  async list(organizerId: string): Promise<OrganizerHelpers> {
+    return api.get(`${organizerPath(organizerId)}/helpers`)
+  },
+  async invite(organizerId: string, email: string): Promise<HelperInviteIssued> {
+    return api.post(`${organizerPath(organizerId)}/helper-invites`, { email })
+  },
+  async cancelInvite(organizerId: string, email: string): Promise<void> {
+    await api.delete(`${organizerPath(organizerId)}/helper-invites?email=${encodeURIComponent(email)}`)
+  },
+  async remove(organizerId: string, userId: string): Promise<{ kept: 'clubs' | null }> {
+    return api.delete(`${organizerPath(organizerId)}/helpers/${encodeURIComponent(userId)}`)
+  },
+  async makeOwner(organizerId: string, userId: string): Promise<void> {
+    await api.put(`${organizerPath(organizerId)}/owner`, { userId })
+  },
+  async previewInvite(token: string): Promise<HelperInvitePreview> {
+    return api.get(`/auth/helper-invites/${encodeURIComponent(token)}`)
+  },
+}
+
 export const refereeService = {
   /* The organiser's list. */
   async list(organizerId: string): Promise<RefereeRecord[]> {

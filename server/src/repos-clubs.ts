@@ -19,6 +19,7 @@ import { generateId } from './lib/passwords.js'
 import { notFound } from './lib/http.js'
 import type { Condition } from './lib/club-managers.js'
 import { getUserById } from './lib/sessions.js'
+import { grantedByOrganizer } from './lib/organizer-helpers.js'
 import type { AuthUser, Team } from './lib/types.js'
 
 /**
@@ -339,12 +340,17 @@ async function clearStaleHead(teamId: string, userId: string): Promise<void> {
 export async function unlinkOwnerManagers(team: Team, previousOrganizerId: string): Promise<void> {
   for (const managerId of team.managerUserIds ?? []) {
     const account = await getUserById(managerId)
-    // Only an organizer's own account carries an organizerId, so an invited
-    // coach never matches this and is left alone.
+    // Only an organizer's accounts carry an organizerId, so an invited coach
+    // never matches this and is left alone - unless the coach has since
+    // become one of the organizer's helpers, which the check below sorts out.
     if (!account?.organizerId || account.organizerId !== previousOrganizerId) continue
     // A super admin carrying an organizerId is a mistake in the data, not an
     // organizer, and their link was not granted by owning the club.
     if (account.role === 'super_admin') continue
+    // A helper who ran this club before joining the organiser came by the link
+    // through an invitation, and keeps it. `team` is the record before the
+    // move, which still names the organiser being left.
+    if (!grantedByOrganizer({ ...team, organizerId: previousOrganizerId }, account, previousOrganizerId)) continue
     await unlinkManagerFromTeam(managerId, team)
   }
 }

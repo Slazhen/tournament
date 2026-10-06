@@ -215,6 +215,68 @@ export async function sendOrganizerInvite(
 }
 
 /**
+ * The invitation to help run an organiser, sent by its owner.
+ *
+ * Sent from the product's address although an organiser, not the super admin,
+ * chooses where it goes. A club's head manager gets no such mail for exactly
+ * that reason; an organiser is somebody the super admin set up by hand, and
+ * `MAX_HELPERS` bounds how many addresses one of them can reach at a time.
+ */
+export async function sendHelperInvite(
+  to: string,
+  organizerName: string,
+  link: string,
+): Promise<MailResult> {
+  if (!ses || !MAIL_FROM) return { sent: false, reason: 'email is not configured' }
+
+  const text = [
+    `You have been invited to help run ${organizerName} on MFTournament.`,
+    '',
+    'Open this link to accept:',
+    link,
+    '',
+    'You will be able to do everything the organiser does with competitions, clubs,',
+    'fixtures and results. The link works once and lasts a fortnight.',
+    '',
+    SITE_URL,
+  ].join('\n')
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.55;color:#0B1120">
+      <p>You have been invited to help run <strong>${escapeHtml(organizerName)}</strong> on MFTournament.</p>
+      <p>
+        <a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#4F46E5;color:#fff;text-decoration:none;font-weight:600">
+          Accept the invitation
+        </a>
+      </p>
+      <p style="color:#475569;font-size:14px">
+        You will be able to do everything the organiser does with competitions, clubs, fixtures
+        and results. The link works once and lasts a fortnight.
+      </p>
+      <p style="color:#94A3B8;font-size:12px">${SITE_URL}</p>
+    </div>`
+
+  try {
+    await ses.send(
+      new SendEmailCommand({
+        FromEmailAddress: MAIL_FROM,
+        Destination: { ToAddresses: [to] },
+        Content: {
+          Simple: {
+            Subject: { Data: oneLine(`You have been invited to help run ${organizerName}`) },
+            Body: { Text: { Data: text }, Html: { Data: html } },
+          },
+        },
+      }),
+    )
+    return { sent: true }
+  } catch (error) {
+    console.error('Helper invitation email failed', error)
+    return { sent: false, reason: (error as Error).message }
+  }
+}
+
+/**
  * The invitation to referee for an organiser.
  *
  * Bound to the address it is sent to, like an organiser's: the account it
