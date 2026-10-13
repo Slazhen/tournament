@@ -1048,7 +1048,9 @@ export default function PublicTournamentPage() {
               // already knocked out are absent for good, not for a week.
               // Nobody is resting in a round nobody may read: every club is
               // missing from it, so the note would name all of them.
-              const resting = matches.some((match) => match.hidden)
+              // Nor in a round some of whose fixtures were left out because
+              // their clubs are not known yet: those clubs are playing.
+              const resting = round.partial || matches.some((match) => match.hidden)
                 ? ''
                 : restingNote(playoffSurvivors[roundIndex] || [], matches, teams)
               const day = matches.find((match) => match.dateISO)

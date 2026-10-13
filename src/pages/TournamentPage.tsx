@@ -331,6 +331,34 @@ export default function TournamentPage() {
     return leagueMatches.length > 0 && leagueMatches.every(m => m.homeGoals != null && m.awayGoals != null)
   }, [tournament])
 
+  /**
+   * Whether some playoff fixture is missing from the public page. The server
+   * decides it (`playoffUnpublished` in `server/src/lib/rounds.ts`) and this is
+   * the same rule, so the organiser is told why: an unplayed playoff fixture is
+   * left out until every regular fixture has a score (a bye and a cancelled one
+   * are not waited for, a postponed one is) and both its clubs are known.
+   */
+  const playoffsHeldBack = useMemo(() => {
+    if (!tournament) return false
+    const clubs = new Set(tournament.teamIds)
+    const leagueUnfinished = tournament.matches.some(
+      (m) =>
+        !m.isPlayoff &&
+        m.status !== 'cancelled' &&
+        !(m.homeTeamId && m.homeTeamId === m.awayTeamId) &&
+        !(typeof m.homeGoals === 'number' && typeof m.awayGoals === 'number'),
+    )
+    const playoffs: { homeTeamId?: string; awayTeamId?: string; homeGoals?: number; awayGoals?: number }[] = [
+      ...tournament.matches.filter((m) => m.isPlayoff),
+      ...(tournament.format?.customPlayoffConfig?.playoffRounds ?? []).flatMap((r) => r.matches ?? []),
+    ]
+    return playoffs.some(
+      (m) =>
+        !(typeof m.homeGoals === 'number' && typeof m.awayGoals === 'number') &&
+        (leagueUnfinished || !clubs.has(m.homeTeamId ?? '') || !clubs.has(m.awayTeamId ?? '')),
+    )
+  }, [tournament])
+
   // Get playoff structure based on tournament format
   const playoffStructure = useMemo(() => {
             if (!tournament || !tournament.format || (tournament.format.mode !== 'league_playoff' && tournament.format.mode !== 'swiss_elimination' && tournament.format.mode !== 'league_custom_playoff')) return null
@@ -2131,6 +2159,11 @@ export default function TournamentPage() {
               {isProgressive ? 'Rounds' : 'Custom Playoff Configuration'}
             </h2>
             <div className="space-y-6">
+              {playoffsHeldBack && (
+              <p className="text-center text-sm text-amber-200/90 inline-flex w-full items-center justify-center gap-1.5">
+                <IconEyeOff size={14} /> Playoff matches appear on the public page once every regular match has a score and both clubs are set.
+              </p>
+              )}
               <p className="text-center text-sm opacity-80">
                 {isProgressive
                   ? 'Each week the surviving teams are paired by their place in the table, and the bottom pair play to stay in. Generate the week, then adjust anything that does not match the draw.'
@@ -2468,6 +2501,11 @@ export default function TournamentPage() {
         {/* Playoff Matches in Fixtures - Divided by Stage */}
         {playoffMatches.length > 0 && (
           <div className="space-y-6">
+            {playoffsHeldBack && (
+              <p className="text-center text-sm text-amber-200/90 inline-flex w-full items-center justify-center gap-1.5">
+                <IconEyeOff size={14} /> Playoff matches appear on the public page once every regular match has a score and both clubs are set.
+              </p>
+            )}
             {(() => {
               // For groups_with_divisions, organize playoffs by division
               if (tournament.format?.mode === 'groups_with_divisions') {

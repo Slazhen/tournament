@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hiddenLeagueRounds, toPublicTournament } from '../src/lib/rounds.js'
+import { hiddenLeagueRounds, playoffsWithheld, toPublicTournament } from '../src/lib/rounds.js'
 import type { Tournament } from '../src/lib/types.js'
 
 const season = (extra: Record<string, unknown> = {}): Tournament =>
@@ -221,5 +221,116 @@ describe('a hand-built playoff round the organiser has not announced', () => {
       withRounds([{ roundNumber: 1, name: 'Week 1', hidden: true, matches: [played] }]),
     )
     expect(roundsOf(projected)[0].matches).toEqual([played])
+  })
+})
+
+describe('playoffs on the public page', () => {
+  const played = (extra: Record<string, unknown> = {}) =>
+    fixture({ homeGoals: 1, awayGoals: 0, ...extra })
+  const tie = (extra: Record<string, unknown> = {}) =>
+    fixture({ id: 'p-1', homeTeamId: 'a', awayTeamId: 'c', isPlayoff: true, playoffRound: 0, round: 5, ...extra })
+
+  it('leaves them out while a league fixture has no score', () => {
+    const stored = season({ matches: [played(), fixture({ id: 'm-2' }), tie()] })
+    expect(playoffsWithheld(stored)).toBe(true)
+    expect(toPublicTournament(stored).matches).toEqual(stored.matches.slice(0, 2))
+  })
+
+  it('publishes them once every league fixture has a score', () => {
+    const stored = season({ matches: [played(), played({ id: 'm-2' }), tie()] })
+    expect(playoffsWithheld(stored)).toBe(false)
+    expect(toPublicTournament(stored).matches).toEqual(stored.matches)
+  })
+
+  // A bye and a cancelled fixture will never have a score; waiting for them
+  // would keep the playoffs back for ever.
+  it('does not wait for a bye or a cancelled fixture', () => {
+    const stored = season({
+      matches: [
+        played(),
+        fixture({ id: 'bye', homeTeamId: 'c', awayTeamId: 'c' }),
+        fixture({ id: 'off', status: 'cancelled' }),
+        tie(),
+      ],
+    })
+    expect(playoffsWithheld(stored)).toBe(false)
+  })
+
+  it('waits for a postponed fixture', () => {
+    expect(playoffsWithheld(season({ matches: [fixture({ status: 'postponed' }), tie()] }))).toBe(true)
+  })
+
+  it('has nothing to wait for in a straight knockout', () => {
+    const stored = season({ matches: [tie()] })
+    expect(playoffsWithheld(stored)).toBe(false)
+    expect(toPublicTournament(stored).matches).toEqual(stored.matches)
+  })
+
+  // No match without its two clubs on the public page: an unfilled slot, or a
+  // later round still waiting on the one before it, is left out.
+  it('leaves out a slot that does not name two clubs, even after the league', () => {
+    const stored = season({
+      matches: [
+        played(),
+        tie({ id: 'p-1', homeTeamId: 'seed-1', awayTeamId: 'seed-4' }),
+        tie({ id: 'p-2', homeTeamId: 'a', awayTeamId: 'winner_0_1' }),
+        tie({ id: 'p-3', homeTeamId: 'BYE', awayTeamId: 'b' }),
+      ],
+    })
+    expect(toPublicTournament(stored).matches).toEqual([stored.matches[0]])
+  })
+
+  // The other leg names the same clubs the other way round; without it the page
+  // decides a two-legged tie on the first leg.
+  it('publishes the second leg of a tie whose first leg is played', () => {
+    const first = tie({ id: 'p-1', tie: { id: 't-1', leg: 1 }, homeGoals: 1, awayGoals: 0 })
+    const second = tie({ id: 'p-2', homeTeamId: 'c', awayTeamId: 'a', tie: { id: 't-1', leg: 2 } })
+    const other = tie({ id: 'p-3', homeTeamId: 'b', awayTeamId: 'd', tie: { id: 't-2', leg: 1 } })
+    const projected = toPublicTournament(season({ matches: [fixture(), first, second, other] }))
+    expect(projected.matches.map((match: any) => match.id)).toEqual(['m-1', 'p-1', 'p-2'])
+  })
+
+  // The page decides whether the season is over from the matches it is given.
+  it('says there is more to come when it has left a fixture out', () => {
+    const pending = toPublicTournament(season({ matches: [played(), tie({ homeTeamId: 'seed-1' })] }))
+    expect((pending as any).playoffsPending).toBe(true)
+    const done = toPublicTournament(season({ matches: [played(), tie()], playoffsPending: true }))
+    expect((done as any).playoffsPending).toBeUndefined()
+  })
+
+  it('still publishes a playoff result', () => {
+    const result = tie({ homeGoals: 2, awayGoals: 1 })
+    const projected = toPublicTournament(season({ matches: [fixture(), result] }))
+    expect(projected.matches[1]).toEqual(result)
+  })
+
+  const handBuilt = (matches: unknown[], rounds: unknown[] = [{ roundNumber: 1, name: 'Semi-finals', matches: [tie({ round: undefined })] }]) =>
+    season({
+      matches,
+      format: {
+        mode: 'league_custom_playoff',
+        customPlayoffConfig: { preset: 'progressive_elimination', playoffRounds: rounds },
+      },
+    })
+  const roundsOf = (t: Tournament) =>
+    (t.format as Record<string, any>).customPlayoffConfig.playoffRounds as any[]
+
+  it('leaves out a hand-built round with nothing left to show', () => {
+    expect(roundsOf(toPublicTournament(handBuilt([fixture()])))).toEqual([])
+  })
+
+  it('keeps a hand-built round once its pairings are known', () => {
+    const stored = handBuilt([played()])
+    expect(roundsOf(toPublicTournament(stored))).toEqual(roundsOf(stored))
+  })
+
+  it('keeps a played fixture of a hand-built round and drops the rest', () => {
+    const result = tie({ id: 'p-9', homeGoals: 1, awayGoals: 1, round: undefined })
+    const projected = toPublicTournament(
+      handBuilt([fixture()], [{ roundNumber: 1, name: 'Week 1', matches: [result, tie({ round: undefined })] }]),
+    )
+    expect(roundsOf(projected)[0].matches).toEqual([result])
+    // The clubs of the fixture left out are not resting.
+    expect(roundsOf(projected)[0].partial).toBe(true)
   })
 })

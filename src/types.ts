@@ -476,6 +476,12 @@ export type CustomPlayoffRoundConfig = {
    * flag existed.
    */
   hidden?: boolean
+  /**
+   * Set by the public projection, never stored: some of this round's fixtures
+   * were left out because their pairing is not known yet, so the clubs missing
+   * from it are not the clubs resting.
+   */
+  partial?: boolean
 }
 
 /**
@@ -736,6 +742,12 @@ export type Tournament = {
    * held-back score would make it wrong rather than discreet.
    */
   hiddenRounds?: number[]
+  /**
+   * Set by the public projection, never stored: unplayed playoff fixtures were
+   * left out of this answer (`playoffUnpublished` in `server/src/lib/rounds.ts`),
+   * so the matches here being played does not make the season finished.
+   */
+  playoffsPending?: boolean
   /**
    * Punishments the organiser has handed down, in points.
    *

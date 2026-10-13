@@ -31,6 +31,97 @@ const isRecord = (value: unknown): value is Fixture =>
 const isPlayed = (match: Fixture): boolean =>
   typeof match.homeGoals === 'number' && typeof match.awayGoals === 'number'
 
+/**
+ * Whether the season's playoffs are still being held back because its regular
+ * part has not finished.
+ *
+ * Nobody sets this: a bracket published while the table is still moving is a
+ * claim about who qualified that the next result can contradict, and an
+ * organiser who fills the slots in early from the table as it stands is
+ * drafting, not announcing. So until every fixture that is not a playoff has a
+ * score, no unplayed playoff fixture leaves the API at all.
+ *
+ * A bye (one club on both sides) and a cancelled fixture are never going to
+ * have a score, so they are not waited for — otherwise one of them would keep
+ * the playoffs back for ever. A postponed one is. A season with no regular
+ * fixtures at all — a straight knockout — has nothing to wait for.
+ */
+export function playoffsWithheld(tournament: Tournament): boolean {
+  const matches = (tournament as { matches?: unknown }).matches
+  if (!Array.isArray(matches)) return false
+  return matches.some(
+    (match) =>
+      isRecord(match) &&
+      match.isPlayoff !== true &&
+      match.status !== 'cancelled' &&
+      !(match.homeTeamId && match.homeTeamId === match.awayTeamId) &&
+      !isPlayed(match),
+  )
+}
+
+/**
+ * Which playoff fixtures the public is not given at all: every unplayed one
+ * while the regular part is still being played, and after that every unplayed
+ * one without a club of this season on both sides.
+ *
+ * Left out rather than redacted to TBA, by the product owner's decision
+ * (October 2026): a public page shows no match without its two clubs. A
+ * generated bracket is slots such as `seed-1` and `winner-2` until the
+ * organiser fills them in, and a later round stays `winner-1` against
+ * `winner-2` until the round before it is decided, so a pairing appears on the
+ * public page when it is known and not before.
+ *
+ * Membership of `teamIds` rather than a list of placeholder shapes, because the
+ * generators have written several (`seed-1`, `winner-2`, `winner_1_2`, `BYE`,
+ * `TBD`), and a shape nobody listed must not read as a club. A played fixture
+ * is published whatever it names: the table and the scorers are counted from
+ * it.
+ *
+ * The other leg of a tie one of whose legs is published goes out too. It names
+ * the same two clubs the other way round, so it reveals nothing, and without
+ * it the page decides a two-legged tie on the first leg alone
+ * (`legsOfTie` in `src/utils/ties.ts` reads the legs it is given).
+ */
+export function playoffUnpublished(tournament: Tournament): (match: Fixture) => boolean {
+  const withheld = playoffsWithheld(tournament)
+  const clubs = new Set(
+    Array.isArray(tournament.teamIds) ? tournament.teamIds.filter((id) => typeof id === 'string') : [],
+  )
+  const isClub = (id: unknown) => typeof id === 'string' && clubs.has(id)
+  const unknownPairing = (match: Fixture) =>
+    !isPlayed(match) && (withheld || !isClub(match.homeTeamId) || !isClub(match.awayTeamId))
+
+  const tieOf = (match: Fixture): string | undefined =>
+    isRecord(match.tie) && typeof match.tie.id === 'string' ? match.tie.id : undefined
+  const publishedTies = new Set<string>()
+  for (const match of playoffFixtures(tournament)) {
+    const tie = tieOf(match)
+    if (tie && !unknownPairing(match)) publishedTies.add(tie)
+  }
+
+  return (match) => {
+    if (!unknownPairing(match)) return false
+    const tie = tieOf(match)
+    return !(tie && publishedTies.has(tie))
+  }
+}
+
+/** Every playoff fixture of the season, from both of its homes. */
+function playoffFixtures(tournament: Tournament): Fixture[] {
+  const fromMatches = Array.isArray(tournament.matches)
+    ? (tournament.matches as unknown[]).filter(
+        (match): match is Fixture => isRecord(match) && match.isPlayoff === true,
+      )
+    : []
+  const format = tournament.format as unknown
+  const config = isRecord(format) ? format.customPlayoffConfig : undefined
+  const rounds = isRecord(config) && Array.isArray(config.playoffRounds) ? config.playoffRounds : []
+  const fromRounds = rounds.flatMap((round: unknown) =>
+    isRecord(round) && Array.isArray(round.matches) ? round.matches.filter(isRecord) : [],
+  )
+  return [...fromMatches, ...fromRounds]
+}
+
 /** The league rounds this season is keeping back. */
 export function hiddenLeagueRounds(tournament: Tournament): Set<number> {
   const stored = (tournament as { hiddenRounds?: unknown }).hiddenRounds
@@ -82,8 +173,13 @@ export function publicForm(match: Fixture): Fixture {
  * that is not being withheld.
  */
 function project(match: Fixture, hidden: Set<number>): Fixture {
+  return isHeld(match, hidden) ? publicForm(match) : stripHidden(match)
+}
+
+/** Whether a fixture in `matches` belongs to a league round being held back. */
+export function isHeld(match: Fixture, hidden: Set<number>): boolean {
   const round = Number.isInteger(match.round) ? (match.round as number) : 0
-  return hidden.has(round) ? publicForm(match) : stripHidden(match)
+  return hidden.has(round)
 }
 
 /** A `hidden` nobody put there through this file is not the server's word. */
@@ -93,8 +189,15 @@ function stripHidden(match: Fixture): Fixture {
   return rest
 }
 
-/** The hand-built playoff rounds, with the hidden ones' fixtures taken out. */
-function projectFormat(format: Fixture): Fixture {
+/**
+ * The hand-built playoff rounds, with the hidden ones' fixtures redacted and
+ * the unpublished ones left out — every hand-built round is a playoff round. A
+ * round left with no fixtures is left out too: it would be a heading over
+ * nothing. A round that lost some of them carries `partial`, because the page
+ * names the clubs missing from a round as resting, and the clubs of a fixture
+ * left out are not resting.
+ */
+function projectFormat(format: Fixture, unpublished: (match: Fixture) => boolean): Fixture {
   const config = format.customPlayoffConfig
   if (!isRecord(config) || !Array.isArray(config.playoffRounds)) return format
 
@@ -102,15 +205,17 @@ function projectFormat(format: Fixture): Fixture {
     ...format,
     customPlayoffConfig: {
       ...config,
-      playoffRounds: config.playoffRounds.map((round) => {
-        if (!isRecord(round) || !Array.isArray(round.matches)) return round
+      playoffRounds: config.playoffRounds.flatMap((round) => {
+        if (!isRecord(round) || !Array.isArray(round.matches)) return [round]
         const held = round.hidden === true
-        return {
-          ...round,
-          matches: round.matches.map((match) =>
-            isRecord(match) ? (held ? publicForm(match) : stripHidden(match)) : match,
-          ),
-        }
+        const matches = round.matches
+          .filter((match) => !(isRecord(match) && unpublished(match)))
+          .map((match) => (isRecord(match) ? (held ? publicForm(match) : stripHidden(match)) : match))
+        if (matches.length === 0) return []
+        // A stored `partial` is not the server's word, for the reason a stored
+        // `hidden` is not.
+        const { partial: _stored, ...kept } = round
+        return [matches.length < round.matches.length ? { ...kept, matches, partial: true } : { ...kept, matches }]
       }),
     },
   }
@@ -126,6 +231,7 @@ function projectFormat(format: Fixture): Fixture {
  */
 export function toPublicTournament(tournament: Tournament): Tournament {
   const hidden = hiddenLeagueRounds(tournament)
+  const unpublished = playoffUnpublished(tournament)
   const format = tournament.format
 
   // `playoffBrackets` is legacy: nothing in the repository writes it and no page
@@ -133,18 +239,25 @@ export function toPublicTournament(tournament: Tournament): Tournament {
   // date — the pairings this projection has just taken off `matches`. Dropped
   // rather than projected, since the only reader would be a page that does not
   // exist.
-  const { playoffBrackets: _legacyBrackets, ...rest } = tournament as Tournament & {
-    playoffBrackets?: unknown
-  }
+  const { playoffBrackets: _legacyBrackets, playoffsPending: _stored, ...rest } =
+    tournament as Tournament & { playoffBrackets?: unknown; playoffsPending?: unknown }
+
+  // The page works out from the matches it is given whether the season is over
+  // and who won it, and with the unplayed playoff fixtures left out every match
+  // it can see is played the moment the league ends — it would crown the top
+  // of the table, or the winner of a semi-final. This is the server saying
+  // there is more to come.
+  const pending = playoffFixtures(tournament).some(unpublished)
 
   return {
     ...rest,
     matches: Array.isArray(tournament.matches)
-      ? tournament.matches.map((match) =>
-          isRecord(match) ? project(match, hidden) : match,
-        )
+      ? tournament.matches
+          .filter((match) => !(isRecord(match) && match.isPlayoff === true && unpublished(match)))
+          .map((match) => (isRecord(match) ? project(match, hidden) : match))
       : tournament.matches,
-    ...(isRecord(format) ? { format: projectFormat(format) } : {}),
+    ...(isRecord(format) ? { format: projectFormat(format, unpublished) } : {}),
+    ...(pending ? { playoffsPending: true } : {}),
   }
 }
 

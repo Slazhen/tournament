@@ -380,6 +380,24 @@ describe('a round the organiser is holding back, as a visiting club sees it', ()
     expect(seen.matches[0]).toEqual(played)
   })
 
+  // The club route asks the public projection's question about playoffs too,
+  // or a club with any entry could read a bracket the public may not.
+  it("leaves out another club's playoff tie while the league is unfinished", () => {
+    const seen = toClubTournament(
+      {
+        ...tournament,
+        hiddenRounds: [],
+        matches: [
+          upcoming({ id: 'm-l', homeTeamId: 'team-a', awayTeamId: 'team-b', round: 0 }),
+          upcoming({ id: 'm-p', homeTeamId: 'team-a', awayTeamId: 'team-b', isPlayoff: true, playoffRound: 0 }),
+          upcoming({ id: 'm-o', homeTeamId: 'team-mine', awayTeamId: 'team-b', isPlayoff: true, playoffRound: 0 }),
+        ],
+      },
+      ['team-mine'],
+    )
+    expect(seen.matches.map((match: any) => match.id)).toEqual(['m-l', 'm-o'])
+  })
+
   it('redacts a hidden hand-built round the same way', () => {
     const seen = toClubTournament(
       {

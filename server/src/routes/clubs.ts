@@ -8,7 +8,7 @@ import {
   managesTeam,
 } from '../lib/auth.js'
 import { assertPasswordStrength, generateId, generateSalt, hashPassword } from '../lib/passwords.js'
-import { hiddenLeagueRounds, publicForm } from '../lib/rounds.js'
+import { hiddenLeagueRounds, isHeld, playoffUnpublished, publicForm } from '../lib/rounds.js'
 import { createSession, getUserById } from '../lib/sessions.js'
 import { emailIsTaken } from './auth.js'
 import { ddb, PutCommand, scanAll } from '../lib/ddb.js'
@@ -192,14 +192,19 @@ function isOwnMatch(match: unknown, mine: Set<string>): boolean {
   return mine.has(homeTeamId as string) || mine.has(awayTeamId as string)
 }
 
-function summariseRound(round: unknown, mine: Set<string>): unknown {
+function summariseRound(
+  round: unknown,
+  mine: Set<string>,
+  unpublished: (match: Record<string, unknown>) => boolean,
+): unknown {
   if (!round || typeof round !== 'object') return round
 
   const source = round as Record<string, unknown>
   const summary: Record<string, unknown> = {
     // A hand-built round carries its own flag, so the whole round is held back
-    // or none of it is.
-    matches: projectMatches(source.matches, mine, () => source.hidden === true),
+    // or none of it is. Every hand-built round is a playoff round, so a fixture
+    // the public is not given is left out here too.
+    matches: projectMatches(source.matches, mine, () => source.hidden === true, unpublished),
   }
   for (const field of CARRIED_ROUND_FIELDS) {
     if (source[field] !== undefined) summary[field] = source[field]
@@ -217,19 +222,24 @@ function summariseRound(round: unknown, mine: Set<string>): unknown {
  * organiser is holding back is redacted exactly as the public gets it — this
  * route answers any club with an entry in the competition, an application the
  * organiser turned down included, so leaving the pairings here would be the way
- * round the whole feature. Everything else is summarised to the score.
+ * round the whole feature. A playoff fixture the public is not given at all
+ * (`playoffUnpublished`) is left out here for the same reason, unless it is the
+ * club's own. Everything else is summarised to the score.
  */
 const projectMatches = (
   list: unknown,
   mine: Set<string>,
   held: (match: Record<string, unknown>) => boolean,
+  omitted: (match: Record<string, unknown>) => boolean,
 ): unknown[] =>
-  (Array.isArray(list) ? list : []).map((match) => {
-    if (isOwnMatch(match, mine)) return match
-    if (match && typeof match === 'object' && held(match as Record<string, unknown>)) {
-      return publicForm(match as Record<string, unknown>)
+  (Array.isArray(list) ? list : []).flatMap((match) => {
+    if (isOwnMatch(match, mine)) return [match]
+    if (match && typeof match === 'object') {
+      const record = match as Record<string, unknown>
+      if (omitted(record)) return []
+      if (held(record)) return [publicForm(record)]
     }
-    return summariseMatch(match)
+    return [summariseMatch(match)]
   })
 
 /**
@@ -256,8 +266,12 @@ export function toClubTournament(
   }
 
   const hidden = hiddenLeagueRounds(tournament as never)
-  visible.matches = projectMatches(tournament.matches, mine, (match) =>
-    hidden.has(Number.isInteger(match.round) ? (match.round as number) : 0),
+  const unpublished = playoffUnpublished(tournament as never)
+  visible.matches = projectMatches(
+    tournament.matches,
+    mine,
+    (match) => isHeld(match, hidden),
+    (match) => match.isPlayoff === true && unpublished(match),
   )
 
   // Playoff fixtures of a hand-built format are not in `matches` at all: they
@@ -275,9 +289,17 @@ export function toClubTournament(
           customPlayoffConfig: {
             ...config,
             playoffRounds: Array.isArray(config.playoffRounds)
-              ? config.playoffRounds.map((round: Record<string, any>) =>
-                  summariseRound(round, mine),
-                )
+              ? config.playoffRounds.flatMap((round: Record<string, any>) => {
+                  // A round with nothing left to show is dropped, as the public
+                  // projection drops it: a heading over nothing.
+                  const summary = summariseRound(round, mine, unpublished) as Record<string, any>
+                  const emptied =
+                    Array.isArray(round?.matches) &&
+                    round.matches.length > 0 &&
+                    Array.isArray(summary?.matches) &&
+                    summary.matches.length === 0
+                  return emptied ? [] : [summary]
+                })
               : config.playoffRounds,
           },
         }

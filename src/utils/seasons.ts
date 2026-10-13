@@ -91,6 +91,10 @@ export function seasonStatus(tournament: Tournament): SeasonStatus {
   const matches = seasonMatches(tournament)
   const played = matches.filter(scored).length
   if (matches.length === 0 || played === 0) return 'upcoming'
+  // A public answer leaves out the playoff fixtures nobody knows the clubs of
+  // yet, and says so; without this the end of the league reads as the end of
+  // the season and `championOf` crowns somebody.
+  if (tournament.playoffsPending) return 'running'
   return played === matches.length ? 'finished' : 'running'
 }
 

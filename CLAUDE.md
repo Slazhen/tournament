@@ -181,6 +181,43 @@ read every round it is holding back. What a club still sees whole is *its own*
 fixture in a hidden round: it has to know when it plays, and a season where a
 club cannot see its own next game is one nobody can name a teamsheet for.
 
+**A playoff fixture reaches the public when its pairing is known, and nobody
+sets that.** An unplayed playoff fixture — `isPlayoff` in `matches`, and every
+fixture of a hand-built round, since all of them are playoff rounds — is left
+out of the public answer altogether while any fixture that is not a playoff has
+no score, and after that while either side is not a club of the season
+(`playoffUnpublished` in `lib/rounds.ts`, asked by both projections). An
+organiser fills bracket slots in from the table as it stands, and a bracket
+published while the table is still moving is a claim about who qualified that
+the next result can contradict. Left out rather than drawn as TBA, and
+placeholder slots (`seed-1`, `winner-2`) left out too: a public page shows no
+match without its two clubs (product owner, October 2026). A round the
+organiser hides by hand is the deliberate exception and still draws TBA rows:
+that is an announcement that games exist, which the organiser chose to make,
+and the same decision kept it. A hand-built round
+with nothing left in it is dropped, so no heading stands over nothing. "A club
+of the season" is membership of `teamIds` and not a list of placeholder shapes,
+because the generators have written several and one nobody listed must not
+read as a club. A played fixture is published whatever it names, and so is the
+other leg of a tie one of whose legs is out: it names the same clubs, and
+without it the page decides the tie on one leg.
+
+Leaving fixtures out costs the page what it counted from them, so the
+projection says what it took. `playoffsPending` on the season means unplayed
+playoff fixtures were left out, and `seasonStatus` reads it — otherwise every
+match the page can see is played the moment the league ends, and `championOf`
+crowns the top of the table or a semi-final winner. `partial` on a hand-built
+round means some of its fixtures were left out, and the "rests" line is not
+printed — the clubs missing from it are playing. Both are stripped from what
+is stored before they are set. A club still
+sees its own fixture whole on `/manager/overview`, the same exception a hidden
+round makes. A bye and a `cancelled` fixture are not waited for, or one of them
+would keep the playoffs back for ever; a `postponed` one is, and marking it
+cancelled on the match screen is how an organiser releases a bracket a match
+nobody will play is holding up. A season with no regular fixtures has nothing
+to wait for. This applies to seasons already under way. The season page mirrors
+the rule only to tell the organiser why the public does not see a fixture.
+
 `playoffBrackets` is no longer sent by either projection. Nothing writes it and
 no screen reads it, and on the records that still carry one it names the pairings
 by club and date — exactly what the fixtures beside it have just had taken off.
