@@ -12,8 +12,9 @@ import {
 import { TABLES } from './lib/env.js'
 import { cached, defaultTtl, invalidate, type ReadOptions } from './lib/cache.js'
 import { generateId } from './lib/passwords.js'
-import { badRequest, notFound } from './lib/http.js'
+import { badRequest, HttpError, notFound } from './lib/http.js'
 import { locateMatch, type MatchLocation } from './lib/matches.js'
+import { derivedGroupIndex, groupsOfFormat } from './lib/groups.js'
 import type { MatchExpectation } from './lib/goals.js'
 import { MAX_DEDUCTIONS } from './lib/deductions.js'
 import { MAX_STAFF } from './lib/staff.js'
@@ -1893,6 +1894,30 @@ export const tournaments = {
     const names: Record<string, string> = { ...located.names, '#id': 'id' }
     const values: Record<string, unknown> = { ':matchId': matchId }
     const sets: string[] = []
+    const conditions = [`${located.path}.#id = :matchId`]
+
+    // Which group the fixture is in follows from the clubs on it, and is never
+    // the browser's to say while they answer it (`lib/groups.ts`). Derived from
+    // the pairing as this write will leave it, so a side not in this request is
+    // asserted as read: a second tab changing it in between would otherwise
+    // leave a number worked out from a pairing that no longer exists.
+    const groupIndex = derivedGroupIndex(
+      groupsOfFormat(tournament.format),
+      located.match as Record<string, unknown>,
+      updates,
+    )
+    // Only where it moves: a score saved on an unchanged pairing writes nothing
+    // here and asserts nothing, so it cannot be refused over a field it left alone.
+    if (groupIndex !== undefined && groupIndex !== (located.match as Record<string, unknown>).groupIndex) {
+      updates = { ...updates, groupIndex }
+      for (const side of ['homeTeamId', 'awayTeamId'] as const) {
+        if (side in updates) continue
+        names[`#side_${side}`] = side
+        values[`:side_${side}`] = (located.match as Record<string, unknown>)[side]
+        conditions.push(`${located.path}.#side_${side} = :side_${side}`)
+      }
+    }
+
     Object.entries(updates).forEach(([field, value], index) => {
       if (field === 'id') return
       names[`#u${index}`] = field
@@ -1916,18 +1941,25 @@ export const tournaments = {
       removes.push(`${located.path}.#scoreBy`)
     }
 
-    await ddb.send(
-      new UpdateCommand({
-        TableName: TABLES.TOURNAMENTS,
-        Key: { id: tournamentId },
-        // The path is assembled by `locateMatch`, which aliases every segment
-        // of it: `matches` and `format` are both DynamoDB reserved words.
-        UpdateExpression: setAndRemove(sets, removes),
-        ConditionExpression: `${located.path}.#id = :matchId`,
-        ExpressionAttributeNames: names,
-        ExpressionAttributeValues: values,
-      }),
-    )
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLES.TOURNAMENTS,
+          Key: { id: tournamentId },
+          // The path is assembled by `locateMatch`, which aliases every segment
+          // of it: `matches` and `format` are both DynamoDB reserved words.
+          UpdateExpression: setAndRemove(sets, removes),
+          ConditionExpression: conditions.join(' AND '),
+          ExpressionAttributeNames: names,
+          ExpressionAttributeValues: values,
+        }),
+      )
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ConditionalCheckFailedException') throw error
+      // The fixture moved between this request's read and its write: another
+      // tab changed a side of it, or rebuilt the season. Nothing was written.
+      throw new HttpError(409, 'This match was changed elsewhere. Reload and try again.')
+    }
     invalidate('tournaments:')
   },
 

@@ -52,6 +52,7 @@ import {
 } from '../lib/goals.js'
 import { cardsOf, composeCard, describeCard, readCard } from '../lib/cards.js'
 import { keepAppointments, refereesOf } from '../lib/referees.js'
+import { alignGroupIndexes } from '../lib/groups.js'
 import { locateMatch } from '../lib/matches.js'
 import { hasPlayedIn, isIn, withdrawClub } from '../lib/withdraw.js'
 import { allPlayerIds, isArchivedPlayer } from '../lib/players.js'
@@ -1656,7 +1657,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // organiser's: appointments are written by their own route, which checks
     // them against the organiser's list. Stripped here as on the PATCH.
     const tournament = await tournaments.create({
-      ...keepAppointments(ctx.body, {}),
+      ...keepAppointments(alignGroupIndexes(ctx.body, undefined), {}),
       name,
       organizerId,
     })
@@ -1736,7 +1737,14 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     // And who referees each fixture, with the mark that says whose score it is,
     // for the same reason and more: an appointment is a permission, and a tab
     // loaded before it changed must not hand the match back to whoever had it.
-    const updates = keepAppointments(keepDiscipline(ctx.body, tournament.format), tournament)
+    //
+    // And which group each fixture is in, from the clubs on it: the repair
+    // tools and the generators send `matches` whole, and a number copied from
+    // the slot a fixture was first drawn in is how a season's tables went wrong.
+    const updates = keepAppointments(
+      alignGroupIndexes(keepDiscipline(ctx.body, tournament.format), tournament.format),
+      tournament,
+    )
 
     await tournaments.update(params.id!, updates)
     await record(user, {

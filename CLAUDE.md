@@ -278,6 +278,20 @@ clubs were entered rather than from the table, with a placeholder comment saying
 so, and an odd count put a club up against itself. No season in production uses
 it.
 
+**A fixture's group is its two clubs, and `groupIndex` is only a copy.**
+The generator writes `groupIndex` as the slot it drew a fixture in, and an
+organiser who changes the clubs on a fixture to match the real draw moves the
+pairing and not the number. The AAFA 2026 season was re-paired that way from
+end to end, and its group tables counted a result only where the old slot
+happened to agree. So `groupTables` places a fixture by the group holding both
+its clubs and reads `groupIndex` only where the pairing crosses groups, and the
+server never stores a number the pairing contradicts: `lib/groups.ts` derives it
+on the match `PATCH` (asserting a side the request did not send, so a second tab
+cannot leave it computed from a pairing that no longer exists) and on every body
+that writes `matches` whole. Reordering the groups on the settings screen, which
+sends `format` without `matches`, still leaves the numbers behind; nothing that
+counts reads them any more.
+
 **A grouped season runs one, two or three playoff brackets, and they are named
 after the medals.** `groups_with_divisions` took the top two of every group into
 "Division 1" and the next two into "Division 2", written separately into the
