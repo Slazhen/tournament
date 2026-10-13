@@ -116,7 +116,11 @@ if [[ "${SKIP_API:-0}" != "1" ]]; then
   (cd server && npm test)
 
   step "Building the API"
-  (cd server && sam build)
+  # sam looks for esbuild in its own scratch copy, which installs production
+  # dependencies only, and then on PATH. The project's pinned esbuild is a dev
+  # dependency, so it is put on PATH here rather than trusting whatever the
+  # shell happens to carry: a global one went missing once and stopped a deploy.
+  (cd server && PATH="$PWD/node_modules/.bin:$PATH" sam build)
 
   # The tests import the source; Lambda imports the bundle. A bundle that will
   # not load is a total outage, and nothing above this line would notice.
