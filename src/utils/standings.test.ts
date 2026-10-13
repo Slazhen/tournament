@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Match, Tournament } from '../types'
-import { deductedFrom, leagueTable, pointsFor, tableRules } from './standings'
+import { deductedFrom, groupTables, leagueTable, pointsFor, tableRules } from './standings'
 
 /**
  * The table's rules belong to the season, and the first thing these tests have
@@ -326,5 +326,25 @@ describe('points for one club', () => {
     const matches = [played('bye', 'a', 'a', 3, 0), played('m1', 'a', 'b', 1, 0)]
     const table = leagueTable(season(['a', 'b'], matches))
     expect(table[0]).toMatchObject({ id: 'a', p: 1, w: 1, l: 0, pts: 3 })
+  })
+})
+
+describe('a group table', () => {
+  const grouped = (matches: Match[]) =>
+    season(['a', 'b', 'c', 'd'], matches, {
+      mode: 'groups_with_divisions',
+      groupsWithDivisionsConfig: { numberOfGroups: 2, teamsPerGroup: 2, groups: [['a', 'b'], ['c', 'd']] },
+    } as Partial<Rules>)
+
+  it('files a fixture by its clubs when its groupIndex names another group', () => {
+    // The clubs were changed by hand on a fixture drawn in group 1's slot.
+    const tables = groupTables(grouped([played('m1', 'c', 'd', 2, 0, { groupIndex: 1 })]))
+    expect(tables[1].every((row) => row.p === 0)).toBe(true)
+    expect(tables[2].find((row) => row.id === 'c')?.pts).toBe(3)
+  })
+
+  it('still places a fixture without a groupIndex by its pairing', () => {
+    const tables = groupTables(grouped([played('m1', 'a', 'b', 0, 1)]))
+    expect(tables[1].find((row) => row.id === 'b')?.pts).toBe(3)
   })
 })

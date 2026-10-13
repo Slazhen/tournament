@@ -550,18 +550,23 @@ export function groupTables(tournament: Tournament): Record<number, StandingsRow
   const rules = tableRules(tournament)
   const deducted = deductionTotals(tournament)
   const tables: Record<number, StandingsRow[]> = {}
+  // A fixture is placed by the two clubs on it, and `groupIndex` is consulted
+  // only where the pairing does not sit inside one group. The number is the
+  // slot the generator drew the fixture in, and nothing moves it when somebody
+  // changes the clubs on that fixture by hand to match the real draw - which
+  // is how the AAFA season ended up with every result filed under somebody
+  // else's group, counted only where the slot happened to agree.
+  const groupOfPairing = (match: Match): number | undefined => {
+    const index = groups.findIndex(
+      (ids) => ids.includes(match.homeTeamId) && ids.includes(match.awayTeamId),
+    )
+    return index >= 0 ? index + 1 : undefined
+  }
   groups.forEach((teamIds, index) => {
     const number = index + 1
     const matches = (tournament.matches ?? []).filter((match) => {
       if (match.isPlayoff) return false
-      if (match.groupIndex === number) return true
-      // `groupIndex` is trusted wherever it is set. A fixture from before it
-      // was written has to be placed by its pairing instead.
-      return (
-        !match.groupIndex &&
-        teamIds.includes(match.homeTeamId) &&
-        teamIds.includes(match.awayTeamId)
-      )
+      return (groupOfPairing(match) ?? match.groupIndex) === number
     })
     tables[number] = tally(teamIds, matches, rules, deducted)
   })
