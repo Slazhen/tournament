@@ -288,9 +288,13 @@ its clubs and reads `groupIndex` only where the pairing crosses groups, and the
 server never stores a number the pairing contradicts: `lib/groups.ts` derives it
 on the match `PATCH` (asserting a side the request did not send, so a second tab
 cannot leave it computed from a pairing that no longer exists) and on every body
-that writes `matches` whole. Reordering the groups on the settings screen, which
-sends `format` without `matches`, still leaves the numbers behind; nothing that
-counts reads them any more.
+that writes `matches` whole. Groups change only together with the fixtures:
+every screen that moves a club sends both, and the tournament `PATCH` refuses
+a `format` whose groups differ from the stored ones when no `matches` come with
+it (`assertGroupsMoveWithFixtures`). The exception is a season with no stored
+groups, which `persistReconstructedGroups` fills in from the numbers themselves.
+The guard asks only that a `matches` array arrives, not that it was rebuilt;
+what makes the numbers right is `alignGroupIndexes` running over it.
 
 **A grouped season runs one, two or three playoff brackets, and they are named
 after the medals.** `groups_with_divisions` took the top two of every group into

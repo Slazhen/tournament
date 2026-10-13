@@ -17,6 +17,8 @@
  * better answer to write and taking it away would lose the one it had.
  */
 
+import { badRequest } from './http.js'
+
 type Fixture = Record<string, unknown>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -76,4 +78,32 @@ export function alignGroupIndexes(
     return number === undefined || match.groupIndex === number ? match : { ...match, groupIndex: number }
   })
   return { ...body, matches }
+}
+
+const sameGroups = (a: string[][], b: string[][]) =>
+  a.length === b.length &&
+  a.every((group, index) => {
+    const other = [...b[index]].sort()
+    const mine = [...group].sort()
+    return mine.length === other.length && mine.every((id, at) => id === other[at])
+  })
+
+/**
+ * Refuses a write that moves clubs between groups and leaves the fixtures
+ * where they were.
+ *
+ * Every screen that changes who is in which group sends the fixtures it
+ * rebuilt in the same body, and `alignGroupIndexes` numbers them from the new
+ * groups. A body carrying `format` alone would store groups the fixtures'
+ * numbers no longer agree with, and nothing would put them back in step. The
+ * one format-only write the site makes is `persistReconstructedGroups`, which
+ * stores groups on a season that had none, worked out from those very numbers
+ * - so a season with no stored groups is let through.
+ */
+export function assertGroupsMoveWithFixtures(body: Record<string, unknown>, storedFormat: unknown): void {
+  if (!('format' in body) || Array.isArray(body.matches)) return
+  const stored = groupsOfFormat(storedFormat)
+  if (stored.length === 0) return
+  if (sameGroups(stored, groupsOfFormat(body.format))) return
+  throw badRequest('The groups can only be changed together with the fixtures. Reload and try again.')
 }

@@ -52,7 +52,7 @@ import {
 } from '../lib/goals.js'
 import { cardsOf, composeCard, describeCard, readCard } from '../lib/cards.js'
 import { keepAppointments, refereesOf } from '../lib/referees.js'
-import { alignGroupIndexes } from '../lib/groups.js'
+import { alignGroupIndexes, assertGroupsMoveWithFixtures } from '../lib/groups.js'
 import { locateMatch } from '../lib/matches.js'
 import { hasPlayedIn, isIn, withdrawClub } from '../lib/withdraw.js'
 import { allPlayerIds, isArchivedPlayer } from '../lib/players.js'
@@ -1723,6 +1723,7 @@ export function registerAdminRoutes(router: Router<RequestContext>): void {
     assertCompetitionColours(ctx.body)
     assertShootoutsInBody(ctx.body)
     assertDisciplineInBody(ctx.body)
+    assertGroupsMoveWithFixtures(ctx.body, tournament.format)
     await assertEnterableTeams(
       tournament.organizerId,
       ctx.body.teamIds,

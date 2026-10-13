@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { alignGroupIndexes, derivedGroupIndex, groupsOfFormat } from '../src/lib/groups.js'
+import {
+  alignGroupIndexes,
+  assertGroupsMoveWithFixtures,
+  derivedGroupIndex,
+  groupsOfFormat,
+} from '../src/lib/groups.js'
 
 const format = {
   mode: 'groups_with_divisions',
@@ -53,5 +58,38 @@ describe('a body that writes matches whole', () => {
     const body = { format: regrouped, matches: [{ id: 'm1', homeTeamId: 'c', awayTeamId: 'd' }] }
     const out = alignGroupIndexes(body, format).matches as Record<string, unknown>[]
     expect(out[0].groupIndex).toBe(1)
+  })
+})
+
+describe('moving clubs between groups', () => {
+  const moved = {
+    ...format,
+    groupsWithDivisionsConfig: { groups: [['a', 'c'], ['b', 'd']] },
+  }
+
+  it('is refused without the fixtures', () => {
+    expect(() => assertGroupsMoveWithFixtures({ format: moved }, format)).toThrow(/together with the fixtures/)
+  })
+
+  it('is refused when the groups are dropped from the format', () => {
+    expect(() => assertGroupsMoveWithFixtures({ format: { mode: 'groups_with_divisions' } }, format)).toThrow()
+  })
+
+  it('goes through with the fixtures', () => {
+    expect(() => assertGroupsMoveWithFixtures({ format: moved, matches: [] }, format)).not.toThrow()
+  })
+
+  it('goes through when the groups are the same, in any order inside a group', () => {
+    const reordered = { ...format, groupsWithDivisionsConfig: { groups: [['b', 'a'], ['c', 'd']] } }
+    expect(() => assertGroupsMoveWithFixtures({ format: reordered }, format)).not.toThrow()
+  })
+
+  it('goes through on a season that had no stored groups', () => {
+    const none = { mode: 'groups_with_divisions', groupsWithDivisionsConfig: {} }
+    expect(() => assertGroupsMoveWithFixtures({ format }, none)).not.toThrow()
+  })
+
+  it('does not concern a write that sends no format', () => {
+    expect(() => assertGroupsMoveWithFixtures({ name: 'x' }, format)).not.toThrow()
   })
 })
